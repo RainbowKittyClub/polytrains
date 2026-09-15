@@ -1,4 +1,4 @@
-# ![Kali's Minecart Tweaks](img/logo.png)
+#Kali's Reworked Rails
 
 Inspired by Cammie's Minecart Tweaks: A server-side Fabric mod that makes rails not suck.
 
@@ -14,8 +14,8 @@ but longer trains are harder to move. Use furnace minecarts to power them.
 The more furnace carts are in a train, the faster it accelerates.
 
 ### Collision
-Two trains that meet on shared track collide, and when going fast enough, wreck and take each other out
-of service. A speeding minecart will also damage mobs and players, too.
+Trains break apart when they collide if they're going fast enough.
+Mobs and players can get run over now too!
 
 ### More Rail Types
 - **Junction rail** — a fixed crossing, letting two lines cross over eachother without joining.
