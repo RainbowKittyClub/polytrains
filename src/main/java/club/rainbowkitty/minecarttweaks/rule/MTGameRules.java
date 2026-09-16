@@ -87,6 +87,15 @@ public final class MTGameRules {
     public static final GameRule<Boolean> CARTS_RESUME_FROM_BRAKES =
             registerBoolean("carts_resume_from_brakes", true);
 
+    /**
+     * Speed below which rolling friction is laid on harder, in blocks per second, or zero to leave
+     * vanilla's alone. Vanilla takes a fixed fraction of the speed each tick — a fortieth of an
+     * empty cart's, but only a three-hundredth of a ridden one's — so a cart with someone aboard
+     * rolls on for the better part of a minute after it looks stopped.
+     */
+    public static final GameRule<Integer> RAIL_DRAG_SPEED =
+            registerInteger("rail_drag_speed", 3, 0, MAX_SPEED);
+
     /** Burn time ceiling in ticks, raising vanilla's hardcoded 32000. */
     public static final GameRule<Integer> FURNACE_MAX_BURN_TIME =
             registerInteger("furnace_max_burn_time", 72000, 0, Integer.MAX_VALUE);
