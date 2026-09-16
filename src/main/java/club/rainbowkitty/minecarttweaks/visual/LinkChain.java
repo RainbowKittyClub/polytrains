@@ -1,7 +1,5 @@
 package club.rainbowkitty.minecarttweaks.visual;
 
-import java.util.Arrays;
-
 import eu.pb4.polymer.virtualentity.api.ElementHolder;
 import eu.pb4.polymer.virtualentity.api.attachment.EntityAttachment;
 import eu.pb4.polymer.virtualentity.api.elements.BlockDisplayElement;
@@ -10,11 +8,11 @@ import org.joml.Vector3f;
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
+import club.rainbowkitty.kalic0re.common.display.RenderTrail;
 import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 
 /**
@@ -49,8 +47,8 @@ public final class LinkChain extends ElementHolder {
     private final Vec3 seat;
 
     // Delayed samples of each cart, so the chain is built where the client draws them.
-    private final Trail cartTrail;
-    private final Trail parentTrail;
+    private final RenderTrail cartTrail;
+    private final RenderTrail parentTrail;
 
     // Which end face of each cart the chain is bolted to.
     private boolean cartFront = true;
@@ -63,8 +61,8 @@ public final class LinkChain extends ElementHolder {
     private LinkChain(Entity cart, Entity parent) {
         this.cart = cart;
         this.parent = parent;
-        this.cartTrail = new Trail(cart);
-        this.parentTrail = new Trail(parent);
+        this.cartTrail = new RenderTrail(cart, RENDER_LAG);
+        this.parentTrail = new RenderTrail(parent, RENDER_LAG);
 
         // Rides the cart rather than being placed at it, so the client draws it against the
         // position it is already showing rather than against server truth.
@@ -132,15 +130,15 @@ public final class LinkChain extends ElementHolder {
 
     // Rewrites the display's transform so the chain spans the two carts' couplers.
     private void aim() {
-        Vec3 cartPos = cartTrail.position();
-        float cartYaw = cartTrail.yaw();
-        float cartPitch = cartTrail.pitch();
-        float parentYaw = parentTrail.yaw();
-        float parentPitch = parentTrail.pitch();
+        Vec3 cartPos = cartTrail.position(RENDER_LAG);
+        float cartYaw = cartTrail.yaw(RENDER_LAG);
+        float cartPitch = cartTrail.pitch(RENDER_LAG);
+        float parentYaw = parentTrail.yaw(RENDER_LAG);
+        float parentPitch = parentTrail.pitch(RENDER_LAG);
 
         Vec3 cartCentre = centre(cartPos, cartYaw, cartPitch, cart);
         Vec3 parentCentre =
-                centre(parentTrail.position(), parentYaw, parentPitch, parent);
+                centre(parentTrail.position(RENDER_LAG), parentYaw, parentPitch, parent);
         Vec3 centres = parentCentre.subtract(cartCentre);
 
         if (centres.lengthSqr() < MIN_SPAN * MIN_SPAN) {
@@ -213,62 +211,4 @@ public final class LinkChain extends ElementHolder {
                 .rotateX((float) Math.atan2(direction.horizontalDistance(), direction.y));
     }
 
-    // Where a cart was RENDER_LAG ticks ago. The lag falls between two ticks because it counts a
-    // network hop as well as the replay, so the two samples either side of it are mixed.
-    private static final class Trail {
-
-        // The two samples the lag falls between, and how far along it lies.
-        private static final int WHOLE = (int) RENDER_LAG;
-        private static final float FRACTION = (float) (RENDER_LAG - WHOLE);
-
-        // Room for both of those samples on top of the ones already passed.
-        private static final int SIZE = WHOLE + 2;
-
-        // One sample of the cart's placement per tick, oldest overwritten first.
-        private final Vec3[] positions = new Vec3[SIZE];
-        private final float[] yaws = new float[SIZE];
-        private final float[] pitches = new float[SIZE];
-
-        private int next;
-
-        // Fills the whole trail with the cart's current placement, so it reads as standing still.
-        private Trail(Entity entity) {
-            Arrays.fill(positions, entity.position());
-            Arrays.fill(yaws, entity.getYRot());
-            Arrays.fill(pitches, entity.getXRot());
-        }
-
-        // Records this tick's placement, overwriting the oldest sample.
-        private void push(Entity entity) {
-            positions[next] = entity.position();
-            yaws[next] = entity.getYRot();
-            pitches[next] = entity.getXRot();
-            next = (next + 1) % SIZE;
-        }
-
-        // The lagged position, mixed from the two samples the lag falls between.
-        private Vec3 position() {
-            return Mth.lerp(FRACTION, positions[index(WHOLE)], positions[index(WHOLE + 1)]);
-        }
-
-        // The lagged yaw.
-        private float yaw() {
-            return rotation(yaws);
-        }
-
-        // The lagged pitch.
-        private float pitch() {
-            return rotation(pitches);
-        }
-
-        // The delayed reading of one angle, taken the short way round.
-        private float rotation(float[] samples) {
-            return Mth.rotLerp(FRACTION, samples[index(WHOLE)], samples[index(WHOLE + 1)]);
-        }
-
-        // Where the sample from age ticks ago sits in the ring.
-        private int index(int age) {
-            return Math.floorMod(next - 1 - age, SIZE);
-        }
-    }
 }
