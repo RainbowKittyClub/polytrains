@@ -22,9 +22,6 @@ import net.minecraft.world.item.MinecartItem;
 import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.block.BaseRailBlock;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.PoweredRailBlock;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
@@ -59,16 +56,6 @@ public final class MinecartHelper {
 
     // Static-only; blocks instantiation.
     private MinecartHelper() {}
-
-    /** Returns true if {@code cart} is standing on a rail that should stop it. */
-    public static boolean shouldApplyBrakes(AbstractMinecart cart) {
-        BlockState railState =
-                cart.level().getBlockState(cart.getCurrentBlockPosOrRailBelow());
-
-        // A powered rail brakes while it has no signal, and accelerates once it has one.
-        return railState.is(Blocks.POWERED_RAIL)
-                && !railState.getValue(PoweredRailBlock.POWERED);
-    }
 
     /**
      * Returns true if the player is holding a link item and shift-clicking a minecart,

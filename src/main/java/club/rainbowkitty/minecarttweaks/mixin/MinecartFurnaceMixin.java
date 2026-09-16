@@ -29,10 +29,10 @@ import net.minecraft.world.phys.Vec3;
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
 import club.rainbowkitty.minecarttweaks.init.MTTicketTypes;
+import club.rainbowkitty.minecarttweaks.rail.RailBrake;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.util.FurnaceFuel;
-import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 
 /** Furnace-cart speed, burning any fuel, the parking brake, and keeping chunks loaded. */
 @Mixin(MinecartFurnace.class)
@@ -188,7 +188,7 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         var rules = serverLevel.getGameRules();
 
         // Read before super.tick() moves the cart, so the movement path sees this tick's rail.
-        minecarttweaks$parked = MinecartHelper.shouldApplyBrakes(this);
+        minecarttweaks$parked = RailBrake.brakes(this);
 
         if (fuel > 0 && rules.get(MTGameRules.FURNACE_MINECARTS_LOAD_CHUNKS)) {
             serverLevel.getChunkSource().addTicketWithRadius(

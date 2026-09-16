@@ -79,6 +79,14 @@ public final class MTGameRules {
     public static final GameRule<Integer> CART_PICKUP_SPEED =
             registerInteger("cart_pickup_speed", 4, 0, MAX_SPEED);
 
+    /**
+     * Whether a cart an unpowered powered rail brought to a stop leaves again the way it came in,
+     * once that rail has its signal back. Vanilla only accelerates a cart once it's already
+     * been pushed.
+     */
+    public static final GameRule<Boolean> CARTS_RESUME_FROM_BRAKES =
+            registerBoolean("carts_resume_from_brakes", true);
+
     /** Burn time ceiling in ticks, raising vanilla's hardcoded 32000. */
     public static final GameRule<Integer> FURNACE_MAX_BURN_TIME =
             registerInteger("furnace_max_burn_time", 72000, 0, Integer.MAX_VALUE);

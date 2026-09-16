@@ -21,6 +21,8 @@
   "gamerule.minecarttweaks.furnaces_can_use_all_fuels.description": "Furnace minecarts burn any furnace fuel, not just coal",
   "gamerule.minecarttweaks.furnace_minecarts_load_chunks": "Furnace Minecarts Load Chunks",
   "gamerule.minecarttweaks.furnace_minecarts_load_chunks.description": "Moving furnace minecarts keep their own chunks loaded",
+  "gamerule.minecarttweaks.carts_resume_from_brakes": "Carts Resume From Brakes",
+  "gamerule.minecarttweaks.carts_resume_from_brakes.description": "A cart stopped by an unpowered powered rail sets off again the way it came in when that rail is powered",
   "gamerule.minecarttweaks.minecart_damage": "Minecart Damage",
   "gamerule.minecarttweaks.minecart_damage.description": "Damage a moving minecart deals on impact, or 0 to disable",
   "gamerule.minecarttweaks.cart_wreck_momentum": "Cart Wreck Momentum",

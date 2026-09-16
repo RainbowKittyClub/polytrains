@@ -29,13 +29,13 @@ import club.rainbowkitty.minecarttweaks.collision.CartImpact;
 import club.rainbowkitty.minecarttweaks.collision.CartInteraction;
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
 import club.rainbowkitty.minecarttweaks.init.MTAttachments;
+import club.rainbowkitty.minecarttweaks.rail.RailBrake;
 import club.rainbowkitty.minecarttweaks.rail.RailContext;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rail.RailPath.Bend;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.train.TrainSnapshot;
-import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 import club.rainbowkitty.minecarttweaks.visual.LinkChain;
 
 /**
@@ -252,7 +252,7 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         if (!hasLink()
                 || !MTGameRules.trainsEnabled(level())
                 || minecarttweaks$driveAcceleration() > 0
-                || MinecartHelper.shouldApplyBrakes(self)) {
+                || RailBrake.brakes(self)) {
             return;
         }
 
@@ -386,6 +386,7 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
 
         JunctionRailBlock.steer(serverLevel, self);
         SwitchedRailBlock.steer(serverLevel, self);
+        RailBrake.tick(serverLevel, self);
 
         // Each cart draws exactly the one chain, to whichever cart it follows.
         AbstractMinecart parent = TrainCoupling.tickTrain(serverLevel, self);
