@@ -32,7 +32,7 @@ public final class MTGameRules {
      * A value of one refuses every link.
      */
     public static final GameRule<Integer> MAX_TRAIN_LENGTH =
-            registerInteger("max_train_length", 128, 1, 256);
+            registerInteger("max_train_length", 128, 1, 512);
 
     /**
      * Whether a furnace cart accepts anything a furnace would burn, rather than only the items in
