@@ -261,7 +261,7 @@ So the numbers the stages below are measured against:
 - **Bail reasons seen: `no leading end` (34), `leader off ribbon` (2)** — the second only ever fired
   on the tick of a sever, as a consequence of it; the ribbon is not consulted for severing at S4.
 
-## S5 — Cars placed on the ribbon — **planned**
+## S5 — Cars placed on the ribbon — **done**
 
 **Build.** Add `TrainPlacer`. Cancel `moveAlongTrack` for a seated car and place it with `setPos`;
 run the placer at `tick` TAIL so the train is laid against where its leading car actually ended the
@@ -280,6 +280,57 @@ car pitch at full speed; an eight-car train round the diagonal, through the circ
 shows no visible jump in any car; a train stalled part-way up a grade rolls back down coherently,
 through the moment it is stationary and the end that leads changes. The absence
 of the jump is the requirement that matters — a teleport is what the old clamps existed to hide.
+
+
+### As built
+
+`TrainPlacer` seats every trailing car at `headArc - order * i * pitch`, with the vanilla move
+cancelled for a seated car and `sweep`, `pushAndPickupEntities` and `applyEffectsFromBlocks` repaid by
+hand. The hold moved to `tick` TAIL, driven by the leading car, falling back to the settler where
+there is no leading end so that a closed or never-moved train is still corrected as it was.
+
+Bails carry a `Bail` tag rather than a boolean, and are compared on the tag: the detail line names
+arcs and blocks that differ every tick, so comparing the line would report a steady fault as a new one
+every tick and a boolean would hide a fault that changed kind. Four of the five fired in testing —
+`NO_LEADING_END`, `CAR_OFF_RIBBON`, `LEADER_OFF_RIBBON`, `ORDER_UNREADABLE`. `LEADER_MID_TRAIN` did
+not, and cannot: the car order and `decideLeader` agree by construction, so it guards a contradiction
+in `Train` rather than a situation on the track.
+
+**What the placer broke, and what that taught.** Every one of these is the same shape — something
+vanilla did for free, or something the old system papered over by having every car read the rails.
+
+- **A sever cost the surviving half its ribbon**, because `Train` held a fresh one per object. The
+  placer then could not seat it, the correction took it, and it severed again: eight cars came apart
+  in five ticks, four of those severs caused by the three before. The ribbon is track, not membership.
+- **Junctions stopped being laid.** `moveAlongTrack` re-reads each block's shape as it reaches it,
+  several blocks a tick, while `steer` lays only the block a cart stands on when the tick begins.
+  Eight cars each laying the block under them had hidden that; one leading car does not. Laid one
+  block ahead of the cart now, on every step.
+- **A car handed back to the correction still read as placed** for one tick, through the grace in
+  `seated()` that exists for cars ticking before their leader — so it steered no junction while
+  vanilla moved it over one. The placer drops the seat marks when it bails.
+- **Reversal turned cars through 180 degrees** rather than flipping them, sweeping the chain to the
+  car behind through the cart body, and the flip test compared two angles unwrapped. Vanilla negates
+  `xRot` for a flipped cart on *every* rotation, not only at the flip; without that clause a car that
+  had reversed once rendered every later climb as a descent, which is why slopes failed while flat
+  track was clean.
+- **Collision predicates read a placed car's velocity**, which the placer writes from the leader's, so
+  a car with a stale copy answered differently from its neighbours and a train was solid at one end
+  and walked through at the other. Anything asking what a train is doing asks the leading car.
+
+**Deferred, not fixed: a stalled train does not roll back.** Gravity is the acceleration site the
+twelve did not count — `calculateSlopeSpeed` is inside `moveAlongTrack`, so a seated car never gets
+it and a train on a grade has one car's worth of downhill pull whatever its length. It belongs with
+S7 and is recorded there. Everything else in "Done when" was observed: eight cars stable over the
+test track, a switch splitting a train in both directions, no visible jump, and chains behaving
+through a reversal.
+
+**Two world settings confounded most of this stage's measurements**, and both are worth knowing
+before trusting a speed number: `max_minecart_speed` was left at 1 from an earlier session, capping
+every plain cart at 0.05 blocks per tick — below the 0.06 a single powered rail adds. That went
+unnoticed because `furnace_minecart_speed` replaced the ceiling outright rather than working within
+it, so furnace trains ran at 1.0 regardless and looked normal. The rule is gone; the trap is in
+`docs/TESTING.md`.
 
 ## S6 — The placer made total — **planned**
 
