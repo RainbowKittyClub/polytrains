@@ -12,6 +12,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -22,8 +23,10 @@ import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.phys.Vec3;
 
@@ -311,16 +314,27 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     }
 
     // Vanilla spawns a cart facing nowhere in particular and lets its first movement decide, so
-    // which end of it is the front was settled by whichever way it happened to roll.
-    @Inject(method = "createMinecart", at = @At("RETURN"))
-    private static void minecarttweaks$faceOnPlacement(Level level, double x, double y, double z,
-            EntityType<?> type, EntitySpawnReason reason, ItemStack stack, @Nullable Player player,
-            CallbackInfoReturnable<AbstractMinecart> cir) {
-        AbstractMinecart placed = cir.getReturnValue();
-
-        if (placed != null && player != null) {
-            MinecartHelper.faceAlongRail(level, placed, player.getLookAngle());
+    // which end of it is the front was settled by whichever way it happened to roll. Every kind of
+    // cart is built here, so every kind is faced here.
+    //
+    // Ahead of the rail adjustment rather than after it: that stamps the rotation it picked into
+    // the cart's first interpolation step, and the client draws the step rather than the entity.
+    // Setting the rotation afterwards left the server right and the cart visibly wrong until it
+    // moved for real.
+    @Redirect(method = "createMinecart",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/world/entity/vehicle/minecart/NewMinecartBehavior;"
+                            + "adjustToRails(Lnet/minecraft/core/BlockPos;"
+                            + "Lnet/minecraft/world/level/block/state/BlockState;Z)V"))
+    private static void minecarttweaks$faceOnPlacement(NewMinecartBehavior behavior, BlockPos pos,
+            BlockState state, boolean instant, Level level, double x, double y, double z,
+            EntityType<?> type, EntitySpawnReason reason, ItemStack stack,
+            @Nullable Player player) {
+        if (player != null) {
+            MinecartHelper.faceAlongRail(level, pos, behavior, player.getLookAngle());
         }
+
+        behavior.adjustToRails(pos, state, instant);
     }
 
     // Vanilla's stepper is the only thing that knows which rail blocks a cart really crossed, and

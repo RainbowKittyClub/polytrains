@@ -17,6 +17,7 @@ import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.entity.vehicle.minecart.MinecartBehavior;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.MinecartItem;
@@ -147,23 +148,24 @@ public final class MinecartHelper {
     }
 
     /**
-     * Points {@code cart}'s front along the rail under it, whichever of that rail's two directions
-     * {@code look} agrees with.
+     * Points the cart {@code behavior} drives along the rail at {@code on}, whichever of that
+     * rail's two directions {@code look} agrees with.
      *
      * <p>Settled as the cart is put down rather than read off the first movement it happens to
      * make. A cart has a front — its chain hangs off one end of it — so a cart that later runs the
      * other way runs backwards instead of turning round to suit.
+     *
+     * <p>Leaves the flip alone. A cart is placed unflipped, and the rail adjustment that follows
+     * reconciles the two itself: it reads the rail's own first exit, which is this heading or its
+     * opposite, and turns the cart end for end rather than round if it is the opposite.
      */
-    public static void faceAlongRail(Level level, AbstractMinecart cart, Vec3 look) {
-        BlockPos on = cart.getCurrentBlockPosOrRailBelow();
+    public static void faceAlongRail(
+            Level level, BlockPos on, MinecartBehavior behavior, Vec3 look) {
         BlockPos exit = RailPath.ahead(level, on, look.horizontal());
 
-        if (exit == null) {
-            return;
+        if (exit != null) {
+            behavior.setYRot(yawOf(Vec3.atLowerCornerOf(exit.subtract(on)).horizontal()));
         }
-
-        cart.setFlipped(false);
-        cart.setYRot(yawOf(Vec3.atLowerCornerOf(exit.subtract(on)).horizontal()));
     }
 
     /** The yaw a cart wears to point along {@code heading}, in vanilla's own reckoning. */
