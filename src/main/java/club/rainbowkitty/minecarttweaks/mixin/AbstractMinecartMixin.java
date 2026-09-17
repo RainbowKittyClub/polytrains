@@ -41,7 +41,6 @@ import club.rainbowkitty.minecarttweaks.rail.RailContext;
 import club.rainbowkitty.minecarttweaks.rail.RailDrag;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rail.RailPath.Bend;
-import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.train.TrainPlacer;
@@ -62,10 +61,6 @@ import club.rainbowkitty.minecarttweaks.visual.LinkChain;
 @Mixin(AbstractMinecart.class)
 public abstract class AbstractMinecartMixin extends Entity implements AbstractMinecartExt {
 
-    // Only has to exclude a dead stop, since the coupling writes a towed cart's movement along its
-    // own rail and any of it at all names the direction the train is going.
-    @Unique
-    private static final double ANY_MOVEMENT = 1.0E-10;
 
     // Vanilla's shove between a cart and something that is not one, read out of
     // AbstractMinecart.push(Entity): the impulse it is worth at touching range, and the separation
@@ -75,10 +70,6 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     @Unique
     private static final double SHOVE_EPSILON = 1.0E-4;
 
-    // Set for the length of a walk over a train, so the members asked for their ceiling answer with
-    // their own rather than walking back over the same train to find it again.
-    @Unique
-    private static boolean minecarttweaks$ownSpeedOnly;
 
     // The chain drawn back to the cart this one follows, or null when it follows nothing.
     @Unique
@@ -122,7 +113,7 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         throw new UnsupportedOperationException();
     }
 
-    // Vanilla's own speed ceiling for this cart, which minecarttweaks$trainSpeed raises.
+    // Vanilla's own speed ceiling for this cart, which is max_minecart_speed for every kind.
     @Shadow
     protected abstract double getMaxSpeed(ServerLevel level);
 
@@ -176,11 +167,6 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         // Linkable.unlink coming back round to mark the other side.
         Train.invalidate(self);
         Train.invalidate(neighbour);
-    }
-
-    @Override
-    public double minecarttweaks$maxSpeedAlone(ServerLevel level) {
-        return getMaxSpeed(level);
     }
 
     @Override
@@ -256,32 +242,6 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
 
     // ---- injections ----
 
-    // Raises this cart's ceiling to the highest in its train, so no member can outrun another until
-    // the coupling stretches far enough to break.
-    @Inject(method = "getMaxSpeed", at = @At("RETURN"), cancellable = true)
-    private void minecarttweaks$trainSpeed(
-            ServerLevel level, CallbackInfoReturnable<Double> cir) {
-        if (minecarttweaks$ownSpeedOnly || !hasLink() || !MTGameRules.trainsEnabled(level)) {
-            return;
-        }
-
-        AbstractMinecart self = minecarttweaks$self();
-        double fastest = cir.getReturnValue();
-        minecarttweaks$ownSpeedOnly = true;
-
-        try {
-            for (AbstractMinecart member : Train.of(self).cars()) {
-                if (member != self) {
-                    fastest = Math.max(fastest, member.minecarttweaks$maxSpeedAlone(level));
-                }
-            }
-        } finally {
-            minecarttweaks$ownSpeedOnly = false;
-        }
-
-        cir.setReturnValue(fastest);
-    }
-
     // A seated cart is placed along its train's track, so vanilla moving it as well would leave it
     // wherever the two happened to be applied in — and which came last is entity tick order, which
     // nothing here chooses. Only the movement is refused; everything the stepper does besides move
@@ -349,34 +309,15 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         }
     }
 
-    // A towed cart is under power as much as the cart towing it, so it takes the train's
-    // acceleration and drops the same rolling friction.
+    // The leading car takes its train's drive when it is not itself an engine — which is most
+    // trains, since the engine is as often behind. Every other car is placed, so this is the only
+    // car that can carry it. A container cart asks for the same thing from its own override.
     @Inject(method = "applyNaturalSlowdown", at = @At("HEAD"), cancellable = true)
-    private void minecarttweaks$towedDrive(Vec3 movement, CallbackInfoReturnable<Vec3> cir) {
-        AbstractMinecart self = minecarttweaks$self();
+    private void minecarttweaks$haulTrain(Vec3 movement, CallbackInfoReturnable<Vec3> cir) {
+        Vec3 hauled = TrainCoupling.hauled(minecarttweaks$self(), movement);
 
-        if (!hasLink()
-                || !MTGameRules.trainsEnabled(level())
-                || minecarttweaks$driveAcceleration() > 0
-                || RailBrake.brakes(self)) {
-            return;
-        }
-
-        double drive = TrainCoupling.sharedDrive(self);
-
-        if (drive <= 0) {
-            return;
-        }
-
-        // A standing train has no movement to read a heading off, so it leaves on the aim of its
-        // powered carts. Without that only those carts move and the train never gets going.
-        Vec3 heading = movement.horizontal();
-        if (heading.lengthSqr() <= ANY_MOVEMENT) {
-            heading = TrainCoupling.driveHeading(self);
-        }
-
-        if (heading.lengthSqr() > ANY_MOVEMENT) {
-            cir.setReturnValue(movement.add(heading.normalize().scale(drive)));
+        if (hauled != null) {
+            cir.setReturnValue(hauled);
         }
     }
 

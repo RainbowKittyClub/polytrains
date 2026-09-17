@@ -2,7 +2,6 @@ package club.rainbowkitty.minecarttweaks.ext;
 
 import org.jspecify.annotations.Nullable;
 
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.phys.Vec3;
 
@@ -13,13 +12,6 @@ import club.rainbowkitty.minecarttweaks.train.Train;
  * Access interface injected onto {@link AbstractMinecart} to expose link state.
  */
 public interface AbstractMinecartExt extends Linkable {
-
-    /**
-     * This cart's own top speed, ignoring any train it is part of. A train's ceiling is the highest
-     * of its members', and asking a member for {@code getMaxSpeed} re-enters the walk that raises
-     * it, so members are asked through here instead.
-     */
-    public double minecarttweaks$maxSpeedAlone(ServerLevel level);
 
     /**
      * How hard this cart drives itself along the track in blocks per tick squared, or zero if it is
