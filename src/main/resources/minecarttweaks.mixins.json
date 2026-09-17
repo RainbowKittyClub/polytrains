@@ -4,6 +4,7 @@
   "package": "club.rainbowkitty.minecarttweaks.mixin",
   "compatibilityLevel": "JAVA_25",
   "mixins": [
+    "AbstractMinecartContainerMixin",
     "AbstractMinecartMixin",
     "DamageSourceMixin",
     "EntityMixin",
