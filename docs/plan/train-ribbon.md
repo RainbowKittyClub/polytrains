@@ -514,6 +514,28 @@ a furnace cart so it is not the slowest car in its own train, and takes the ceil
 default rather than 1.0; a world that wants the old speed raises `max_minecart_speed` to 20, which
 now also raises the carts it tows instead of leaving them behind.
 
+**What rolling friction should be.** Reworked in S7, because the model it had could not be tuned
+out of a fault it created. Vanilla's friction is purely proportional — a fixed fraction of the speed
+each tick — so it never reaches zero, and this mod raised that fraction as the speed fell to finish
+the job. Two proportional terms, and the product of them has *two* equilibria on a slope: with
+`rail_drag_speed` at its default the stable one sits at 0.052 blocks per tick and the escape velocity
+above it at 0.090, so a cart starting from rest on any grade is caught at a little over one metre per
+second and can never climb out to vanilla's own 6.25. The speeds were right and the shape was wrong.
+
+Rolling resistance is a roughly constant force, not a proportional one, and a constant loss of speed
+per tick brings a cart to a dead stop in finite time by itself — which is the whole of what the ramp
+and the crawl floor were both reaching for, and it cannot create a second equilibrium because the
+dynamics stay linear in the speed. So the ramp, the floor and the length scaling under it are gone
+and one flat term replaces them. The length scaling is not merely unnecessary but wrong: resistance
+is per car and so is mass, so a long train coasts like a short one, exactly as a long train rolls
+downhill no faster than a single cart.
+
+The rule keeps its name, default and meaning. It reads as the speed at which this flat loss matches
+vanilla's proportional drag on an empty cart, so below that speed the flat term is the larger of the
+two — which is what "the speed below which rolling friction is laid on harder" always said. It is
+capped at half the pull gravity gives on a slope, because the rule's range reaches values that would
+otherwise exceed gravity and stop a cart rolling downhill at all.
+
 **What the car pitch should be.** Settled at 1.5, by watching a train on the test track after S5.
 The 2.0 it had was tuned as a correction target — the value a spacing error was measured against —
 and under placement it is simply how far apart cars sit, where it read as too loose. `MAX_LINK_DISTANCE`
