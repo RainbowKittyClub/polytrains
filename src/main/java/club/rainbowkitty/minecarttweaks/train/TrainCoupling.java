@@ -12,6 +12,8 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
@@ -38,6 +40,12 @@ public final class TrainCoupling {
     private static final double MAX_LINK_DISTANCE = 2.25;
 
     private static final double TARGET_SPACING = 1.5;
+
+    // How far from a block to look for a car of a train that might be lying across it. A train at
+    // the speeds this allows moves several blocks between ticks, so the car nearest a block can be
+    // well past it by the time anything asks; the ribbon then says exactly which blocks the train
+    // covers, so this only has to be wide enough to find one of its cars.
+    private static final double CROSSING_REACH = 8.0;
 
     // Consecutive ticks the ribbon must fail to place the same car before its link is cut. A car
     // crossing a junction, catching air, or waiting on a ribbon that has not grown to reach it is
@@ -277,6 +285,33 @@ public final class TrainCoupling {
     }
 
     /**
+     * Whether any train is lying across the rail at {@code pos} — not merely whether a cart is
+     * inside that block this instant.
+     *
+     * <p>A switch asks this before laying its resting curve back on. At speed a cart is inside a
+     * given block for a fraction of a tick and the gap between two cars passes over one entirely,
+     * so a check for a cart standing there reads a long train as a run of brief absences and
+     * changes the rails halfway along it. Only the leading car reads rails now, so nothing else
+     * re-arms the wait either. The ribbon records the track the train is on, which answers for its
+     * whole length at once.
+     */
+    public static boolean crossedByTrain(Level level, BlockPos pos) {
+        if (!MTGameRules.trainsEnabled(level)) {
+            return false;
+        }
+
+        for (AbstractMinecart cart : level.getEntitiesOfClass(
+                AbstractMinecart.class, new AABB(pos).inflate(CROSSING_REACH),
+                AbstractMinecart::hasLink)) {
+            if (spans(Train.of(cart), pos)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The mass of {@code cart}'s train, counted in cars. A cart on its own is a train of one, and a
      * loaded car weighs what an empty one does — every threshold measured against this is expressed
      * in these units, so the unit cannot change without retuning all of them together.
@@ -406,6 +441,26 @@ public final class TrainCoupling {
 
         Linkable.unlink(from, to);
         MinecartHelper.dropChain(level, from, to);
+    }
+
+    // Whether the run of ribbon between a train's two end cars takes in the block at pos. Read off
+    // where its cars are rather than off its length, so a train that is not where the ribbon thinks
+    // it is answers no instead of claiming track it has left.
+    private static boolean spans(Train train, BlockPos pos) {
+        TrackRibbon ribbon = train.ribbon();
+        double low = Double.POSITIVE_INFINITY;
+        double high = Double.NEGATIVE_INFINITY;
+
+        for (AbstractMinecart car : train.cars()) {
+            Double arc = ribbon.arcOf(car);
+
+            if (arc != null) {
+                low = Math.min(low, arc);
+                high = Math.max(high, arc);
+            }
+        }
+
+        return low <= high && ribbon.covers(low, high, pos);
     }
 
     // Makes sure the ribbon reaches the whole train before anything is measured against it. A

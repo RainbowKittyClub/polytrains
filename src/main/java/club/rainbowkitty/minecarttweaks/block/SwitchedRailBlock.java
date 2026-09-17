@@ -36,6 +36,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
+import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /**
  * A rail that curves a car off its right-hand edge — backward toward where the placer stood by
@@ -315,9 +316,12 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         }
     }
 
-    // Whether a cart still sits on the switch, in which case a change of curve has to wait for it.
+    // Whether a cart still sits on the switch, or a whole train is lying across it, in which case
+    // a change of curve has to wait. The train question is asked separately because a cart is only
+    // inside this block for part of a tick at speed and the gap between two cars clears it
+    // altogether — so a train reads as a run of brief absences and the curve goes over mid-train.
     private static boolean occupied(Level level, BlockPos pos) {
-        return occupiedByOther(level, pos, null);
+        return occupiedByOther(level, pos, null) || TrainCoupling.crossedByTrain(level, pos);
     }
 
     // As occupied, discounting one cart: a car steering a switch is already standing on it by the
