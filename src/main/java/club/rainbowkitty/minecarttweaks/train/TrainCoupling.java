@@ -74,8 +74,8 @@ public final class TrainCoupling {
             return null;
         }
 
-        // Links are undirected, so which car chases which is derived per tick rather than stored.
-        TrainSnapshot train = TrainSnapshot.of(cart);
+        // Links are undirected, so which car chases which is derived from them rather than stored.
+        Train train = Train.of(cart);
 
         // One car settles the whole train once a tick, rather than each link fighting the one next
         // to it. Which one is settled between the cars themselves so no cart has to be told.
@@ -91,12 +91,12 @@ public final class TrainCoupling {
      * off, so nothing built on this applies to a world running without them.
      */
     public static boolean sameTrain(AbstractMinecart cart, Entity other) {
-        // Every car of a train is handed the same snapshot instance, so membership is an identity
+        // Every car of a train is handed the same train instance, so membership is an identity
         // test rather than a scan — this is asked per collision candidate per movement step.
         return other instanceof AbstractMinecart car
                 && cart.hasLink()
                 && MTGameRules.trainsEnabled(cart.level())
-                && TrainSnapshot.of(cart) == TrainSnapshot.of(car);
+                && Train.of(cart) == Train.of(car);
     }
 
     /**
@@ -104,7 +104,7 @@ public final class TrainCoupling {
      * that a client replaying them out of step with each other is made to re-time itself.
      */
     public static void resyncTrain(AbstractMinecart cart) {
-        for (AbstractMinecart member : TrainSnapshot.of(cart).cars()) {
+        for (AbstractMinecart member : Train.of(cart).cars()) {
             member.minecarttweaks$setResyncAt(member.level().getGameTime() + RESYNC_HOLD);
         }
     }
@@ -116,7 +116,7 @@ public final class TrainCoupling {
      * falls off. A cart on its own is a train of one and is unaffected.
      */
     public static double sharedDrive(AbstractMinecart cart) {
-        List<AbstractMinecart> cars = TrainSnapshot.of(cart).cars();
+        List<AbstractMinecart> cars = Train.of(cart).cars();
         double drive = 0.0;
         int engines = 0;
 
@@ -156,8 +156,8 @@ public final class TrainCoupling {
             return false;
         }
 
-        // The cart is in its own snapshot, so this covers its own rider too.
-        for (AbstractMinecart member : TrainSnapshot.of(cart).cars()) {
+        // The cart is in its own train, so this covers its own rider too.
+        for (AbstractMinecart member : Train.of(cart).cars()) {
             if (steering(member)) {
                 return true;
             }
@@ -174,7 +174,7 @@ public final class TrainCoupling {
     public static Vec3 driveHeading(AbstractMinecart cart) {
         Vec3 heading = Vec3.ZERO;
 
-        for (AbstractMinecart member : TrainSnapshot.of(cart).cars()) {
+        for (AbstractMinecart member : Train.of(cart).cars()) {
             heading = heading.add(member.minecarttweaks$driveHeading());
         }
 
@@ -202,7 +202,7 @@ public final class TrainCoupling {
      * the instant it is pushed reports the same speed whatever it is coupled to.
      */
     public static double sharedSpeed(AbstractMinecart cart, Vec3 line) {
-        List<AbstractMinecart> cars = TrainSnapshot.of(cart).cars();
+        List<AbstractMinecart> cars = Train.of(cart).cars();
         double total = 0.0;
 
         for (AbstractMinecart member : cars) {
@@ -220,7 +220,7 @@ public final class TrainCoupling {
     public static double mass(AbstractMinecart cart) {
         // Short-circuited rather than walked: this is asked of every cart every tick, and most
         // carts on a server are not linked to anything.
-        return cart.hasLink() ? TrainSnapshot.of(cart).size() : 1;
+        return cart.hasLink() ? Train.of(cart).size() : 1;
     }
 
     /**
@@ -255,7 +255,7 @@ public final class TrainCoupling {
      * off the track keeps its link and its own physics until it lands or is dragged past the
      * breaking distance, with the runs either side of it settled meanwhile.
      */
-    private static void holdTrain(ServerLevel level, TrainSnapshot train) {
+    private static void holdTrain(ServerLevel level, Train train) {
         List<AbstractMinecart> members = train.cars();
         List<AbstractMinecart> cars = new ArrayList<>();
         List<RailPath> links = new ArrayList<>();

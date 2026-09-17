@@ -1,0 +1,351 @@
+package club.rainbowkitty.minecarttweaks.train;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import org.jspecify.annotations.Nullable;
+
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.phys.Vec3;
+
+import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
+
+/**
+ * One train's cars in order, head first, held across ticks. Every coupling question is the same
+ * walk over the same links, and one walk per car per question is quadratic in the length of the
+ * train — so the walk is done once and its result handed to every car of the train.
+ *
+ * <p>A train is derived state and is never saved: the links are the durable half
+ * ({@code MTAttachments.LINK}), and a train is rebuilt from them on the first tick after a load.
+ *
+ * <p>Which way round a train lies on its track, and the ribbon of track it records as it runs,
+ * land in a later stage; {@link #leader()} is the part of that already here, and the comments
+ * below name the ribbon where it is what the reading is ultimately for.
+ */
+public final class Train {
+
+    // A train cannot outgrow max_train_length, but a link graph corrupted by a half-written save
+    // could; the walks are bounded so a bad one cannot hang the server tick.
+    private static final int MAX_WALK = 1024;
+
+    // Below this a train is treated as stopped, and a stopped train keeps whichever end was
+    // leading when it stopped rather than losing track it is still sitting on.
+    private static final double EPSILON = 1.0E-5;
+
+    // How squarely the head must be heading along the chord to the car behind it before that chord
+    // is allowed to name the leading end — a cosine, so about 70 degrees. Through a bend the chord
+    // between two cars sits well off the heading of either, and a flip there throws away the whole
+    // ribbon, so a weak reading holds rather than guesses.
+    private static final double LEADER_HOLD = 0.35;
+
+    private final List<AbstractMinecart> cars;
+    private final boolean closed;
+
+    // Set when the link graph under this train changes. It lives on the one object every car of
+    // the train points at, so marking it marks it for all of them at once — which is what lets
+    // membership below stay an identity test rather than a scan.
+    private boolean stale;
+
+    // The last tick this train checked its cars are still in the world. Once a tick rather than
+    // once a call: membership is asked per collision candidate per movement step.
+    private long checkedTick;
+
+    // Decided once a tick and held. Which end leads steers what the ribbon records, so two callers
+    // in one tick disagreeing would record from both ends of the train at once.
+    private @Nullable AbstractMinecart leader;
+    private long leaderTick = Long.MIN_VALUE;
+
+    // How the last seating attempt went, so only a change of answer is worth reporting.
+    private boolean seated;
+
+    // Consecutive ticks each link has been stretched past saving, indexed by the car behind it.
+    // Allocated with the train and dropped with it, so a train rebuilt around a link change starts
+    // its links forgiven rather than inheriting a count taken against a different shape.
+    private int @Nullable [] stretch;
+
+    // Starts checked on the tick it was built, so its first use does not re-sweep its own cars.
+    private Train(List<AbstractMinecart> cars, boolean closed, long tick) {
+        this.cars = cars;
+        this.closed = closed;
+        this.checkedTick = tick;
+    }
+
+    /**
+     * Marks the train {@code car} belongs to as needing a fresh walk. Call after any change to the
+     * link graph, on both ends of the link — the two may be in different trains, and after a split
+     * the halves must not go on sharing one.
+     */
+    public static void invalidate(AbstractMinecart car) {
+        if (!(car instanceof AbstractMinecartExt ext)) {
+            return;
+        }
+
+        Train held = ext.minecarttweaks$train();
+
+        if (held != null) {
+            held.stale = true;
+        }
+    }
+
+    /**
+     * The train {@code car} belongs to, reusing the one it is already holding unless the link graph
+     * has moved under it. A car with no links is a train of one.
+     */
+    public static Train of(AbstractMinecart car) {
+        long tick = car.level().getGameTime();
+
+        if (car instanceof AbstractMinecartExt ext) {
+            Train held = ext.minecarttweaks$train();
+
+            if (held != null && held.usable(tick)) {
+                return held;
+            }
+        }
+
+        Train built = build(car, tick);
+
+        for (AbstractMinecart member : built.cars) {
+            if (member instanceof AbstractMinecartExt ext) {
+                ext.minecarttweaks$setTrain(built);
+            }
+        }
+
+        return built;
+    }
+
+    /**
+     * The end car this train is travelling towards, or null if it closes on itself or has never
+     * moved. Not the same thing as its head: head is a fixed identity that survives a reversal, and
+     * a train reverses routinely — a bumper stop, a reversed furnace cart, a shove from behind.
+     *
+     * <p>Sticky in both directions. The answer is held for the tick, and an ambiguous reading keeps
+     * the end that was already leading instead of dropping to null or flipping, because every
+     * consumer of this pays for a change of mind and none of them pays for a stale answer.
+     */
+    public @Nullable AbstractMinecart leader() {
+        if (closed) {
+            return null;
+        }
+
+        long tick = cars.getFirst().level().getGameTime();
+
+        if (tick != leaderTick) {
+            leaderTick = tick;
+            leader = decideLeader();
+        }
+
+        return leader;
+    }
+
+    /**
+     * Records whether the link ahead of car {@code index} is stretched past saving this tick, and
+     * answers whether it has been for {@code ticks} in a row.
+     *
+     * <p>A sever is irreversible and the distance behind it is not: a car crossing a junction or
+     * catching air loses its rail path for a tick or two, and the settling that would have closed
+     * the gap is the very thing suspended while that is true. Deciding on one tick's reading breaks
+     * trains that were never in trouble, so the reading has to hold before it costs anything.
+     */
+    public boolean overstretched(int index, boolean over, int ticks) {
+        if (stretch == null || stretch.length != cars.size()) {
+            stretch = new int[cars.size()];
+        }
+
+        stretch[index] = over ? stretch[index] + 1 : 0;
+
+        return stretch[index] >= ticks;
+    }
+
+    /**
+     * Records how a seating attempt went and answers whether that differs from the attempt before.
+     * A train that starts or stops being placed on its track says so once either way, which is the
+     * only rate an intermittent fault can be read at: every tick buries it and once a second misses
+     * it outright.
+     */
+    public boolean seatedChanged(boolean now) {
+        boolean changed = seated != now;
+
+        seated = now;
+
+        return changed;
+    }
+
+    /** The cars of this train, head first, or in no particular order when it closes on itself. */
+    public List<AbstractMinecart> cars() {
+        return cars;
+    }
+
+    /** How many cars this train has. */
+    public int size() {
+        return cars.size();
+    }
+
+    /** Whether {@code car} is one of this train's. */
+    public boolean contains(AbstractMinecart car) {
+        return cars.contains(car);
+    }
+
+    /**
+     * The one car that settles this train: its head, or the lowest-UUID car of a train that closes
+     * on itself and so has no head. Exactly one car of any train answers itself here.
+     */
+    public @Nullable AbstractMinecart settler() {
+        return closed ? lowest(cars) : cars.getFirst();
+    }
+
+    /**
+     * The car {@code car} follows, or null if it heads the train, is unlinked, or the train closes
+     * on itself and so has no head to follow towards.
+     */
+    public @Nullable AbstractMinecart follows(AbstractMinecart car) {
+        if (closed) {
+            return null;
+        }
+
+        int index = cars.indexOf(car);
+
+        return index > 0 ? cars.get(index - 1) : null;
+    }
+
+    // Which end the train is running towards, judged by how far the head's heading agrees with the
+    // chord out of the car behind it. A single car has no chord and is simply its own leading end.
+    private @Nullable AbstractMinecart decideLeader() {
+        AbstractMinecart head = cars.getFirst();
+        Vec3 heading = head.getDeltaMovement().horizontal();
+        double speed = heading.length();
+
+        if (speed < EPSILON) {
+            return cars.size() == 1 ? null : heldLeader();
+        }
+
+        if (cars.size() == 1) {
+            return head;
+        }
+
+        Vec3 outward = head.position().subtract(cars.get(1).position()).horizontal();
+
+        if (outward.lengthSqr() < EPSILON) {
+            return heldLeader();
+        }
+
+        double along = heading.dot(outward.normalize()) / speed;
+
+        if (Math.abs(along) < LEADER_HOLD) {
+            return heldLeader();
+        }
+
+        return along > 0.0 ? head : cars.getLast();
+    }
+
+    // The end that was leading, so long as it is still one of ours — a train rebuilt around a split
+    // can be holding a car that has since gone its own way.
+    private @Nullable AbstractMinecart heldLeader() {
+        return leader != null && cars.contains(leader) ? leader : null;
+    }
+
+    // Whether this train can still be handed out. A link change marks it stale outright; a car
+    // leaving the world is caught by the sweep below, which every removal should have made
+    // unnecessary but which costs one pass a tick and covers whatever a removal hook misses.
+    private boolean usable(long tick) {
+        if (stale) {
+            return false;
+        }
+
+        if (tick == checkedTick) {
+            return true;
+        }
+
+        checkedTick = tick;
+
+        for (AbstractMinecart car : cars) {
+            if (car.isRemoved()) {
+                stale = true;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Walks the whole train from car and orders it head first. The head is whichever of the two
+    // ends has the lower UUID, which is the one thing about a train that both of its ends agree on
+    // without either having to be told. Only the ends are compared: a car in the middle cannot head
+    // a train however low its own UUID.
+    private static Train build(AbstractMinecart car, long tick) {
+        List<AbstractMinecart> order = new ArrayList<>();
+        AbstractMinecart end = walk(car, null);
+
+        if (end == null) {
+            walk(car, order);
+            return new Train(order, true, tick);
+        }
+
+        walk(end, order);
+
+        if (order.size() > 1 && sortsFirst(order.getLast(), order.getFirst())) {
+            Collections.reverse(order);
+        }
+
+        return new Train(order, false, tick);
+    }
+
+    // Follows the links away from start, collecting into sink when one is given. Returns the car
+    // the track runs out at, or null if it comes back round on itself.
+    private static @Nullable AbstractMinecart walk(
+            AbstractMinecart start, @Nullable List<AbstractMinecart> sink) {
+        AbstractMinecart previous = null;
+        AbstractMinecart current = start;
+
+        for (int steps = 0; steps <= MAX_WALK; steps++) {
+            if (sink != null) {
+                sink.add(current);
+            }
+
+            AbstractMinecart onward = onward(current, previous);
+
+            if (onward == null) {
+                return current;
+            }
+
+            if (onward == start) {
+                return null;
+            }
+
+            previous = current;
+            current = onward;
+        }
+
+        return null;
+    }
+
+    // The neighbour of car that is not the one it was reached from.
+    private static @Nullable AbstractMinecart onward(
+            AbstractMinecart car, @Nullable AbstractMinecart previous) {
+        for (AbstractMinecart neighbour : car.getNeighbours()) {
+            if (neighbour != previous) {
+                return neighbour;
+            }
+        }
+
+        return null;
+    }
+
+    // The car of the lowest UUID, which is the tie-break every car of a train reaches the same way.
+    private static @Nullable AbstractMinecart lowest(List<AbstractMinecart> cars) {
+        AbstractMinecart best = null;
+
+        for (AbstractMinecart car : cars) {
+            if (best == null || sortsFirst(car, best)) {
+                best = car;
+            }
+        }
+
+        return best;
+    }
+
+    // Whether a's UUID sorts before b's.
+    private static boolean sortsFirst(AbstractMinecart a, AbstractMinecart b) {
+        return a.getUUID().compareTo(b.getUUID()) < 0;
+    }
+}

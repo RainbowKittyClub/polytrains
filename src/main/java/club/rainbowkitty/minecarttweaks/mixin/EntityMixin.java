@@ -12,8 +12,8 @@ import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 
 import club.rainbowkitty.minecarttweaks.collision.CartInteraction;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
+import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
-import club.rainbowkitty.minecarttweaks.train.TrainSnapshot;
 import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 
 /** Severs a destroyed cart's links, and thins out shoves aimed at a train. */
@@ -30,11 +30,11 @@ public abstract class EntityMixin {
             return;
         }
 
-        // Unloading does not sever, so a snapshot taken this tick can still be holding a cart that
-        // is on its way out of the world. Only a linked cart appears in anyone else's snapshot, and
-        // the counter is world-wide — an unlinked one leaving would restage every train's walk.
+        // Unloading does not sever, so a train held across ticks outlives a cart on its way out of
+        // the world. Only a linked cart appears in anyone else's train, so an unlinked one has
+        // nothing to tell.
         if (cart.hasLink()) {
-            TrainSnapshot.invalidate();
+            Train.invalidate(cart);
         }
 
         if (reason.shouldDestroy() && cart.level() instanceof ServerLevel serverLevel) {

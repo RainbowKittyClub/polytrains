@@ -7,7 +7,7 @@ import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.rail.RailContext;
-import club.rainbowkitty.minecarttweaks.train.TrainSnapshot;
+import club.rainbowkitty.minecarttweaks.train.Train;
 
 /**
  * Access interface injected onto {@link AbstractMinecart} to expose link state.
@@ -47,11 +47,11 @@ public interface AbstractMinecartExt extends Linkable {
      */
     public RailContext minecarttweaks$railContext();
 
-    /** The last snapshot taken of this cart's train, whether or not it is still good to use. */
-    public @Nullable TrainSnapshot minecarttweaks$train();
+    /** The train this cart was last placed in, whether or not it is still good to use. */
+    public @Nullable Train minecarttweaks$train();
 
-    /** Hands this cart the snapshot it appears in, sparing its siblings taking their own. */
-    public void minecarttweaks$setTrain(TrainSnapshot train);
+    /** Hands this cart the train it belongs to, sparing its siblings walking their own. */
+    public void minecarttweaks$setTrain(Train train);
 
     /** The game time this cart's tracker withholds position updates until, or zero for none. */
     public long minecarttweaks$resyncAt();

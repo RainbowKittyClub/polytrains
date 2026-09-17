@@ -12,8 +12,8 @@ import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.init.MTDamageTypes;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
+import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
-import club.rainbowkitty.minecarttweaks.train.TrainSnapshot;
 
 /**
  * What a moving cart does to whatever it runs into. Which of them it may do anything to at all is
@@ -182,7 +182,7 @@ public final class CartImpact {
     // loss spread over the whole train, so the speed a given impact costs falls off as one over the
     // number of cars. Drag arrives as the fraction a lone cart would lose.
     private static void slowTrain(AbstractMinecart cart, double drag) {
-        List<AbstractMinecart> cars = TrainSnapshot.of(cart).cars();
+        List<AbstractMinecart> cars = Train.of(cart).cars();
         double loss = Math.min(MAX_IMPACT_DRAG, drag / cars.size());
 
         for (AbstractMinecart car : cars) {

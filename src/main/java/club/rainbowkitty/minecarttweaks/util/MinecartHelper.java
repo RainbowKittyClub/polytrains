@@ -31,8 +31,8 @@ import club.rainbowkitty.minecarttweaks.init.MTTags;
 import club.rainbowkitty.minecarttweaks.init.SelectedCart;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
+import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
-import club.rainbowkitty.minecarttweaks.train.TrainSnapshot;
 
 /** Utility methods for minecart linking, upgrading, and brake logic. */
 public final class MinecartHelper {
@@ -206,7 +206,7 @@ public final class MinecartHelper {
             return Refusal.ALREADY_LINKED;
         }
 
-        TrainSnapshot firstTrain = TrainSnapshot.of(first);
+        Train firstTrain = Train.of(first);
 
         if (firstTrain.contains(target)) {
             return Refusal.SAME_TRAIN;
@@ -215,7 +215,7 @@ public final class MinecartHelper {
         // The length the two would make together, not either one's own, so two trains each within
         // the limit cannot be joined into one that is over it. The sizes add only because
         // same_train has already ruled out the two overlapping.
-        if (firstTrain.size() + TrainSnapshot.of(target).size()
+        if (firstTrain.size() + Train.of(target).size()
                 > serverLevel.getGameRules().get(MTGameRules.MAX_TRAIN_LENGTH)) {
             return Refusal.TOO_LONG;
         }

@@ -34,8 +34,8 @@ import club.rainbowkitty.minecarttweaks.rail.RailContext;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rail.RailPath.Bend;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
+import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
-import club.rainbowkitty.minecarttweaks.train.TrainSnapshot;
 import club.rainbowkitty.minecarttweaks.visual.LinkChain;
 
 /**
@@ -91,9 +91,9 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     @Unique
     private long minecarttweaks$resyncUntil;
 
-    // The last snapshot this cart appeared in, which knows for itself whether it is still good.
+    // The train this cart was last placed in, which knows for itself whether it is still good.
     @Unique
-    private @Nullable TrainSnapshot minecarttweaks$train;
+    private @Nullable Train minecarttweaks$train;
 
     // This cart's stretch of track, and the tick it was read on. The tick only matters once the
     // context is non-null, so its own zero never reads as fresh.
@@ -153,7 +153,10 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         if (neighbour != self) {
             MTAttachments.setLink(self,
                     MTAttachments.getLink(self).withNeighbour(neighbour.getUUID()));
-            TrainSnapshot.invalidate();
+            // Both ends: a train is marked on the one object its own cars share, so the two
+            // trains being joined are separate objects and neither end's mark reaches the other.
+            Train.invalidate(self);
+            Train.invalidate(neighbour);
         }
     }
 
@@ -162,7 +165,10 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         AbstractMinecart self = minecarttweaks$self();
         MTAttachments.setLink(self,
                 MTAttachments.getLink(self).withoutNeighbour(neighbour.getUUID()));
-        TrainSnapshot.invalidate();
+        // Both ends, as in addNeighbour: the graph change marks itself rather than relying on
+        // Linkable.unlink coming back round to mark the other side.
+        Train.invalidate(self);
+        Train.invalidate(neighbour);
     }
 
     @Override
@@ -202,12 +208,12 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     }
 
     @Override
-    public @Nullable TrainSnapshot minecarttweaks$train() {
+    public @Nullable Train minecarttweaks$train() {
         return minecarttweaks$train;
     }
 
     @Override
-    public void minecarttweaks$setTrain(TrainSnapshot train) {
+    public void minecarttweaks$setTrain(Train train) {
         minecarttweaks$train = train;
     }
 
@@ -237,7 +243,7 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         minecarttweaks$ownSpeedOnly = true;
 
         try {
-            for (AbstractMinecart member : TrainSnapshot.of(self).cars()) {
+            for (AbstractMinecart member : Train.of(self).cars()) {
                 if (member != self) {
                     fastest = Math.max(fastest, member.minecarttweaks$maxSpeedAlone(level));
                 }
