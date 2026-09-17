@@ -9,6 +9,8 @@ import org.slf4j.Logger;
 
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.level.block.PoweredRailBlock;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
@@ -73,10 +75,30 @@ public final class TrainMeter {
 
         // Not round(0.0): a train with every car off the rails measures no pair at all, and a
         // spacing of 0.00 printed for that reads as a train holding its pitch perfectly.
-        LOGGER.debug("train cars={} spacing measured={}/{} worst={} mean={} | {}",
+        LOGGER.debug(
+                "train cars={} spacing measured={}/{} worst={} mean={} | speed={} rail={} | {}",
                 cars.size(), gaps, cars.size() - 1,
                 gaps == 0 ? "n/a" : round(worstGap),
-                gaps == 0 ? "n/a" : round(totalGap / gaps), ribbonReport(train, pitch));
+                gaps == 0 ? "n/a" : round(totalGap / gaps),
+                round(TrainCoupling.drivenSpeed(cars.getFirst())), underLeader(level, train),
+                ribbonReport(train, pitch));
+    }
+
+    // What the leading car is standing on, so an acceleration reading says what was accelerating
+    // it. A train reads as slow for two very different reasons — too little push, or too much drag
+    // — and which rail it is over is most of the difference between them.
+    private static String underLeader(ServerLevel level, Train train) {
+        AbstractMinecart leader = train.leader();
+
+        if (leader == null) {
+            return "none";
+        }
+
+        BlockState state = level.getBlockState(leader.getCurrentBlockPosOrRailBelow());
+        String name = state.getBlock().getName().getString();
+
+        return state.hasProperty(PoweredRailBlock.POWERED)
+                ? name + (state.getValue(PoweredRailBlock.POWERED) ? "(on)" : "(off)") : name;
     }
 
     // How far each car is from where the ribbon puts it, driving the offsets off the leading car.
