@@ -11,6 +11,7 @@ import net.minecraft.world.level.gamerules.GameRule;
 import club.rainbowkitty.minecarttweaks.rail.RailContext;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
+import club.rainbowkitty.minecarttweaks.train.TrainPlacer;
 
 /**
  * The single answer to what a cart does to something it meets. The movement code
@@ -158,7 +159,12 @@ public enum CartInteraction {
     private static boolean coupled(AbstractMinecart cart, AbstractMinecart other) {
         return cart.minecarttweaks$railContext().onRails()
                 && other.minecarttweaks$railContext().onRails()
-                && TrainCoupling.sameTrain(cart, other);
+                && TrainCoupling.sameTrain(cart, other)
+                // Only while the placer is answering for them. Cars it lays at fixed offsets must
+                // not block each other or the car leading them, but a train it cannot place is a
+                // row of ordinary carts — and carts that pass through each other with nothing
+                // holding them apart pile into their own head the moment the train stops.
+                && (TrainPlacer.seated(cart) || TrainPlacer.seated(other));
     }
 
     // Two trains meeting hard enough to write each other off. Read off the closing momentum rather
