@@ -37,7 +37,7 @@ public final class TrainCoupling {
     // One geometry: none of the three can be retuned without the others.
     private static final double MAX_LINK_DISTANCE = 2.25;
 
-    private static final double TARGET_SPACING = 2.0;
+    private static final double TARGET_SPACING = 1.5;
 
     private static final double SEVER_SLACK = 1.25;
 

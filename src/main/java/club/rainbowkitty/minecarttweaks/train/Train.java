@@ -48,7 +48,7 @@ public final class Train {
     // once a call: membership is asked per collision candidate per movement step.
     private long checkedTick;
 
-    private final TrackRibbon ribbon = new TrackRibbon();
+    private final TrackRibbon ribbon;
 
     // Decided once a tick and held. Which end leads steers what the ribbon records, so two callers
     // in one tick disagreeing would record from both ends of the train at once.
@@ -74,10 +74,12 @@ public final class Train {
     private int @Nullable [] stretch;
 
     // Starts checked on the tick it was built, so its first use does not re-sweep its own cars.
-    private Train(List<AbstractMinecart> cars, boolean closed, long tick) {
+    private Train(List<AbstractMinecart> cars, boolean closed, long tick,
+            @Nullable TrackRibbon inherited) {
         this.cars = cars;
         this.closed = closed;
         this.checkedTick = tick;
+        this.ribbon = inherited == null ? new TrackRibbon() : inherited;
     }
 
     /**
@@ -103,16 +105,19 @@ public final class Train {
      */
     public static Train of(AbstractMinecart car) {
         long tick = car.level().getGameTime();
+        Train held = car instanceof AbstractMinecartExt ext
+                ? ext.minecarttweaks$train() : null;
 
-        if (car instanceof AbstractMinecartExt ext) {
-            Train held = ext.minecarttweaks$train();
-
-            if (held != null && held.usable(tick)) {
-                return held;
-            }
+        if (held != null && held.usable(tick)) {
+            return held;
         }
 
-        Train built = build(car, tick);
+        // The ribbon is track, not membership. A train that sheds a car in a sever is still on the
+        // rails it recorded, and starting that half over with nothing costs it the one thing that
+        // could have held it together — so the next tick cannot seat it, the correction takes it
+        // instead, and the sever that just happened happens again. Track that no longer describes
+        // where the train is fails the same way an empty one does, through arcOfLeader.
+        Train built = build(car, tick, held == null ? null : held.ribbon);
 
         for (AbstractMinecart member : built.cars) {
             if (member instanceof AbstractMinecartExt ext) {
@@ -125,8 +130,8 @@ public final class Train {
 
     /**
      * The track this train is running on, recorded by its leading car and empty until that car has
-     * crossed a rail block. One ribbon per train, so a train rebuilt from its links starts a fresh
-     * one rather than inheriting track it may no longer be on.
+     * crossed a rail block. Carried across a rebuild, since the rails do not move when the link
+     * graph does; a ribbon that no longer describes where the train is reads as one it has left.
      */
     public TrackRibbon ribbon() {
         return ribbon;
@@ -307,13 +312,14 @@ public final class Train {
     // ends has the lower UUID, which is the one thing about a train that both of its ends agree on
     // without either having to be told. Only the ends are compared: a car in the middle cannot head
     // a train however low its own UUID.
-    private static Train build(AbstractMinecart car, long tick) {
+    private static Train build(AbstractMinecart car, long tick,
+            @Nullable TrackRibbon inherited) {
         List<AbstractMinecart> order = new ArrayList<>();
         AbstractMinecart end = walk(car, null);
 
         if (end == null) {
             walk(car, order);
-            return new Train(order, true, tick);
+            return new Train(order, true, tick, inherited);
         }
 
         walk(end, order);
@@ -322,7 +328,7 @@ public final class Train {
             Collections.reverse(order);
         }
 
-        return new Train(order, false, tick);
+        return new Train(order, false, tick, inherited);
     }
 
     // Follows the links away from start, collecting into sink when one is given. Returns the car

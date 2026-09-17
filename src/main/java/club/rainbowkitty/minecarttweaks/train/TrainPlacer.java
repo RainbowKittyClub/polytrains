@@ -80,6 +80,15 @@ public final class TrainPlacer {
     public static boolean seat(Train train, double pitch) {
         Attempt attempt = attempt(train, pitch);
 
+        // A train handed back to the correction is driven along its rails again from this tick, so
+        // it must stop reading as placed the moment that happens. The one-tick grace in seated() is
+        // there for cars that tick before their leader, and without this it also covers the tick a
+        // train falls back on — leaving those cars steering no junction while vanilla moves them
+        // over one, which is the shape of a train that stops going straight through.
+        if (attempt.tag() != null) {
+            release(train);
+        }
+
         if (train.seatingChanged(attempt.tag()) && LOGGER.isDebugEnabled()) {
             LOGGER.debug("train of {} {}", train.size(), attempt.tag() == null
                     ? "seated" : "not seated, " + attempt.tag() + ": " + attempt.detail());
@@ -178,6 +187,15 @@ public final class TrainPlacer {
         }
 
         return Attempt.SEATED;
+    }
+
+    // Drops every car's seat mark, so that none of this train reads as placed.
+    private static void release(Train train) {
+        for (AbstractMinecart car : train.cars()) {
+            if (car instanceof AbstractMinecartExt ext) {
+                ext.minecarttweaks$setSeatedAt(0L);
+            }
+        }
     }
 
     // Which way along the ribbon the leading car is travelling, as a sign on the tangent, or zero
