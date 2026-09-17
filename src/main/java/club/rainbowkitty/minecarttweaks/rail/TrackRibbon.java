@@ -13,6 +13,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
@@ -507,6 +508,12 @@ public final class TrackRibbon {
     // does not carry on that way. Only a strictly forward exit counts, so the walk cannot double
     // back on the block it came from.
     private static @Nullable BlockPos onward(Level level, BlockPos from, Vec3 out) {
+        // A recorded block is a position, not a promise: rail mined out from under the ribbon
+        // reads as air here, and asking air for its exits casts it to a rail.
+        if (!BaseRailBlock.isRail(level.getBlockState(from))) {
+            return null;
+        }
+
         BlockPos best = null;
         double nearest = 0.0;
 
