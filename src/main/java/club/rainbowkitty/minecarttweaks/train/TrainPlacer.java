@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 import net.minecraft.world.level.block.BaseRailBlock;
@@ -42,8 +43,9 @@ public final class TrainPlacer {
     // Below this an arc step is treated as no direction at all.
     private static final double EPSILON = 1.0E-5;
 
-    // A reversal, and how far either side of it still reads as one. Vanilla's own figures, from
-    // NewMinecartBehavior.setRotation: a turn of 175 to 185 degrees is a cart running backwards.
+    // A reversal, and how far short of one still reads as one. Vanilla's own figures, from
+    // NewMinecartBehavior.setRotation, where the band is 175 to 185 — one-sided here because a
+    // wrapped difference never exceeds 180 in the first place.
     private static final float HALF_TURN = 180.0F;
     private static final float FLIP_SLACK = 5.0F;
 
@@ -316,13 +318,20 @@ public final class TrainPlacer {
         float pitch = (float) (90.0
                 - Math.atan2(moved.horizontalDistance(), moved.y) * 180.0 / Math.PI);
 
+        // Both of these, and both every tick. A flipped car is pointing its other end, so the pitch
+        // read off the ground it covered describes the end it is no longer leading with — left
+        // alone, a flipped car climbing renders as one descending.
         if (car.isFlipped()) {
             yaw += HALF_TURN;
+            pitch *= -1.0F;
         }
 
-        double turned = Math.abs(yaw - car.getYRot());
+        // Wrapped, unlike the raw subtraction vanilla does here: these two angles come from
+        // separate turns through Math.atan2 and either may already have been taken modulo 360, so
+        // an unwrapped difference reads a tenth of a degree as 359 and a reversal as 540.
+        float turned = Mth.degreesDifferenceAbs(car.getYRot(), yaw);
 
-        if (turned >= HALF_TURN - FLIP_SLACK && turned <= HALF_TURN + FLIP_SLACK) {
+        if (turned >= HALF_TURN - FLIP_SLACK) {
             car.setFlipped(!car.isFlipped());
             yaw -= HALF_TURN;
             pitch *= -1.0F;
