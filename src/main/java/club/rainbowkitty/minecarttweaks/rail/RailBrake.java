@@ -118,5 +118,4 @@ public final class RailBrake {
             MTAttachments.setHeldHeading(cart, null);
         }
     }
-
 }

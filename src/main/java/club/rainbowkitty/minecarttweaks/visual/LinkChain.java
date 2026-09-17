@@ -210,5 +210,4 @@ public final class LinkChain extends ElementHolder {
                 .rotateY((float) Math.atan2(direction.x, direction.z))
                 .rotateX((float) Math.atan2(direction.horizontalDistance(), direction.y));
     }
-
 }

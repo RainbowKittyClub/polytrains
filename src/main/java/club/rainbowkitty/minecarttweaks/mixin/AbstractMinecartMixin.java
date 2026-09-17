@@ -109,15 +109,15 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     @Unique
     private @Nullable Bend minecarttweaks$lastBend;
 
-    // Vanilla's own speed ceiling for this cart, which minecarttweaks$trainSpeed raises.
-    @Shadow
-    protected abstract double getMaxSpeed(ServerLevel level);
-
     // Never called: present only to satisfy the compiler about the superclass this mixin extends.
     public AbstractMinecartMixin(EntityType<?> type, Level level) {
         super(type, level);
         throw new UnsupportedOperationException();
     }
+
+    // Vanilla's own speed ceiling for this cart, which minecarttweaks$trainSpeed raises.
+    @Shadow
+    protected abstract double getMaxSpeed(ServerLevel level);
 
     // ---- link state and per-tick memos ----
 
