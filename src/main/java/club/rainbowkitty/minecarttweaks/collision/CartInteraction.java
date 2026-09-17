@@ -33,7 +33,10 @@ public enum CartInteraction {
     RUN_OVER(false, true),
 
     /** Two trains meeting hard enough that neither survives it. */
-    WRECK(false, false);
+    WRECK(false, false),
+
+    /** Two cars of one train the placer is not holding: each stops the other, neither harms it. */
+    BUFFER(true, false);
 
     // Speed at which a cart starts running things down, in blocks per tick: above it any cart at
     // all injures what it meets and drives on through, below it a cart still throws what it is up
@@ -66,10 +69,19 @@ public enum CartInteraction {
         }
 
         if (other instanceof AbstractMinecart car) {
-            // Cars of one train, and carts that merely pass close by on separate track, are no
-            // concern of each other's.
-            if (coupled(cart, car) || !RailContext.sharesTrack(cart, car)) {
+            // Carts that merely pass close by on separate track are no concern of each other's.
+            if (!RailContext.sharesTrack(cart, car)) {
                 return IGNORE;
+            }
+
+            // Two cars of one train never wreck each other and never strike each other, in any
+            // state the train can be in: a train coming apart must not destroy its own cars. What
+            // does change with the state is whether they are solid to each other — while the placer
+            // lays them at fixed offsets they must not block each other or the car leading them,
+            // and while it is not laying them they are ordinary carts that have to stop each other
+            // or an unplaced train piles into its own head.
+            if (TrainCoupling.sameTrain(cart, car)) {
+                return placed(cart, car) ? IGNORE : BUFFER;
             }
 
             return wrecks(cart, car) ? WRECK : COLLIDE;
@@ -156,14 +168,12 @@ public enum CartInteraction {
     // Coupled cars pass through each other, but only while both are on the rails that hold them
     // apart: a derailed car is a solid obstacle again, which stops the train closing up over it.
     // Rail memos first, then the train test, which is the expensive half.
-    private static boolean coupled(AbstractMinecart cart, AbstractMinecart other) {
+    // Whether the placer is holding this pair where it wants them, in which case neither may be
+    // solid to the other. A derailed car is never placed, so it goes on stopping its neighbours
+    // while it is trying to land, which is what it did before any of this.
+    private static boolean placed(AbstractMinecart cart, AbstractMinecart other) {
         return cart.minecarttweaks$railContext().onRails()
                 && other.minecarttweaks$railContext().onRails()
-                && TrainCoupling.sameTrain(cart, other)
-                // Only while the placer is answering for them. Cars it lays at fixed offsets must
-                // not block each other or the car leading them, but a train it cannot place is a
-                // row of ordinary carts — and carts that pass through each other with nothing
-                // holding them apart pile into their own head the moment the train stops.
                 && (TrainPlacer.seated(cart) || TrainPlacer.seated(other));
     }
 
