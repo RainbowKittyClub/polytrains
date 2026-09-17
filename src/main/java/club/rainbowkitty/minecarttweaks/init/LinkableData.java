@@ -35,11 +35,19 @@ public record LinkableData(Optional<UUID> first, Optional<UUID> second) {
     }
 
     /**
+     * Returns whether either slot names {@code id}. Asked of the slot rather than of the cart it
+     * resolves to, so it still answers for a neighbour that is not currently loaded.
+     */
+    public boolean holds(UUID id) {
+        return first.filter(id::equals).isPresent() || second.filter(id::equals).isPresent();
+    }
+
+    /**
      * Returns a copy holding the given UUID, unchanged if it is already held or both slots are
      * occupied. Idempotent so that a slot can never end up holding the same cart twice.
      */
     public LinkableData withNeighbour(UUID id) {
-        if (first.filter(id::equals).isPresent() || second.filter(id::equals).isPresent()) {
+        if (holds(id)) {
             return this;
         }
         if (first.isEmpty()) {

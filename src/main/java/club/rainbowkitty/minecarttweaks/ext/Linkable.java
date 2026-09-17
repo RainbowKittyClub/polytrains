@@ -4,6 +4,8 @@ import java.util.List;
 
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 
+import club.rainbowkitty.minecarttweaks.init.MTAttachments;
+
 /**
  * Interface injected onto {@link AbstractMinecart} to facilitate linking carts together. Links are
  * symmetric: each cart holds up to two unordered neighbour slots. Use the static {@link #link} and
@@ -39,6 +41,19 @@ public interface Linkable {
      * step.
      */
     public void removeNeighbour(AbstractMinecart neighbour);
+
+    /**
+     * Whether {@code a} holds a link slot naming {@code b}, asked of the slots rather than of the
+     * carts they resolve to.
+     *
+     * <p>Two carts are coupled whether or not either can currently see the other. A neighbour in an
+     * unloaded chunk drops out of {@link #getNeighbours} and out of the train walk built on it, so
+     * a train straddling a chunk border reads as two shorter trains — and anything that asks "are
+     * these one vehicle" by comparing trains will say no about two carts that are chained together.
+     */
+    public static boolean coupled(AbstractMinecart a, AbstractMinecart b) {
+        return MTAttachments.getLink(a).holds(b.getUUID());
+    }
 
     /**
      * Symmetrically links {@code a} and {@code b}, doing nothing unless both have a slot free.

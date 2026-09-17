@@ -8,6 +8,7 @@ import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.level.gamerules.GameRule;
 
+import club.rainbowkitty.minecarttweaks.ext.Linkable;
 import club.rainbowkitty.minecarttweaks.rail.RailContext;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
@@ -80,7 +81,7 @@ public enum CartInteraction {
             // lays them at fixed offsets they must not block each other or the car leading them,
             // and while it is not laying them they are ordinary carts that have to stop each other
             // or an unplaced train piles into its own head.
-            if (TrainCoupling.sameTrain(cart, car)) {
+            if (TrainCoupling.sameTrain(cart, car) || Linkable.coupled(cart, car)) {
                 return placed(cart, car) ? IGNORE : BUFFER;
             }
 
