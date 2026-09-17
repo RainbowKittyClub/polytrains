@@ -6,6 +6,7 @@
   "minecarttweaks.link.too_far": "Those carts are too far apart",
   "minecarttweaks.link.too_long": "That train is as long as it can get",
   "minecarttweaks.link.blocked": "Another cart is in the way",
+  "minecarttweaks.switch.occupied": "That switch has a cart on it",
   "death.attack.minecarttweaks.minecart": "%1$s got run over by a minecart",
   "death.attack.minecarttweaks.minecart.player": "%1$s got run over by %2$s's minecart",
   "death.attack.minecarttweaks.train": "%1$s got run over by a train",

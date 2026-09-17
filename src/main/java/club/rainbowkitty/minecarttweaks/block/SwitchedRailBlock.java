@@ -119,8 +119,8 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         Direction travel = Direction.getApproximateNearest(movement.x(), 0.0, movement.z());
         BlockPos on = cart.getCurrentBlockPosOrRailBelow();
 
-        orient(level, on, travel);
-        orient(level, on.relative(travel), travel);
+        orient(level, on, travel, cart);
+        orient(level, on.relative(travel), travel, cart);
     }
 
     @Override
@@ -142,8 +142,17 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
                 .setValue(WATERLOGGED, level.getFluidState(pos).is(Fluids.WATER));
     }
 
-    /** Flips a switch to its other branch, from wherever its redstone signal has left it. */
-    public static void toggle(ServerLevel level, BlockPos pos, BlockState state) {
+    /**
+     * Flips a switch to its other branch, from wherever its redstone signal has left it.
+     *
+     * @return whether it was thrown; false while a cart stands on the switch, since the curve
+     *         under a car is the one it entered on and swapping it mid-crossing derails the car
+     */
+    public static boolean toggle(ServerLevel level, BlockPos pos, BlockState state) {
+        if (occupied(level, pos)) {
+            return false;
+        }
+
         boolean reversed = !state.getValue(REVERSED);
         boolean forward = state.getValue(POWERED) != reversed;
         level.setBlock(
@@ -151,6 +160,7 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
                 state.setValue(REVERSED, reversed)
                         .setValue(SHAPE, restingShape(state.getValue(FACING), forward)),
                 Block.UPDATE_CLIENTS);
+        return true;
     }
 
     /** The borrowed vanilla state a client is shown; the passthrough keeps the resting look. */
@@ -197,10 +207,14 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         return e ? RailShape.NORTH_EAST : RailShape.NORTH_WEST;
     }
 
-    // Points one switch at a car travelling the given way; any other block at pos is left alone.
-    private static void orient(ServerLevel level, BlockPos pos, Direction travel) {
+    // Points one switch at a car travelling the given way; any other block at pos is left alone. A
+    // switch already carrying some other car keeps the shape that car is riding, so the approaching
+    // one is routed by whatever it finds on arrival rather than throwing the curve out from under.
+    private static void orient(
+            ServerLevel level, BlockPos pos, Direction travel, AbstractMinecart cart) {
         BlockState state = level.getBlockState(pos);
-        if (!(state.getBlock() instanceof SwitchedRailBlock switchRail)) {
+        if (!(state.getBlock() instanceof SwitchedRailBlock switchRail)
+                || occupiedByOther(level, pos, cart)) {
             return;
         }
 
@@ -231,23 +245,34 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         return CODEC;
     }
 
-    // Follows the redstone signal, snapping to the matching resting curve. Called from
-    // BaseRailBlock.neighborChanged.
+    // Follows the redstone signal, snapping to the matching resting curve, or deferring that curve
+    // while a car is crossing. Called from BaseRailBlock.neighborChanged.
     @Override
     protected void updateState(BlockState state, Level level, BlockPos pos, Block neighbourBlock) {
         boolean powered = level.hasNeighborSignal(pos);
-        if (powered != state.getValue(POWERED)) {
-            boolean forward = powered != state.getValue(REVERSED);
-            level.setBlock(
-                    pos,
-                    state.setValue(POWERED, powered)
-                            .setValue(SHAPE, restingShape(state.getValue(FACING), forward)),
-                    Block.UPDATE_CLIENTS);
+        if (powered == state.getValue(POWERED)) {
+            return;
         }
+
+        BlockState signalled = state.setValue(POWERED, powered);
+
+        // The signal belongs to the circuit, so it is recorded whatever stands on the switch; only
+        // the curve waits, for the settle to lay it over once the car it would derail has gone.
+        if (occupied(level, pos)) {
+            level.setBlock(pos, signalled, Block.UPDATE_CLIENTS);
+            settleLater(level, pos);
+            return;
+        }
+
+        boolean forward = powered != state.getValue(REVERSED);
+        level.setBlock(
+                pos,
+                signalled.setValue(SHAPE, restingShape(state.getValue(FACING), forward)),
+                Block.UPDATE_CLIENTS);
     }
 
-    // Settles the switch back to its resting curve once the passthrough car has gone. The orient()
-    // guard keeps at most one of these pending per switch, so a busy switch cannot pile them up.
+    // Lays the resting curve on once the car that was crossing has gone, whether it was held off by
+    // a passthrough or by a signal change. Its schedulers keep at most one of these pending.
     @Override
     protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
         RailShape resting = restingShape(state.getValue(FACING), divergesForward(state));
@@ -261,9 +286,25 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         }
     }
 
-    // Whether a cart still sits on the switch, in which case settling has to wait for it.
+    // Whether a cart still sits on the switch, in which case a change of curve has to wait for it.
     private static boolean occupied(Level level, BlockPos pos) {
-        return !level.getEntitiesOfClass(AbstractMinecart.class, new AABB(pos)).isEmpty();
+        return occupiedByOther(level, pos, null);
+    }
+
+    // As occupied, discounting one cart: a car steering a switch is already standing on it by the
+    // time it says so, and would otherwise read as the obstacle that stops it being steered.
+    private static boolean occupiedByOther(
+            Level level, BlockPos pos, @Nullable AbstractMinecart steering) {
+        return !level.getEntitiesOfClass(
+                AbstractMinecart.class, new AABB(pos), cart -> cart != steering).isEmpty();
+    }
+
+    // Asks the switch to reconsider its shape later, so a curve refused while it was busy is not
+    // simply lost. The guard keeps at most one pending, as orient's does.
+    private void settleLater(Level level, BlockPos pos) {
+        if (!level.getBlockTicks().hasScheduledTick(pos, this)) {
+            level.scheduleTick(pos, this, SETTLE_DELAY);
+        }
     }
 
     // A switch keeps the shape its facing and signal give it; neighbours never bend it.
