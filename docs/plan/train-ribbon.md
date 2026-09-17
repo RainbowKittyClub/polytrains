@@ -363,11 +363,11 @@ leaving. S6's diverted-sever check changes what the right answer is — once a s
 the train's track is a stated sever reason, throwing under a car may be allowed and simply sever.
 Settled by building S6.
 
-**What the car pitch should be.** `TARGET_SPACING` survives S6 as a layout constant rather than a
-correction target, which changes what it is for: today it is the value an error is measured against
-and is therefore tuned against the clamps, and afterwards it is simply how far apart cars sit. The
-number that looked right under correction need not be the number that looks right under placement.
-Settled by watching a train on the test track after S5.
+**What the car pitch should be.** Settled at 1.5, by watching a train on the test track after S5.
+The 2.0 it had was tuned as a correction target — the value a spacing error was measured against —
+and under placement it is simply how far apart cars sit, where it read as too loose. `MAX_LINK_DISTANCE`
+deliberately stays at 2.25: it governs how far apart a player may couple two carts, which should not
+shrink just because a coupled train now rides tighter.
 
 **Rotation smoothing on effectively-diagonal track** is deliberately not in this document. The ribbon
 enables it and it has no dependency in the other direction. The chord under a placed car is already a
