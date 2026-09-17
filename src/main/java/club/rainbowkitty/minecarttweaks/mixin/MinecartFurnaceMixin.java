@@ -30,6 +30,7 @@ import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
 import club.rainbowkitty.minecarttweaks.init.MTTicketTypes;
 import club.rainbowkitty.minecarttweaks.rail.RailBrake;
+import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.util.FurnaceFuel;
@@ -64,6 +65,11 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     // something turning the cart round rather than the track bending under it.
     @Unique
     private static final double REVERSAL_DOT = -0.5;
+
+    // Above this an asked-for heading names one end of the rail clearly enough to turn the engine
+    // to it. Below, it is square enough across the track to be no answer at all.
+    @Unique
+    private static final double AIM_DOT = 0.35;
 
     // One tick of fuel is spent per this many ticks while parked.
     @Unique
@@ -221,11 +227,46 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     // cart is safe — the brake ignores the impulse — and aims it for when the rail powers up.
     @Unique
     private void minecarttweaks$setImpulse(Vec3 direction) {
-        push = direction.horizontal().normalize();
+        Vec3 along = minecarttweaks$alongRail(direction);
+
+        if (along == null) {
+            return;
+        }
+
+        push = along;
 
         // Stamped so that aiming a cart back the way it came holds: the movement it still carries
         // reads as a reversal next tick, and only a stamp on this rail has that refused.
         minecarttweaks$headingRail = getCurrentBlockPosOrRailBelow();
+    }
+
+    // The rail's own direction nearest {@code want}, or null to keep the heading the cart has.
+    // Every impulse but the one read off the cart's own movement starts as a direction to the
+    // player, and a track is as often square to that as along it. Left unprojected that drives a
+    // standing cart at the rail rather than along it, and vanilla's stepper breaks the tie between
+    // two exits it agrees with equally — out of whichever end rounding favours, flipping the cart.
+    @Unique
+    private @Nullable Vec3 minecarttweaks$alongRail(Vec3 want) {
+        Vec3 heading = want.horizontal();
+
+        if (heading.lengthSqr() <= IMPULSE_EPSILON) {
+            return null;
+        }
+
+        BlockPos on = getCurrentBlockPosOrRailBelow();
+        BlockPos exit = RailPath.ahead(level(), on, heading);
+
+        if (exit == null) {
+            return null;
+        }
+
+        Vec3 along = Vec3.atLowerCornerOf(exit.subtract(on)).horizontal().normalize();
+
+        // Square across the track names neither end, so a cart that has a heading already keeps
+        // it rather than being turned round by a top-up offered from the wrong side.
+        return heading.normalize().dot(along) > AIM_DOT || push.lengthSqr() <= IMPULSE_EPSILON
+                ? along
+                : null;
     }
 
     // Standing still, a cart has no heading of its own and vanilla's away-from-the-player one is
