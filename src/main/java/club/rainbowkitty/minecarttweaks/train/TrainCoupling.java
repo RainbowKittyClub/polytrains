@@ -368,11 +368,15 @@ public final class TrainCoupling {
             return;
         }
 
-        train.faultHeld(TrainPlacer.Refusal.NONE, SEVER_TICKS);
+        // One fault reading a tick, whichever kind it is, so the two cannot clear each other's
+        // count. A train cut here is two trains from the next tick, so there is nothing left to
+        // trim or measure against: both halves go on from where they now are.
+        int diverted = divertedCar(level, train);
 
-        // A train cut here is two trains from the next tick, so there is nothing left to trim or
-        // measure against: both halves go on from where they now are.
-        if (severDiverted(level, train)) {
+        if (train.faultHeld(diverted, SEVER_TICKS) && diverted != TrainPlacer.Refusal.NONE) {
+            LOGGER.debug("train of {} severing at car {}: a switch has diverted its track for"
+                    + " {} ticks", train.size(), diverted, SEVER_TICKS);
+            sever(level, train, diverted);
             return;
         }
 
@@ -398,11 +402,17 @@ public final class TrainCoupling {
         }
     }
 
-    // Cuts a train a switch is taking off its own track. Each car is asked whether the rail at the
-    // arc it was just placed at still joins the two edges the ribbon recorded there — read from the
-    // car's own seat rather than worked out again here, so the check and the placement cannot come
-    // to different answers about where a car is.
-    private static boolean severDiverted(ServerLevel level, Train train) {
+    // Which car of a train a switch is currently taking off its recorded track, or NONE. Read from
+    // each car's own seat rather than worked out again here, so the check and the placement cannot
+    // come to different answers about where a car is.
+    //
+    // The answer alone is not a reason to cut. A switch on a busy junction is re-steered constantly
+    // by whatever else is crossing it, and by this train's own leading car when it reverses onto
+    // track it has already recorded — so a single tick's disagreement between the rail and the
+    // record is the normal state of a shared switch, not a train being taken apart. Only a
+    // disagreement that outlasts the traffic causing it means anything, which is why this answers
+    // a question and leaves the deciding to the same held count every other fault goes through.
+    private static int divertedCar(ServerLevel level, Train train) {
         AbstractMinecart leader = train.leader();
         TrackRibbon ribbon = train.ribbon();
         List<AbstractMinecart> cars = train.cars();
@@ -411,17 +421,11 @@ public final class TrainCoupling {
             AbstractMinecart car = cars.get(i);
 
             if (car != leader && ribbon.diverted(level, car.minecarttweaks$seatArc())) {
-                double arc = car.minecarttweaks$seatArc();
-                LOGGER.debug("train of {} severing at car {}: switch at {} diverts its track,"
-                        + " car at arc {} of {}..{}, rail now {}",
-                        train.size(), i, ribbon.blockAt(arc), arc, ribbon.from(), ribbon.to(),
-                        level.getBlockState(car.getCurrentBlockPosOrRailBelow()));
-                sever(level, train, i);
-                return true;
+                return i;
             }
         }
 
-        return false;
+        return TrainPlacer.Refusal.NONE;
     }
 
     // Breaks the link between car and whichever neighbour lies towards the leading car, so that
