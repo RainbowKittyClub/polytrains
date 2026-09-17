@@ -327,6 +327,12 @@ floor and slow-speed drag; and the brake's launch, which on a trailer would be o
 placer next tick. `sharedDrive`'s formula is pure arithmetic and moves onto `Train` unchanged.
 Impact drag keeps its one-over-cars falloff but is applied once rather than written to every car.
 
+**Gravity is a site the twelve did not count.** A seated car never reaches `moveAlongTrack`, so
+`calculateSlopeSpeed` runs on the leading car alone and a train on a grade has one car's worth of
+downhill pull whatever its length. On the way up that flatters it; stalled, it is why a train is slow
+to roll back. Mass governs the head here as everywhere else, so the pull wants scaling by the cars
+behind rather than repointing.
+
 **The shove needs retuning, not repointing.** Train length is currently divided out twice — once in
 `EntityMixin`'s push and again in `settle`'s mean of the cars' speeds — and its comment records that
 either alone loses out to rail friction. The settle average is gone, so the surviving division will
@@ -368,6 +374,17 @@ new `POWERED` and writes it, so the curve arrives by the other path anyway. Fixi
 leaving. S6's diverted-sever check changes what the right answer is — once a switch taking a car off
 the train's track is a stated sever reason, throwing under a car may be allowed and simply sever.
 Settled by building S6.
+
+**Whether `furnace_minecart_speed` should respect `max_minecart_speed`.** It does not today: the
+furnace mixin sets the ceiling outright from its own rule, defaulting to 20 blocks per second against
+the vanilla rule's 8, and `trainSpeed` then hands that to every car the furnace cart tows by taking
+the highest ceiling in the train. So a furnace train runs at two and a half times the world's stated
+cap and lowering that cap does nothing to it. The mixin's reason for existing is sound — vanilla
+halves a furnace cart, leaving it the slowest car in its own train — but undoing that by replacing
+the ceiling rather than working within it makes the vanilla rule a lie. Clamping to it would keep
+both rules honest at the cost of slowing live furnace trains from 1.0 to 0.4 blocks per tick unless
+`max_minecart_speed` is raised to 20 to match. A deploy-affecting decision, so it is the server's to
+make rather than this plan's.
 
 **What the car pitch should be.** Settled at 1.5, by watching a train on the test track after S5.
 The 2.0 it had was tuned as a correction target — the value a spacing error was measured against —
