@@ -77,6 +77,11 @@ public final class Train {
     // order taken before one says nothing about the frame that came after it.
     private int orderAt = -1;
 
+    // This train's mean rolling friction, held for the tick that worked it out. Read once for every
+    // rail block the leading car crosses, and working it out walks every car's inventory.
+    private double rolling;
+    private long rollingTick = Long.MIN_VALUE;
+
     // How the last seating attempt went, so only a change of answer is worth reporting.
     private TrainPlacer.@Nullable Bail bail;
 
@@ -222,6 +227,20 @@ public final class Train {
         bail = now;
 
         return changed;
+    }
+
+    /**
+     * This train's mean rolling friction as worked out on {@code tick}, or zero if it has not been
+     * worked out on that tick. A real mean is never zero, so zero is the whole of "ask again".
+     */
+    public double rolling(long tick) {
+        return rollingTick == tick ? rolling : 0.0;
+    }
+
+    /** Holds this train's mean rolling friction for the rest of {@code tick}. */
+    public void setRolling(long tick, double mean) {
+        rolling = mean;
+        rollingTick = tick;
     }
 
     /**

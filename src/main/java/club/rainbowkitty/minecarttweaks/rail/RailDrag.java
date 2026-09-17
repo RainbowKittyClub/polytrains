@@ -98,21 +98,37 @@ public final class RailDrag {
             return slowed;
         }
 
-        List<AbstractMinecart> cars = Train.of(cart).cars();
+        Train train = Train.of(cart);
+        long tick = cart.level().getGameTime();
+        double mean = train.rolling(tick);
+
+        if (mean <= 0.0) {
+            mean = meanKeep(train.cars());
+            train.setRolling(tick, mean);
+        }
+
         double own = keepOf(cart);
+
+        if (own <= 0.0) {
+            return slowed;
+        }
+
+        double scale = mean / own;
+
+        return slowed.multiply(scale, 1.0, scale);
+    }
+
+    // Held for the tick by the train itself: vanilla asks for a slowdown once per rail block its
+    // leading car crosses, which at speed is several times a tick, and every car's own figure
+    // means a walk of its inventory.
+    private static double meanKeep(List<AbstractMinecart> cars) {
         double total = 0.0;
 
         for (AbstractMinecart car : cars) {
             total += keepOf(car);
         }
 
-        if (own <= 0.0) {
-            return slowed;
-        }
-
-        double scale = total / cars.size() / own;
-
-        return slowed.multiply(scale, 1.0, scale);
+        return total / cars.size();
     }
 
     // Vanilla's rolling friction for one cart, worked out the way that kind of cart works it out:
