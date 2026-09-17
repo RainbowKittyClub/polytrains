@@ -332,7 +332,7 @@ unnoticed because `furnace_minecart_speed` replaced the ceiling outright rather 
 it, so furnace trains ran at 1.0 regardless and looked normal. The rule is gone; the trap is in
 `docs/TESTING.md`.
 
-## S6 — The placer made total — **planned**
+## S6 — The placer made total — **done**
 
 **Build.** Delete `settle`, `nudge`, `slack`, `signedSpeed`, `holdTrain`'s run-splitting and the
 distance-based sever, and with them `SETTLE`, `MAX_SHIFT`, `MOVING_SHIFT`, `NUDGE_ATTEMPTS` and
@@ -360,6 +360,78 @@ car destroyed mid-train severs either side of it, a switch taking a car off the 
 ahead of it. A train crossing a chunk border, taking a corner at full speed, or shoved hard by a
 player does **not** sever — those three are the regression this document exists to fix. Every bail
 reason S5 logged is handled by name.
+
+### As built
+
+`TrainCoupling` was rewritten rather than edited down, and `settle`, `nudge`, `slack`, `signedSpeed`,
+the run-splitting and the distance sever went with `SETTLE`, `MAX_SHIFT`, `MOVING_SHIFT`,
+`NUDGE_ATTEMPTS` and `SEVER_SLACK`. `RailPath.alongTrack` and the public `exitTaken` are gone;
+`exitTaken` survives private, because `ahead` needs it. `TARGET_SPACING` is the car pitch and
+`MAX_LINK_DISTANCE` the coupling reach, as planned. A grep for the deleted names over `src/main/java`
+returns only prose and unrelated identifiers — the switch's own `settleLater` and `SETTLE_DELAY`.
+
+The driver is six calls: `reachTrain`, `TrainPlacer.seat`, `cutIfLost` if that refuses, `divertedCar`
+into `sever`, `trimRibbon`, `TrainMeter.measure`. All five bail reasons are handled by name.
+
+**Every sever is now an event held for ten ticks.** The diverted check was the one fault with no
+persistence, and it over-fired at once: a switch shared between two legs is re-steered constantly, so
+a single tick's disagreement cut a train that was running correctly. It went through `faultHeld(car,
+ticks)`, which counts the named car and zeroes every other in the same call — one car failing for ten
+consecutive ticks is a fault, ten cars failing once each is a train crossing something awkward.
+
+**The stage's real finding was that a reversal is two failures, not one.** A train reversed itself on
+the test track, and the instrumented chain turned out to be: the ribbon resets; `order()` returns zero
+because it is keyed to `ribbon.resets()`, which is deliberate; the placer bails `ORDER_UNREADABLE` and
+drops the seat marks; vanilla therefore moves all eight cars itself for that tick; and `decideLeader`
+reads one car's vanilla velocity and confidently names the other end. `order` and the leading end
+re-bootstrap on the same tick from the worst evidence available, and the leading end is the *input* to
+`order`. Which end leads is a fact about links and motion and has no business depending on the
+ribbon's numbering, so it is now held for three ticks against a confident reading — a real reversal
+names its new end on every tick after it, and while the train decelerates through zero `decideLeader`
+already returns the end it had.
+
+**The resets were not eliminated, only made survivable.** Two in one second at `y=-53`, with an
+earlier cluster at `y=-46`, on track with switches being re-steered continuously a few blocks away,
+at 0.16 blocks per tick and `worst=0.00` — so not the head outrunning its own ribbon, and not a
+holding failure. The ribbon had recorded a different route through that area than the head then took.
+Left open; with the leading end held, a reset now costs a tick of seating rather than the train.
+
+**`sameTrain` cannot answer whether two carts are chained.** Carts were being destroyed at chunk
+borders, and there is exactly one path in the mod that destroys a cart — `CartImpact.writeOff`, from
+`CartInteraction.WRECK`. It was guarded by `TrainCoupling.sameTrain`, which walks resolved
+neighbours, and `getNeighbours` drops a slot whose UUID will not resolve — which is precisely what an
+unloaded chunk causes. A train straddling a border genuinely becomes two `Train` objects, so two carts
+chained to each other went into the wreck test against one another and both died. The link slots hold
+UUIDs and do not care what resolves, so `Linkable.coupled` asks them directly, and `CartInteraction`
+gained `BUFFER` so a same-train pair answers before the wreck test rather than after it.
+
+**Steering had to be laid from the step, not the heading.** S5 moved junction laying one block ahead;
+S6 found the direction was also wrong. Vanilla turns the delta onto the rail *inside*
+`stepAlongTrack`, after the `makeStepAlongTrack` HEAD hook, so the hook reads the heading the cart had
+coming *into* the block. On straight track that is the same vector; one block past a bend it is ninety
+degrees out, and a junction there was laid on the pre-bend axis and turned the train back onto it. The
+axis now comes from `next.subtract(pos)`. The switch had both halves of the fault — it also picked its
+lookahead block with `on.relative(travel)` — and only ever laid one switch per tick, so at speed four
+of every five switches crossed were read however they were last left. It has a `steerAhead` of its
+own now, fired per step alongside the junction's.
+
+**Two more of the same shape, found by playing rather than reading.** Fuelling a furnace cart set its
+impulse from a direction to the *player*, which across a track drives a standing cart at the rail and
+leaves vanilla's stepper to break a tie between two exits it agrees with equally — out whichever end
+rounding favours, flipping the cart and its chain anchors. Impulses are projected onto the rail now.
+And a cart's front was whichever way it first happened to roll, because vanilla sets no yaw on
+placement; it is taken from the placer's look, and thereafter changes only when travel truly reverses,
+which replaced a 175-to-185-degree window that a car covering several blocks a tick steps over.
+
+**A ribbon node is a position, not a promise.** Editing track under a running train crashed the
+server: `TrackRibbon.grow` walks one block off its own end node, and mined-out rail read as air into a
+cast to `BaseRailBlock`. Every other caller of `RailPath.neighbours` reads the block under a live cart
+and guards; that one read recorded state, which is why it was the one the world could invalidate.
+
+**Not observed.** The chunk-border leg of "Done when" is unverified — the fix above is reasoned from
+the single destroy path, not watched. Everything else was: a switch splitting a train in both
+directions, a train run off the end of track, corners at speed without a sever, and a train shoved
+without one.
 
 ## S7 — Acceleration and deceleration on the head — **planned**
 
@@ -418,13 +490,19 @@ trailing car lacked a heading to start from, and trailing cars no longer start t
 whose head is a non-engine car refuses to start from a standstill, that is the case it was covering
 and it comes back narrowed to the head. Settled by building S7.
 
-**Which path should own the deferred switch curve.** S2 stops `updateState` from throwing a curve
-under a crossing car, but the car's own `steer` → `orient` still recomputes the resting shape from the
-new `POWERED` and writes it, so the curve arrives by the other path anyway. Fixing it by guarding
-`orient` too would make a switch unthrowable while any cart sits on it, including the cart that is
-leaving. S6's diverted-sever check changes what the right answer is — once a switch taking a car off
-the train's track is a stated sever reason, throwing under a car may be allowed and simply sever.
-Settled by building S6.
+**Which path should own the deferred switch curve.** Settled the way S6 predicted, by the sever
+becoming an acceptable outcome rather than by guarding `orient`. A car's own `steer` → `orient` still
+recomputes the shape from the live `POWERED`, and `occupiedByOther` discounts only the steering cart,
+so a curve thrown under a crossing car does still arrive by that path — but the diverted check then
+notices the rail no longer joins the edges the ribbon recorded and cuts ahead of that car, which is a
+stated sever reason. `occupied` also asks `TrainCoupling.crossedByTrain` now, so a whole train lying
+across a switch reads as occupancy rather than as a run of brief absences between cars.
+
+**Part of S7 has already landed**, out of order, because S6 could not be finished without it. A shove
+now reaches `TrainCoupling.driven` — the car vanilla still drives — rather than whichever car was
+leaned on, whose velocity the placer overwrites; that was the "a shove landing on the fifth car has to
+reach the head" half of S7's shove work, and only the *retune* half is left. `furnaceSpeed` is gone
+entirely with its rule. The other ten sites are untouched.
 
 **`furnace_minecart_speed` is gone**, settled by removing it. It set a furnace cart's ceiling
 outright from its own rule — 20 blocks per second against the vanilla rule's 8 — and `trainSpeed`
