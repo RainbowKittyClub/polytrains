@@ -62,14 +62,16 @@ public final class TrainPlacer {
         CAR_OFF_RIBBON
     }
 
-    // One attempt's outcome. A null tag is a train that seated.
-    private record Attempt(@Nullable Bail tag, String detail) {
+    /**
+     * Why a train could not be seated and which of its cars the answer is about, or {@code NONE}
+     * when the whole train is at fault rather than one car. The index is what makes a refusal
+     * actionable: a train that cannot be placed has to be cut somewhere, and it is cut at the car
+     * the ribbon could not answer for.
+     */
+    public record Refusal(Bail why, int car, String detail) {
 
-        static final Attempt SEATED = new Attempt(null, "");
-
-        static Attempt of(Bail tag, String detail) {
-            return new Attempt(tag, detail);
-        }
+        /** The car index used when a refusal is about the train rather than one of its cars. */
+        public static final int NONE = -1;
     }
 
     // Where one car is going to be put: the point on the ribbon, the rail block under it, and the
@@ -81,27 +83,28 @@ public final class TrainPlacer {
 
     /**
      * Seats every trailing car of {@code train} at {@code pitch} intervals along its ribbon, and
-     * answers whether it did. Nothing is moved unless every car could be placed, so a false answer
-     * leaves the train exactly as it was for the coupling to settle instead.
+     * says whether it could, naming the car it could not place when there is one. Nothing is moved
+     * unless every car could be placed, so a refusal leaves the train exactly as it was.
      */
-    public static boolean seat(Train train, double pitch) {
-        Attempt attempt = attempt(train, pitch);
+    public static @Nullable Refusal seat(Train train, double pitch) {
+        Refusal attempt = attempt(train, pitch);
 
         // A train handed back to the correction is driven along its rails again from this tick, so
         // it must stop reading as placed the moment that happens. The one-tick grace in seated() is
         // there for cars that tick before their leader, and without this it also covers the tick a
         // train falls back on — leaving those cars steering no junction while vanilla moves them
         // over one, which is the shape of a train that stops going straight through.
-        if (attempt.tag() != null) {
+        if (attempt != null) {
             release(train);
         }
 
-        if (train.seatingChanged(attempt.tag()) && LOGGER.isDebugEnabled()) {
-            LOGGER.debug("train of {} {}", train.size(), attempt.tag() == null
-                    ? "seated" : "not seated, " + attempt.tag() + ": " + attempt.detail());
+        if (train.seatingChanged(attempt == null ? null : attempt.why())
+                && LOGGER.isDebugEnabled()) {
+            LOGGER.debug("train of {} {}", train.size(), attempt == null
+                    ? "seated" : "not seated, " + attempt.why() + ": " + attempt.detail());
         }
 
-        return attempt.tag() == null;
+        return attempt;
     }
 
     /**
@@ -122,27 +125,28 @@ public final class TrainPlacer {
     // Seats the train if the ribbon can answer for every car of it, and names what stopped it if
     // not. One outcome out, rather than a log line per bail, so the caller decides what is worth
     // saying and this stays the description of an attempt.
-    private static Attempt attempt(Train train, double pitch) {
+    private static @Nullable Refusal attempt(Train train, double pitch) {
         AbstractMinecart leader = train.leader();
 
         if (leader == null || train.size() < 2) {
-            return Attempt.of(Bail.NO_LEADING_END, "cars=" + train.size());
+            return new Refusal(Bail.NO_LEADING_END, Refusal.NONE, "cars=" + train.size());
         }
 
         TrackRibbon ribbon = train.ribbon();
+        List<AbstractMinecart> cars = train.cars();
         Double leadArc = ribbon.arcOfLeader(leader);
 
         if (leadArc == null) {
-            return Attempt.of(Bail.LEADER_OFF_RIBBON, "leader on "
+            return new Refusal(Bail.LEADER_OFF_RIBBON, cars.indexOf(leader), "leader on "
                     + leader.getCurrentBlockPosOrRailBelow() + ", ribbon of " + ribbon.size()
                     + " nodes running " + span(ribbon));
         }
 
-        List<AbstractMinecart> cars = train.cars();
         int lead = cars.indexOf(leader);
 
         if (lead != 0 && lead != cars.size() - 1) {
-            return Attempt.of(Bail.LEADER_MID_TRAIN, "lead=" + lead + "/" + (cars.size() - 1));
+            return new Refusal(Bail.LEADER_MID_TRAIN, Refusal.NONE,
+                    "lead=" + lead + "/" + (cars.size() - 1));
         }
 
         Vec3 tangent = ribbon.tangentAt(leadArc);
@@ -151,7 +155,7 @@ public final class TrainPlacer {
 
         if (order == 0) {
             if (facing == 0.0) {
-                return Attempt.of(Bail.ORDER_UNREADABLE,
+                return new Refusal(Bail.ORDER_UNREADABLE, Refusal.NONE,
                         "leader at " + round(leadArc) + ", tangent " + (tangent == null
                                 ? "none" : "across its motion"));
             }
@@ -180,7 +184,7 @@ public final class TrainPlacer {
             seats[i] = seatAt(ribbon, cars.get(i), arc);
 
             if (seats[i] == null) {
-                return Attempt.of(Bail.CAR_OFF_RIBBON, "car " + i + "/" + (cars.size() - 1)
+                return new Refusal(Bail.CAR_OFF_RIBBON, i, "car " + i + "/" + (cars.size() - 1)
                         + " wants arc " + round(arc) + " of " + span(ribbon));
             }
         }
@@ -193,7 +197,7 @@ public final class TrainPlacer {
             }
         }
 
-        return Attempt.SEATED;
+        return null;
     }
 
     // Drops every car's seat mark, so that none of this train reads as placed.

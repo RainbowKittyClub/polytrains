@@ -1,9 +1,10 @@
 package club.rainbowkitty.minecarttweaks.train;
 
-import java.util.ArrayList;
 import java.util.List;
 
+import com.mojang.logging.LogUtils;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -14,32 +15,34 @@ import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
-import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 
 /**
- * The physics of a train. Its cars are held at one speed as a single body rather than each link
- * being sprung against its neighbours, and the spacing between them is corrected on their positions
- * along the rails.
+ * What holds a train together: its trailing cars are placed along the track its leading car
+ * recorded, and its links are cut when that track can no longer answer for one of them.
+ *
+ * <p>Spacing is built rather than corrected. There is no shared speed to agree on and no gap to
+ * measure, so the ways a train used to come apart — a link stretching on a bend, across a chunk
+ * border, or under a shove — have nothing left to act through. What breaks a train now is an event
+ * with a name.
  */
 public final class TrainCoupling {
-    // Fraction of the spacing error taken up per tick. Short of all of it because a car is moved
-    // straight to its new position, and closing a large error in one tick is a visible jump.
-    private static final double SETTLE = 0.5;
 
-    // Ceiling on that correction, in car widths, so a car is never seen to jump.
-    private static final double MAX_SHIFT = 0.25;
+    private static final Logger LOGGER = LogUtils.getLogger();
 
-    // Furthest centre-to-centre distance two carts may be linked at, the spacing the coupling holds
-    // them to, and how far past the link distance a stretched link survives before breaking.
-    // One geometry: none of the three can be retuned without the others.
+    // Furthest centre-to-centre distance two carts may be linked at, and how far apart the cars of
+    // a linked train then sit. The first is what a player is allowed to couple; the second is only
+    // a layout figure, since nothing is measured against it any more.
     private static final double MAX_LINK_DISTANCE = 2.25;
 
     private static final double TARGET_SPACING = 1.5;
 
-    private static final double SEVER_SLACK = 1.25;
+    // Consecutive ticks the ribbon must fail to place the same car before its link is cut. A car
+    // crossing a junction, catching air, or waiting on a ribbon that has not grown to reach it is
+    // unplaceable briefly and then fine, and a sever is not.
+    private static final int SEVER_TICKS = 10;
 
     // Two batches: one for the batch a client may already be sitting on, one to leave it with
     // nothing, since a client that is never left short goes on replaying at the offset it has.
@@ -51,9 +54,6 @@ public final class TrainCoupling {
 
     // Trailers each engine pulls at full output before the rest of the train divides it down.
     private static final int FREE_CARS = 2;
-
-    // Fraction of the train's speed each bend costs, billed to the whole train, not the one car.
-    private static final double BEND_LOSS = 0.005;
 
     // Track kept either side of the train when the ribbon is trimmed, on top of the train's own
     // length. Room for the leading car to run into before the next record extends it.
@@ -93,8 +93,8 @@ public final class TrainCoupling {
      *
      * <p>The leading car drives rather than a fixed end of the train, because it is the one whose
      * position everything else is measured from. A train with no leading end — closed, or never yet
-     * moved — falls back to its settler, so that a train the placer cannot drive is still corrected
-     * exactly as it is today.
+     * moved — falls back to its anchor, so that exactly one car still asks on behalf of a train the
+     * placer cannot yet answer for.
      */
     public static void holdAfterMove(ServerLevel level, AbstractMinecart cart) {
         if (!MTGameRules.trainsEnabled(level) || !cart.hasLink()) {
@@ -104,7 +104,7 @@ public final class TrainCoupling {
         Train train = Train.of(cart);
         AbstractMinecart driver = train.leader();
 
-        if ((driver == null ? train.settler() : driver) == cart) {
+        if ((driver == null ? train.anchor() : driver) == cart) {
             holdTrain(level, train);
         }
     }
@@ -315,62 +315,97 @@ public final class TrainCoupling {
     }
 
     /**
-     * Holds {@code train} together: seated on its ribbon where that can answer for every car, and
-     * otherwise by settling every link and breaking any stretched past saving. A car off the track
-     * keeps its link and its own physics until it lands or is dragged past the breaking distance,
-     * with the runs either side of it settled meanwhile.
+     * Holds {@code train} together by seating it on the track its leading car recorded, and cuts it
+     * where that cannot be done.
+     *
+     * <p>There is no second system. A train is placed or it is not, and a train that is not is
+     * either waiting — standing still, or on a ribbon not yet grown to reach it — or else coming
+     * apart for a reason this can name. Nothing corrects a car towards where it ought to be, so
+     * there is no correction to lose a race against, and no gap that has to be measured.
      */
     private static void holdTrain(ServerLevel level, Train train) {
         reachTrain(level, train);
 
-        // Spacing built along the recorded track beats spacing corrected towards it, so everything
-        // below runs only for a train the ribbon could not answer for. What that costs is named in
-        // the placer's own bail line, which is the record of what still has to be handled by name.
-        if (TrainPlacer.seat(train, TARGET_SPACING)) {
-            trimRibbon(train);
-            TrainMeter.measure(level, train);
+        TrainPlacer.Refusal refusal = TrainPlacer.seat(train, TARGET_SPACING);
+
+        if (refusal != null) {
+            cutIfLost(level, train, refusal);
             return;
         }
 
-        List<AbstractMinecart> members = train.cars();
-        List<AbstractMinecart> cars = new ArrayList<>();
-        List<RailPath> links = new ArrayList<>();
-        double breaking = MAX_LINK_DISTANCE * SEVER_SLACK;
-        cars.add(members.getFirst());
+        train.faultHeld(TrainPlacer.Refusal.NONE, SEVER_TICKS);
 
-        for (int i = 1; i < members.size(); i++) {
-            AbstractMinecart next = members.get(i);
-            AbstractMinecart current = cars.getLast();
-            RailPath path = RailPath.between(current, next, breaking);
-
-            boolean severed = path == null
-                    ? current.distanceTo(next) > breaking
-                    : path.distance() > breaking;
-
-            // What is left behind the break is a train of its own from the next tick on, and is
-            // left to settle itself then rather than being settled as part of this one.
-            if (severed) {
-                Linkable.unlink(current, next);
-                MinecartHelper.dropChain(level, current, next);
-                break;
-            }
-
-            // A car with no path to the one ahead of it — off the rails, or too far round a corner
-            // to trace — ends the run, and starts the next one behind itself.
-            if (path == null) {
-                settle(cars, links);
-                cars = new ArrayList<>();
-                links = new ArrayList<>();
-            } else {
-                links.add(path);
-            }
-
-            cars.add(next);
+        // A train cut here is two trains from the next tick, so there is nothing left to trim or
+        // measure against: both halves go on from where they now are.
+        if (severDiverted(level, train)) {
+            return;
         }
 
-        settle(cars, links);
         trimRibbon(train);
         TrainMeter.measure(level, train);
+    }
+
+    // What to do about a train the ribbon could not seat. Most refusals are a train waiting rather
+    // than a train in trouble: one with no leading end is standing still, and one that cannot yet
+    // read which way round it lies has not moved far enough to say. Neither names a car, and so
+    // neither is a reason to break anything. A refusal that does name one names a car the recorded
+    // track no longer reaches, and once that has held it is a sever.
+    private static void cutIfLost(ServerLevel level, Train train, TrainPlacer.Refusal refusal) {
+        if (refusal.car() == TrainPlacer.Refusal.NONE) {
+            train.faultHeld(TrainPlacer.Refusal.NONE, SEVER_TICKS);
+            return;
+        }
+
+        if (train.faultHeld(refusal.car(), SEVER_TICKS)) {
+            LOGGER.debug("train of {} severing at car {}: {} held {} ticks",
+                    train.size(), refusal.car(), refusal.why(), SEVER_TICKS);
+            sever(level, train, refusal.car());
+        }
+    }
+
+    // Cuts a train a switch is taking off its own track. Each car is asked whether the rail at the
+    // arc it was just placed at still joins the two edges the ribbon recorded there — read from the
+    // car's own seat rather than worked out again here, so the check and the placement cannot come
+    // to different answers about where a car is.
+    private static boolean severDiverted(ServerLevel level, Train train) {
+        AbstractMinecart leader = train.leader();
+        TrackRibbon ribbon = train.ribbon();
+        List<AbstractMinecart> cars = train.cars();
+
+        for (int i = 0; i < cars.size(); i++) {
+            AbstractMinecart car = cars.get(i);
+
+            if (car != leader && ribbon.diverted(level, car.minecarttweaks$seatArc())) {
+                LOGGER.debug("train of {} severing at car {}: switch diverts its track",
+                        train.size(), i);
+                sever(level, train, i);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Breaks the link between car and whichever neighbour lies towards the leading car, so that
+    // what stays coupled to the leader is the part still on track the ribbon can answer for and
+    // what goes free is the part being taken somewhere else. A leading car that is itself the fault
+    // is cut from the one neighbour it has.
+    private static void sever(ServerLevel level, Train train, int car) {
+        List<AbstractMinecart> cars = train.cars();
+        AbstractMinecart leader = train.leader();
+        int lead = leader == null ? 0 : cars.indexOf(leader);
+        int towards = car == lead ? (lead == 0 ? 1 : -1) : (lead == 0 ? -1 : 1);
+        int keep = car + towards;
+
+        if (keep < 0 || keep >= cars.size()) {
+            return;
+        }
+
+        AbstractMinecart from = cars.get(car);
+        AbstractMinecart to = cars.get(keep);
+
+        Linkable.unlink(from, to);
+        MinecartHelper.dropChain(level, from, to);
     }
 
     // Makes sure the ribbon reaches the whole train before anything is measured against it. A
@@ -419,85 +454,10 @@ public final class TrainCoupling {
         ribbon.trim(arc - reach, arc + reach);
     }
 
-    // Gives every car in one unbroken run of the train a shared speed along its own rails, and
-    // corrects their spacing on their positions.
-    private static void settle(List<AbstractMinecart> cars, List<RailPath> links) {
-        if (cars.size() < 2) {
-            return;
-        }
-
-        Vec3[] forward = new Vec3[cars.size()];
-        forward[0] = links.getFirst().fromForward();
-
-        for (int i = 1; i < cars.size(); i++) {
-            forward[i] = links.get(i - 1).toForward();
-        }
-
-        double speed = 0.0;
-        int bends = 0;
-
-        for (int i = 0; i < cars.size(); i++) {
-            speed += signedSpeed(cars.get(i), forward[i]);
-            bends += cars.get(i).minecarttweaks$bendsEntered();
-        }
-
-        speed *= Math.max(0.0, 1.0 - BEND_LOSS * bends) / cars.size();
-
-        // Closing a link means moving the car behind it forward by the slack in it, on top of
-        // wherever the car ahead is going, so one pass down the train places all of them.
-        double[] shift = new double[cars.size()];
-        double drift = 0.0;
-
-        for (int i = 1; i < cars.size(); i++) {
-            shift[i] = shift[i - 1] + slack(links.get(i - 1));
-            drift += shift[i];
-        }
-
-        // Measured from the head, closing up a train walks all of it forward. Taking the mean back
-        // off leaves the same spacing with the train where it already was.
-        drift /= cars.size();
-
-        for (int i = 0; i < cars.size(); i++) {
-            AbstractMinecart car = cars.get(i);
-            double reach = car.getBbWidth() * MAX_SHIFT;
-
-            car.setDeltaMovement(forward[i].scale(speed));
-            car.setPos(car.position().add(RailPath.alongTrack(car, forward[i]).scale(
-                    Math.clamp((shift[i] - drift) * SETTLE, -reach, reach))));
-        }
-    }
-
     // One car's rider asking to move. Client intent rather than the player's own velocity, which a
     // passenger does not have — it is the same field vanilla's own nudge reads.
     private static boolean steering(AbstractMinecart cart) {
         return cart.getFirstPassenger() instanceof ServerPlayer player
                 && player.getLastClientMoveIntent().lengthSqr() > 0.0;
-    }
-
-    // Halfway round a corner the exit a car leaves by is square to the way it is currently moving,
-    // so its speed is its own movement's length with a sign rather than a projection onto that
-    // exit, which would collapse to zero and throw the train's speed away every corner.
-    private static double signedSpeed(AbstractMinecart car, Vec3 forward) {
-        Vec3 movement = car.getDeltaMovement().horizontal();
-        double speed = movement.length();
-
-        if (speed < EPSILON) {
-            return 0.0;
-        }
-
-        Vec3 taken = RailPath.exitTaken(car);
-
-        // An exact match, since the other exit of a corner scores zero against this one and a car
-        // heading down it is going the other way round the bend, not forwards.
-        boolean onward = taken == null
-                ? movement.dot(forward) >= 0.0
-                : taken.dot(forward) > 0.5;
-
-        return onward ? speed : -speed;
-    }
-
-    // How much further apart than the target spacing two linked carts are along the rails.
-    private static double slack(RailPath link) {
-        return link.distance() - TARGET_SPACING;
     }
 }

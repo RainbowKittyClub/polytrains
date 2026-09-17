@@ -127,22 +127,6 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         return nearest;
     }
 
-    /**
-     * Which of the two exits of its own block a cart's movement is heading for, by the same rule
-     * vanilla uses to steer it, or null if it is stopped or off the track.
-     */
-    public static @Nullable Vec3 exitTaken(AbstractMinecart cart) {
-        Level level = cart.level();
-        BlockPos pos = cart.getCurrentBlockPosOrRailBelow();
-        Vec3 movement = cart.getDeltaMovement().horizontal();
-
-        if (!railAt(level, pos) || movement.lengthSqr() < EPSILON * EPSILON) {
-            return null;
-        }
-
-        BlockPos taken = exitTaken(neighbours(level, pos, movement), pos, movement);
-        return direction(pos, taken);
-    }
 
     /**
      * The turn and grade of the rail {@code cart} stands on. Answered together because both are
@@ -199,39 +183,6 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         }
 
         return exitTaken(neighbours(level, pos, movement), pos, movement);
-    }
-
-    /**
-     * {@code forward} given the rise of the rail {@code cart} stands on, so that moving a cart
-     * along it climbs a slope rather than travelling into the hillside and off the track.
-     */
-    public static Vec3 alongTrack(AbstractMinecart cart, Vec3 forward) {
-        Level level = cart.level();
-        BlockPos pos = cart.getCurrentBlockPosOrRailBelow();
-
-        if (!railAt(level, pos)) {
-            return forward;
-        }
-
-        BlockState state = level.getBlockState(pos);
-        var exits = AbstractMinecart.exits(shape(state, forward, Switches.LAID));
-        Vec3i first = exits.getFirst();
-        Vec3i second = exits.getSecond();
-        boolean outIsFirst = towards(first, forward) >= towards(second, forward);
-        Vec3i out = outIsFirst ? first : second;
-        Vec3i in = outIsFirst ? second : first;
-
-        // The chord between the block's two edge midpoints rather than the exit itself: through a
-        // corner the two are 45 degrees apart, so shifting a car along its exit walks it sideways
-        // off the rail line and into the next block, to be snapped onto whatever it lands on.
-        Vec3 chord = new Vec3(out.getX() - in.getX(), 0.0, out.getZ() - in.getZ());
-        Vec3 flat = chord.lengthSqr() < EPSILON ? forward : chord.normalize();
-
-        if (first.getY() == second.getY()) {
-            return flat;
-        }
-
-        return flat.add(0.0, out.getY() == 0 ? 1.0 : -1.0, 0.0);
     }
 
     /**

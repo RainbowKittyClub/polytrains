@@ -68,10 +68,10 @@ public final class Train {
     // How the last seating attempt went, so only a change of answer is worth reporting.
     private TrainPlacer.@Nullable Bail bail;
 
-    // Consecutive ticks each link has been stretched past saving, indexed by the car behind it.
-    // Allocated with the train and dropped with it, so a train rebuilt around a link change starts
-    // its links forgiven rather than inheriting a count taken against a different shape.
-    private int @Nullable [] stretch;
+    // Consecutive ticks the ribbon has failed to place each car. Allocated with the train and
+    // dropped with it, so a train rebuilt around a link change starts forgiven rather than
+    // inheriting a count taken against a different shape.
+    private int @Nullable [] faults;
 
     // Starts checked on the tick it was built, so its first use does not re-sweep its own cars.
     private Train(List<AbstractMinecart> cars, boolean closed, long tick,
@@ -162,22 +162,29 @@ public final class Train {
     }
 
     /**
-     * Records whether the link ahead of car {@code index} is stretched past saving this tick, and
-     * answers whether it has been for {@code ticks} in a row.
+     * Records that the ribbon could not place car {@code car} this tick — or, with a negative
+     * {@code car}, that it placed all of them — and answers whether the same car has failed for
+     * {@code ticks} in a row.
      *
-     * <p>A sever is irreversible and the distance behind it is not: a car crossing a junction or
-     * catching air loses its rail path for a tick or two, and the settling that would have closed
-     * the gap is the very thing suspended while that is true. Deciding on one tick's reading breaks
-     * trains that were never in trouble, so the reading has to hold before it costs anything.
+     * <p>A sever is irreversible and the fault behind it is not: a car crossing a junction,
+     * catching air, or waiting on a ribbon that has not grown to reach it is unplaceable for a
+     * tick or two and then fine. Deciding on one tick's reading breaks trains that were never in
+     * trouble, so the reading has to hold before it costs anything. Every other car is cleared by
+     * the same call, so a fault that moves from car to car never accumulates anywhere.
      */
-    public boolean overstretched(int index, boolean over, int ticks) {
-        if (stretch == null || stretch.length != cars.size()) {
-            stretch = new int[cars.size()];
+    public boolean faultHeld(int car, int ticks) {
+        if (faults == null || faults.length != cars.size()) {
+            faults = new int[cars.size()];
         }
 
-        stretch[index] = over ? stretch[index] + 1 : 0;
+        boolean held = false;
 
-        return stretch[index] >= ticks;
+        for (int i = 0; i < faults.length; i++) {
+            faults[i] = i == car ? faults[i] + 1 : 0;
+            held |= i == car && faults[i] >= ticks;
+        }
+
+        return held;
     }
 
     /**
@@ -227,10 +234,11 @@ public final class Train {
     }
 
     /**
-     * The one car that settles this train: its head, or the lowest-UUID car of a train that closes
-     * on itself and so has no head. Exactly one car of any train answers itself here.
+     * The one car that speaks for this train when it has no leading end: its head, or the
+     * lowest-UUID car of a train that closes on itself and so has no head. Exactly one car of any
+     * train answers itself here, which is what keeps a per-car tick from asking once per car.
      */
-    public @Nullable AbstractMinecart settler() {
+    public @Nullable AbstractMinecart anchor() {
         return closed ? lowest(cars) : cars.getFirst();
     }
 
