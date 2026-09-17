@@ -27,6 +27,10 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     // Below this a length or a dot product is treated as zero.
     private static final double EPSILON = 1.0E-5;
 
+    // The least track one rail block can be worth: a corner, the chord between two adjacent edge
+    // midpoints. Bounds how many blocks a given run of track can have been spent over.
+    private static final double MIN_BLOCK_SPAN = Math.sqrt(0.5);
+
     // The four directions one rail can lead to another in.
     private static final Vec3 EAST = new Vec3(1.0, 0.0, 0.0);
 
@@ -220,7 +224,12 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         BlockPos current = first;
         double between = 0.0;
 
-        for (int steps = 1; steps <= limit + 1; steps++) {
+        // Bounded by the track walked, not the blocks it took: a corner is worth seven tenths of a
+        // block, so spending the limit one block per step left a link round a bend barely two
+        // thirds the reach a straight one got. The cap only guards a circuit short enough to loop.
+        int maxSteps = (int) Math.ceil(limit / MIN_BLOCK_SPAN) + 1;
+
+        for (int steps = 1; steps <= maxSteps && between <= limit; steps++) {
             if (current.equals(goal)) {
                 Vec3 toEntry = direction(current, previous);
 
