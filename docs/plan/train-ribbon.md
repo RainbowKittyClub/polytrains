@@ -533,8 +533,14 @@ downhill no faster than a single cart.
 The rule keeps its name, default and meaning. It reads as the speed at which this flat loss matches
 vanilla's proportional drag on an empty cart, so below that speed the flat term is the larger of the
 two — which is what "the speed below which rolling friction is laid on harder" always said. It is
-capped at half the pull gravity gives on a slope, because the rule's range reaches values that would
-otherwise exceed gravity and stop a cart rolling downhill at all.
+capped at a quarter of the pull gravity gives on a slope, because the rule's range runs to a thousand
+and most of that, taken at face value, would exceed gravity and stop a cart rolling downhill at all.
+
+Measured against the old model at the same rule value of 3: downhill from rest 0.84 blocks per second
+becomes 4.53, a stop from one metre per second takes about a second either way, and a *ridden* cart's
+stop from that speed falls from most of a minute to a second and a quarter. The cap binds for every
+value above two, so a saved world keeps its 3 and needs no migration; 1 is the one gentler setting,
+worth 5.09 downhill, and 0 still means vanilla's friction alone and a cart that never quite stops.
 
 **What the car pitch should be.** Settled at 1.5, by watching a train on the test track after S5.
 The 2.0 it had was tuned as a correction target — the value a spacing error was measured against —
