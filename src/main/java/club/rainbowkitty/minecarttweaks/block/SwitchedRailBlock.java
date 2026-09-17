@@ -107,6 +107,39 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
     }
 
     /**
+     * The run a cart approaching along {@code travel} is actually given across this switch: the
+     * straight run for one entering by the open end of the forward axis, the resting branch
+     * otherwise. What {@link #steer} lays down as the cart arrives, so anything asking where the
+     * rails would send a cart reads the same answer the cart will get.
+     */
+    public static RailShape shapeFor(BlockState state, Direction travel) {
+        Direction facing = state.getValue(FACING);
+        boolean forward = divergesForward(state);
+
+        return travel.getOpposite() == openEnd(facing, forward)
+                ? straightShape(facing)
+                : restingShape(facing, forward);
+    }
+
+    /**
+     * The run across this switch that a walk over the track should read for an approach along
+     * {@code movement}, taken without regard to which way the switch is thrown.
+     *
+     * <p>A switch joins three ends and a {@link RailShape} holds two, so the pair it is sitting at
+     * says which way a car leaves rather than whether the rails connect. A walk asking whether two
+     * carts are on one run of track wants the track: entering along the switch's own axis runs
+     * straight across however it is thrown, and from the branch edge there is only the curve.
+     */
+    public static RailShape linkShape(BlockState state, Vec3 movement) {
+        Direction facing = state.getValue(FACING);
+        Direction travel = Direction.getApproximateNearest(movement.x(), 0.0, movement.z());
+
+        return travel.getAxis() == facing.getAxis()
+                ? straightShape(facing)
+                : curve(rightEdge(facing), facing);
+    }
+
+    /**
      * Orients any switch {@code cart} is riding or about to roll onto, so vanilla movement reads
      * the shape this switch's facing, signal and the car's approach call for.
      */
@@ -218,15 +251,11 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
             return;
         }
 
-        Direction facing = state.getValue(FACING);
-        boolean forward = divergesForward(state);
-        RailShape resting = restingShape(facing, forward);
+        RailShape resting = restingShape(state.getValue(FACING), divergesForward(state));
 
         // A car entering from the open end of the forward axis runs straight across; the branch
         // and the joined half both follow the resting curve.
-        RailShape wanted = travel.getOpposite() == openEnd(facing, forward)
-                ? straightShape(facing)
-                : resting;
+        RailShape wanted = shapeFor(state, travel);
 
         if (state.getValue(SHAPE) != wanted) {
             level.setBlock(pos, state.setValue(SHAPE, wanted), Block.UPDATE_CLIENTS);
