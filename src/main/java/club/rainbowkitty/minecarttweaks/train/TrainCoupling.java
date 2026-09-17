@@ -261,6 +261,22 @@ public final class TrainCoupling {
     }
 
     /**
+     * How fast {@code cart}'s train is really travelling, in blocks per tick. Read off the car that
+     * leads it, which is the one vanilla still drives along the rails — every other car's movement
+     * is written by the placer from this same figure, so asking one of those is reading back what
+     * was written rather than measuring anything.
+     */
+    public static double drivenSpeed(AbstractMinecart cart) {
+        if (!cart.hasLink() || !MTGameRules.trainsEnabled(cart.level())) {
+            return cart.getDeltaMovement().length();
+        }
+
+        AbstractMinecart leader = Train.of(cart).leader();
+
+        return (leader == null ? cart : leader).getDeltaMovement().length();
+    }
+
+    /**
      * The mass of {@code cart}'s train, counted in cars. A cart on its own is a train of one, and a
      * loaded car weighs what an empty one does — every threshold measured against this is expressed
      * in these units, so the unit cannot change without retuning all of them together.

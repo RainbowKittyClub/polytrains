@@ -193,15 +193,18 @@ public enum CartInteraction {
     // Whether the cart owns the collision rather than yielding to it: an engine at any speed, and
     // any cart at all once it is moving fast enough to injure.
     private static boolean runsOver(AbstractMinecart cart, Entity other) {
-        double speed = cart.getDeltaMovement().lengthSqr();
+        // The train's own speed, not this car's. A placed car's movement is written from the
+        // leader's, so reading it here would have each car answer from a copy — and a car whose
+        // copy is stale answers differently from its neighbours, leaving a train that is solid at
+        // one end and walked through at the other.
+        double speed = TrainCoupling.drivenSpeed(cart);
 
         // Speed first: underPower walks the train, and a cart about to hit something is almost
-        // always over the bar anyway. Power only counts while the cart is actually moving — it
+        // always over the bar anyway. Power only counts while the train is actually moving — it
         // covers a laden train pulling away too slowly to clear the bar, not a standing one. A
         // burning furnace cart held against a buffer is under power indefinitely, and because the
         // drive is shared every car of its train would answer yes and let players walk through it.
-        if (speed > HURTING_SPEED * HURTING_SPEED
-                || (speed > STANDING * STANDING && TrainCoupling.underPower(cart))) {
+        if (speed > HURTING_SPEED || (speed > STANDING && TrainCoupling.underPower(cart))) {
             return true;
         }
 
