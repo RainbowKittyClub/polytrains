@@ -35,7 +35,5 @@
   "gamerule.minecarttweaks.cart_pickup_speed": "Cart Pickup Speed",
   "gamerule.minecarttweaks.cart_pickup_speed.description": "Speed below which an empty cart picks a mob up instead of running it down, in blocks per second",
   "gamerule.minecarttweaks.furnace_max_burn_time": "Furnace Max Burn Time",
-  "gamerule.minecarttweaks.furnace_max_burn_time.description": "Longest a furnace minecart can run, in ticks",
-  "gamerule.minecarttweaks.furnace_minecart_speed": "Furnace Minecart Speed",
-  "gamerule.minecarttweaks.furnace_minecart_speed.description": "Top speed of a furnace minecart, in metres per second"
+  "gamerule.minecarttweaks.furnace_max_burn_time.description": "Longest a furnace minecart can run, in ticks"
 }

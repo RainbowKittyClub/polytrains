@@ -100,18 +100,14 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         return minecarttweaks$driveAcceleration() > 0 ? push : Vec3.ZERO;
     }
 
-    // Undoes vanilla's halving, which leaves a furnace cart slower than what it tows. Only under
-    // minecart_improvements: legacy rail movement derails past its own 0.4 ceiling.
+    // Undoes vanilla's halving, which would leave a furnace cart slower than the carts it tows and
+    // so make the engine the limit on its own train. The ceiling itself is max_minecart_speed, as
+    // it is for every other cart — raising the engine past what the world allows anything else is
+    // what a rule of its own used to do, and it made that rule a lie.
     @Inject(method = "getMaxSpeed", at = @At("RETURN"), cancellable = true)
     private void minecarttweaks$furnaceSpeed(
             ServerLevel level, CallbackInfoReturnable<Double> cir) {
-        if (fuel <= 0 || !useExperimentalMovement(level)) {
-            cir.setReturnValue(super.getMaxSpeed(level));
-            return;
-        }
-
-        double blocksPerSecond = level.getGameRules().get(MTGameRules.FURNACE_MINECART_SPEED);
-        cir.setReturnValue(blocksPerSecond / 20.0 * (isInWater() ? 0.5 : 1.0));
+        cir.setReturnValue(super.getMaxSpeed(level));
     }
 
     // Vanilla's powered branch decays the cart's own speed and re-adds the impulse each tick, so
