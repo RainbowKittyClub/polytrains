@@ -316,14 +316,15 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     }
 
     // Vanilla crosses several rail blocks a tick and reads each one's shape off the world as it
-    // reaches it, so a junction laid only under the cart at the start of the tick is laid for the
+    // reaches it, so a rail laid only under the cart at the start of the tick is laid for the
     // first of them and none of the rest. Laid one block ahead of the cart instead, on every step
-    // it takes, so that each junction is already pointing the cart's way before it is read.
+    // it takes, so that each junction and switch is set the cart's way before it is read.
     @Inject(method = "makeStepAlongTrack", at = @At("HEAD"))
     private void minecarttweaks$steerAhead(
             BlockPos pos, RailShape shape, double budget, CallbackInfoReturnable<Double> cir) {
         if (level() instanceof ServerLevel serverLevel) {
             JunctionRailBlock.steerAhead(serverLevel, minecarttweaks$self(), pos);
+            SwitchedRailBlock.steerAhead(serverLevel, minecarttweaks$self(), pos);
         }
     }
 

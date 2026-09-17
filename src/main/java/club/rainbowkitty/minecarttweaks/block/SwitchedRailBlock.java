@@ -38,6 +38,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
+import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /**
@@ -145,8 +146,8 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
     }
 
     /**
-     * Orients any switch {@code cart} is riding or about to roll onto, so vanilla movement reads
-     * the shape this switch's facing, signal and the car's approach call for.
+     * Orients the switch {@code cart} is riding, so vanilla movement reads the shape this switch's
+     * facing, signal and the car's approach call for.
      */
     public static void steer(ServerLevel level, AbstractMinecart cart) {
         Vec3 movement = cart.getDeltaMovement();
@@ -155,10 +156,32 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         }
 
         Direction travel = Direction.getApproximateNearest(movement.x(), 0.0, movement.z());
-        BlockPos on = cart.getCurrentBlockPosOrRailBelow();
 
-        orient(level, on, travel, cart);
-        orient(level, on.relative(travel), travel, cart);
+        orient(level, cart.getCurrentBlockPosOrRailBelow(), travel, cart);
+    }
+
+    /**
+     * Orients the switch {@code cart} is about to cross from {@code pos}, so that it is already
+     * laid for this car's approach by the time vanilla reads it.
+     *
+     * <p>Vanilla reads each rail block's shape as it reaches it, several of them to a tick, so one
+     * switch laid per tick covers the first and none of the rest. The approach is taken from the
+     * step onto the block rather than the car's heading, which vanilla turns onto the rail only
+     * once the step is under way — so a switch just past a bend used to be read the pre-bend way.
+     */
+    public static void steerAhead(ServerLevel level, AbstractMinecart cart, BlockPos pos) {
+        BlockPos next = RailPath.ahead(level, pos, cart.getDeltaMovement());
+
+        if (next == null) {
+            return;
+        }
+
+        int east = next.getX() - pos.getX();
+        int south = next.getZ() - pos.getZ();
+
+        if (east != 0 || south != 0) {
+            orient(level, next, Direction.getApproximateNearest(east, 0.0, south), cart);
+        }
     }
 
     @Override
