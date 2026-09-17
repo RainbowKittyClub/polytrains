@@ -190,6 +190,18 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     }
 
     /**
+     * The rail block a cart leaves the block at {@code pos} by, travelling {@code movement}, or
+     * null where {@code pos} is not a rail or the cart is not going anywhere.
+     */
+    public static @Nullable BlockPos ahead(Level level, BlockPos pos, Vec3 movement) {
+        if (!railAt(level, pos) || movement.horizontalDistanceSqr() <= 0.0) {
+            return null;
+        }
+
+        return exitTaken(neighbours(level, pos, movement), pos, movement);
+    }
+
+    /**
      * {@code forward} given the rise of the rail {@code cart} stands on, so that moving a cart
      * along it climbs a slope rather than travelling into the hillside and off the track.
      */

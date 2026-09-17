@@ -23,6 +23,7 @@ import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
+import club.rainbowkitty.minecarttweaks.rail.RailPath;
 
 /** A rail block that allows carts to pass through in both axes without turning. */
 public class JunctionRailBlock extends BaseRailBlock implements PolymerTexturedBlock {
@@ -62,13 +63,35 @@ public class JunctionRailBlock extends BaseRailBlock implements PolymerTexturedB
      * not standing on one.
      */
     public static void steer(Level level, AbstractMinecart cart) {
-        Vec3 movement = cart.getDeltaMovement();
+        lay(level, cart.getCurrentBlockPosOrRailBelow(), cart.getDeltaMovement());
+    }
 
+    /**
+     * Lays the junction rail {@code cart} is about to cross from {@code pos}, so that it is already
+     * pointing the right way when the cart gets there.
+     *
+     * <p>Vanilla re-reads the shape off the blockstate once per rail block crossed, inside a loop
+     * that runs several times in a tick, while a cart is only ever standing on one block when a
+     * tick begins. Laying that one is enough at walking pace and nothing like enough at speed —
+     * every junction crossed after the first is read however it was last left, and turns the cart.
+     * A train used to paper over this, each car laying the block it stood on, until the placer left
+     * only the leading car reading rails at all.
+     */
+    public static void steerAhead(Level level, AbstractMinecart cart, BlockPos pos) {
+        Vec3 movement = cart.getDeltaMovement();
+        BlockPos next = RailPath.ahead(level, pos, movement);
+
+        if (next != null) {
+            lay(level, next, movement);
+        }
+    }
+
+    // Points the junction at pos along movement, if that is what is there and it is not already.
+    private static void lay(Level level, BlockPos pos, Vec3 movement) {
         if (movement.horizontalDistanceSqr() <= 0) {
             return;
         }
 
-        BlockPos pos = cart.getCurrentBlockPosOrRailBelow();
         BlockState state = level.getBlockState(pos);
 
         if (!(state.getBlock() instanceof JunctionRailBlock)) {

@@ -315,6 +315,18 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         TrainCoupling.recordTrack(minecarttweaks$self(), pos);
     }
 
+    // Vanilla crosses several rail blocks a tick and reads each one's shape off the world as it
+    // reaches it, so a junction laid only under the cart at the start of the tick is laid for the
+    // first of them and none of the rest. Laid one block ahead of the cart instead, on every step
+    // it takes, so that each junction is already pointing the cart's way before it is read.
+    @Inject(method = "makeStepAlongTrack", at = @At("HEAD"))
+    private void minecarttweaks$steerAhead(
+            BlockPos pos, RailShape shape, double budget, CallbackInfoReturnable<Double> cir) {
+        if (level() instanceof ServerLevel serverLevel) {
+            JunctionRailBlock.steerAhead(serverLevel, minecarttweaks$self(), pos);
+        }
+    }
+
     // A towed cart is under power as much as the cart towing it, so it takes the train's
     // acceleration and drops the same rolling friction.
     @Inject(method = "applyNaturalSlowdown", at = @At("HEAD"), cancellable = true)
