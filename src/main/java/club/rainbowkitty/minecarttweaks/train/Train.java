@@ -40,6 +40,10 @@ public final class Train {
     // ribbon, so a weak reading holds rather than guesses.
     private static final double LEADER_HOLD = 0.35;
 
+    // Consecutive ticks a confident reading must name the other end before the train is relaid onto
+    // it. A reversal names it for every tick after it; a blip names it once.
+    private static final int LEADER_FLIP_TICKS = 3;
+
     private final List<AbstractMinecart> cars;
     private final boolean closed;
 
@@ -58,6 +62,10 @@ public final class Train {
     // in one tick disagreeing would record from both ends of the train at once.
     private @Nullable AbstractMinecart leader;
     private long leaderTick = Long.MIN_VALUE;
+
+    // The other end, while it is being argued for but not yet granted.
+    private @Nullable AbstractMinecart flipTo;
+    private int flipHeld;
 
     // Which way round this train lies on its ribbon: +1 when its head sits at the higher arc, and
     // zero until that has been settled. Owned rather than measured, because measuring it means
@@ -161,7 +169,7 @@ public final class Train {
             AbstractMinecart was = leader;
 
             leaderTick = tick;
-            leader = decideLeader();
+            leader = settledLeader();
 
             // Which end leads decides what the ribbon records and which way the cars are laid, so
             // a train that changes its mind about that is a train about to look very strange.
@@ -270,6 +278,25 @@ public final class Train {
         int index = cars.indexOf(car);
 
         return index > 0 ? cars.get(index - 1) : null;
+    }
+
+    // Holds the end that leads against a reading that has not stood for long. The tick a ribbon
+    // resets, the placer bails and every car is moved by vanilla instead, so one car's velocity can
+    // confidently name the wrong end for exactly as long as it takes to lay the train backwards.
+    private @Nullable AbstractMinecart settledLeader() {
+        AbstractMinecart read = decideLeader();
+
+        if (read == null || leader == null || read == leader || !cars.contains(leader)) {
+            flipHeld = 0;
+            return read;
+        }
+
+        if (read != flipTo) {
+            flipTo = read;
+            flipHeld = 0;
+        }
+
+        return ++flipHeld >= LEADER_FLIP_TICKS ? read : leader;
     }
 
     // Which end the train is running towards, judged by how far the head's heading agrees with the
