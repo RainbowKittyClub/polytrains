@@ -140,7 +140,7 @@ public final class Train {
     /**
      * The end car this train is travelling towards, or null if it closes on itself or has never
      * moved. Not the same thing as its head: head is a fixed identity that survives a reversal, and
-     * a train reverses routinely — a bumper stop, a reversed furnace cart, a shove from behind.
+     * a train reverses routinely — a stall part-way up a grade, a reversed furnace cart, a shove.
      *
      * <p>Sticky in both directions. The answer is held for the tick, and an ambiguous reading keeps
      * the end that was already leading instead of dropping to null or flipping, because every
