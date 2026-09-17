@@ -4,7 +4,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import com.mojang.logging.LogUtils;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
 
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.phys.Vec3;
@@ -21,6 +23,8 @@ import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
  * ({@code MTAttachments.LINK}), and a train is rebuilt from them on the first tick after a load.
  */
 public final class Train {
+
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     // A train cannot outgrow max_train_length, but a link graph corrupted by a half-written save
     // could; the walks are bounded so a bad one cannot hang the server tick.
@@ -154,8 +158,16 @@ public final class Train {
         long tick = cars.getFirst().level().getGameTime();
 
         if (tick != leaderTick) {
+            AbstractMinecart was = leader;
+
             leaderTick = tick;
             leader = decideLeader();
+
+            // Which end leads decides what the ribbon records and which way the cars are laid, so
+            // a train that changes its mind about that is a train about to look very strange.
+            if (was != null && leader != null && was != leader && LOGGER.isDebugEnabled()) {
+                LOGGER.debug("train of {} changed leading end, order {}", cars.size(), order());
+            }
         }
 
         return leader;
@@ -214,6 +226,10 @@ public final class Train {
 
     /** Settles which way round this train lies, for as long as the ribbon keeps its arc frame. */
     public void setOrder(int sign) {
+        if (order != 0 && order != sign && LOGGER.isDebugEnabled()) {
+            LOGGER.debug("train of {} now lies {} on its ribbon, was {}", cars.size(), sign, order);
+        }
+
         order = sign;
         orderAt = ribbon.resets();
     }
