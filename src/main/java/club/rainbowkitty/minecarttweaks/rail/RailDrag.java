@@ -13,8 +13,20 @@ import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /**
- * The extra rolling friction this mod lays on a slow cart, over whatever vanilla's own slowdown
- * left of its speed.
+ * The rolling resistance this mod lays on a cart, over whatever vanilla's own slowdown left of its
+ * speed.
+ *
+ * <p>A flat loss of speed per tick rather than another fraction of it. Vanilla's friction is purely
+ * proportional, so it never reaches zero and a cart crawls on long after it looks stopped — worst
+ * with someone aboard, where the fraction is a three-hundredth a tick. A constant loss reaches zero
+ * in finite time by itself, and, being constant, cannot do what raising that fraction as the speed
+ * fell used to: the product of two proportional terms has two equilibria on a slope, and a cart
+ * starting from rest was caught at the slower of them, a little over one metre per second, with no
+ * way to climb out to the speed the grade should have given it.
+ *
+ * <p>Nothing here scales with the length of a train, and that is not an omission. Resistance is per
+ * car and so is mass, so a long train coasts like a short one — the same reason a long train rolls
+ * downhill no faster than a single cart.
  *
  * <p>A class of its own rather than part of the mixin that asks for it, because vanilla overrides
  * that slowdown per kind of cart and not every override calls the one this used to hang off.
@@ -23,14 +35,19 @@ import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
  */
 public final class RailDrag {
 
-    // Speed at which a cart is stopped outright, as a fraction of its own width per tick — slow
-    // enough that it would take ten seconds to cover its own length.
-    private static final double CRAWL = 1.0 / (20.0 * 10.0);
+    // Vanilla's own minimum per-tick pull on a slope (NewMinecartBehavior#calculateSlopeSpeed).
+    private static final double SLOPE_PULL = 0.0078125;
 
-    // Of its speed a cart keeps per tick at a dead standstill, which the extra low-speed drag eases
-    // back to one at rail_drag_speed. Vanilla's own figure is 0.975 empty and 0.997 ridden, so this
-    // shortens a laden cart's last few blocks from most of a minute to about a second.
-    private static final double SLOW_DRAG = 0.8;
+    // Of the slope pull, the most rolling resistance is ever allowed to be. Gravity has to win on a
+    // slope by a clear margin or a cart barely rolls down one: at a quarter an empty cart settles
+    // at about 4.5 blocks a second against the 6.1 it would reach with no resistance at all. The
+    // cap binds for every rail_drag_speed above two, which is the point — the rule's range runs to
+    // a thousand, and taken at face value most of it would stop a cart rolling downhill at all.
+    private static final double ROLL_CEILING = 0.25;
+
+    // The fraction of its speed vanilla takes from an empty cart each tick, which is what
+    // rail_drag_speed's own figure is read against (NewMinecartBehavior#getSlowdownFactor).
+    private static final double EMPTY_DRAG = 0.025;
 
     // Vanilla's own figures for a container cart, which it varies by how full the cart is: the
     // comparator reading, nought to fifteen, is subtracted from full and each step back is worth
@@ -48,15 +65,12 @@ public final class RailDrag {
     }
 
     /**
-     * {@code slowed} with this mod's low-speed friction taken off it, or {@code slowed} unchanged
-     * where none is owed.
+     * {@code movement} with a train's shared friction and this mod's rolling resistance taken off
+     * it, or as little of either as is owed.
      *
-     * <p>Vanilla's rolling friction takes a fixed fraction of the speed, so the last of it is never
-     * quite spent and a cart crawls on long after it looks stopped — worst with someone aboard,
-     * where that fraction is a three-hundredth a tick. Below {@code rail_drag_speed} the fraction
-     * is raised as the speed falls, and below a crawl what is left is dropped outright. Neither
-     * applies while something is still driving the cart — an engine, or a rider holding a
-     * direction, whose nudge is itself well under the crawl and would be swallowed here.
+     * <p>Resistance is not laid on while something is still driving the cart — an engine, or a
+     * rider holding a direction, whose nudge is a thousandth of a block a tick and would be taken
+     * off again here before it could accumulate into anything to start on.
      */
     public static Vec3 slowed(AbstractMinecart cart, Vec3 movement) {
         Vec3 slowed = shared(cart, movement);
@@ -65,20 +79,22 @@ public final class RailDrag {
             return slowed;
         }
 
-        // Scaled by length: a train moves slower under the same push, and one fixed floor swallows
-        // its opening ticks before they accumulate into anything it could start on.
-        double crawl = cart.getBbWidth() * CRAWL / TrainCoupling.mass(cart);
         double speed = slowed.horizontalDistance();
+        double roll = roll(cart);
 
-        if (speed < crawl) {
+        if (roll <= 0.0 || speed <= 0.0) {
+            return slowed;
+        }
+
+        // The whole of what is left, where what is left is less than one tick's worth: a flat loss
+        // is what brings a cart to a dead stop instead of forever approaching one.
+        if (speed <= roll) {
             return new Vec3(0.0, slowed.y(), 0.0);
         }
 
-        double drag = drag(cart, speed);
+        double left = (speed - roll) / speed;
 
-        return drag < 1.0
-                ? new Vec3(slowed.x() * drag, slowed.y(), slowed.z() * drag)
-                : slowed;
+        return new Vec3(slowed.x() * left, slowed.y(), slowed.z() * left);
     }
 
     /**
@@ -150,19 +166,18 @@ public final class RailDrag {
         return FULL_SIGNAL - AbstractContainerMenu.getRedstoneSignalFromContainer(container);
     }
 
-    // How much of its speed a cart under rail_drag_speed keeps: all of it at the rule's own speed,
-    // falling to SLOW_DRAG at a standstill. One wherever the rule does not reach, client included.
-    private static double drag(AbstractMinecart cart, double speed) {
+    // How much speed rolling resistance takes off a cart in one tick, in blocks. rail_drag_speed
+    // names the speed at which that loss matches vanilla's proportional drag on an empty cart, so
+    // below that speed this is the larger of the two — which is what the rule has always said, by
+    // a mechanism that now stops a cart rather than slowing its approach to a stop. None of it
+    // wherever the rule does not reach, the client included.
+    private static double roll(AbstractMinecart cart) {
         if (!(cart.level() instanceof ServerLevel serverLevel)) {
-            return 1.0;
+            return 0.0;
         }
 
         double until = serverLevel.getGameRules().get(MTGameRules.RAIL_DRAG_SPEED) / 20.0;
 
-        if (until <= 0.0 || speed >= until) {
-            return 1.0;
-        }
-
-        return SLOW_DRAG + (1.0 - SLOW_DRAG) * (speed / until);
+        return Math.min(until * EMPTY_DRAG, SLOPE_PULL * ROLL_CEILING);
     }
 }

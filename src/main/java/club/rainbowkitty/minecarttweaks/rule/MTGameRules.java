@@ -92,6 +92,14 @@ public final class MTGameRules {
      * vanilla's alone. Vanilla takes a fixed fraction of the speed each tick — a fortieth of an
      * empty cart's, but only a three-hundredth of a ridden one's — so a cart with someone aboard
      * rolls on for the better part of a minute after it looks stopped.
+     *
+     * <p>Read as the speed at which this mod's flat rolling resistance matches that fraction on an
+     * empty cart: below it the flat term is the larger of the two, and being flat it brings a cart
+     * to a dead stop rather than forever halving what is left. {@code RailDrag} caps it at a
+     * quarter of the pull gravity gives on a slope, so in practice this is a three-way choice —
+     * zero for vanilla's friction alone, one for a gentler stop, and anything above two for the
+     * firmest the cap allows. Without that cap most of this range would stop a cart rolling
+     * downhill at all.
      */
     public static final GameRule<Integer> RAIL_DRAG_SPEED =
             registerInteger("rail_drag_speed", 3, 0, MAX_SPEED);
