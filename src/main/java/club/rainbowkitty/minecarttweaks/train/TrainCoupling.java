@@ -285,6 +285,34 @@ public final class TrainCoupling {
     }
 
     /**
+     * The car of {@code cart}'s train whose movement is an input rather than an output — the one
+     * vanilla still drives along the rails, and so the only one a shove can be laid on.
+     *
+     * <p>The mirror of {@link #drivenSpeed}. Every other car's movement is written by the placer
+     * from the leading car's, so a shove landing on one of those is overwritten before it has
+     * moved anything: leaning on a train did nothing unless that end happened to be the one
+     * leading, and which end that is outlives a reversal.
+     */
+    public static AbstractMinecart driven(AbstractMinecart cart) {
+        if (!cart.hasLink() || !MTGameRules.trainsEnabled(cart.level())) {
+            return cart;
+        }
+
+        Train train = Train.of(cart);
+        AbstractMinecart leader = train.leader();
+
+        if (leader != null) {
+            return leader;
+        }
+
+        // A train that has never moved has no leading end to read. Its anchor is the one car every
+        // car of it agrees on, so a shove at either end still arrives somewhere that can carry it.
+        AbstractMinecart anchor = train.anchor();
+
+        return anchor == null ? cart : anchor;
+    }
+
+    /**
      * Whether any train is lying across the rail at {@code pos} — not merely whether a cart is
      * inside that block this instant.
      *

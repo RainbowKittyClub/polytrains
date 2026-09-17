@@ -77,8 +77,16 @@ public abstract class EntityMixin {
         }
 
         double share = 1.0 / TrainCoupling.mass(cart);
-        cart.setDeltaMovement(
-                cart.getDeltaMovement().add(xa * share, ya * share, za * share));
-        needsSync = true;
+
+        // Onto the car vanilla drives rather than the one leaned on: a placed car's movement is
+        // written by the placer, so a shove left on it is overwritten before it moves anything.
+        AbstractMinecart driven = TrainCoupling.driven(cart);
+
+        driven.setDeltaMovement(
+                driven.getDeltaMovement().add(xa * share, ya * share, za * share));
+
+        if (driven == (Object) this) {
+            needsSync = true;
+        }
     }
 }
