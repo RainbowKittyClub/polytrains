@@ -8,7 +8,6 @@ import org.slf4j.Logger;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 import net.minecraft.world.level.block.BaseRailBlock;
@@ -19,6 +18,7 @@ import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
 import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
+import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 
 /**
  * Seats a train's trailing cars on the track its leading car recorded, instead of correcting the
@@ -47,7 +47,10 @@ public final class TrainPlacer {
     // NewMinecartBehavior.setRotation, where the band is 175 to 185 — one-sided here because a
     // wrapped difference never exceeds 180 in the first place.
     private static final float HALF_TURN = 180.0F;
-    private static final float FLIP_SLACK = 5.0F;
+
+    // Below this the ground just covered runs against the end the car is pointing, so the car has
+    // reversed. A bend cannot reach it: two exits of one rail are at worst square to each other.
+    private static final double REVERSAL_DOT = -0.5;
 
     /**
      * Why a train could not be seated. The tag is the finite part, so an intermittent fault is read
@@ -341,6 +344,16 @@ public final class TrainPlacer {
             return;
         }
 
+        // Which end leads is decided against the heading this car was last laid along — its front,
+        // turned back round if it was already running backwards — rather than against the yaw it
+        // would otherwise take. Vanilla's own test is a window 175 to 185 degrees wide, which a
+        // placed car covering several blocks of track in one tick steps straight over.
+        Vec3 ahead = MinecartHelper.facingOf(car.getYRot()).scale(car.isFlipped() ? -1.0 : 1.0);
+
+        if (ahead.dot(moved.horizontal().normalize()) < REVERSAL_DOT) {
+            car.setFlipped(!car.isFlipped());
+        }
+
         float yaw = (float) (180.0 - Math.atan2(moved.z, moved.x) * 180.0 / Math.PI);
         float pitch = (float) (90.0
                 - Math.atan2(moved.horizontalDistance(), moved.y) * 180.0 / Math.PI);
@@ -350,17 +363,6 @@ public final class TrainPlacer {
         // alone, a flipped car climbing renders as one descending.
         if (car.isFlipped()) {
             yaw += HALF_TURN;
-            pitch *= -1.0F;
-        }
-
-        // Wrapped, unlike the raw subtraction vanilla does here: these two angles come from
-        // separate turns through Math.atan2 and either may already have been taken modulo 360, so
-        // an unwrapped difference reads a tenth of a degree as 359 and a reversal as 540.
-        float turned = Mth.degreesDifferenceAbs(car.getYRot(), yaw);
-
-        if (turned >= HALF_TURN - FLIP_SLACK) {
-            car.setFlipped(!car.isFlipped());
-            yaw -= HALF_TURN;
             pitch *= -1.0F;
         }
 

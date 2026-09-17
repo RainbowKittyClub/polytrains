@@ -18,8 +18,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.phys.Vec3;
@@ -38,6 +41,7 @@ import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.train.TrainPlacer;
+import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 import club.rainbowkitty.minecarttweaks.visual.LinkChain;
 
 /**
@@ -303,6 +307,19 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     private void minecarttweaks$holdTrain(CallbackInfo info) {
         if (level() instanceof ServerLevel serverLevel) {
             TrainCoupling.holdAfterMove(serverLevel, minecarttweaks$self());
+        }
+    }
+
+    // Vanilla spawns a cart facing nowhere in particular and lets its first movement decide, so
+    // which end of it is the front was settled by whichever way it happened to roll.
+    @Inject(method = "createMinecart", at = @At("RETURN"))
+    private static void minecarttweaks$faceOnPlacement(Level level, double x, double y, double z,
+            EntityType<?> type, EntitySpawnReason reason, ItemStack stack, @Nullable Player player,
+            CallbackInfoReturnable<AbstractMinecart> cir) {
+        AbstractMinecart placed = cir.getReturnValue();
+
+        if (placed != null && player != null) {
+            MinecartHelper.faceAlongRail(level, placed, player.getLookAngle());
         }
     }
 

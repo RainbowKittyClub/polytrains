@@ -6,6 +6,7 @@ import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -21,8 +22,10 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.MinecartItem;
 import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
@@ -141,6 +144,38 @@ public final class MinecartHelper {
             ServerLevel serverLevel, AbstractMinecart cart, AbstractMinecart neighbour) {
         cart.spawnAtLocation(serverLevel, new ItemStack(Items.IRON_CHAIN),
                 neighbour.position().subtract(cart.position()).scale(0.5));
+    }
+
+    /**
+     * Points {@code cart}'s front along the rail under it, whichever of that rail's two directions
+     * {@code look} agrees with.
+     *
+     * <p>Settled as the cart is put down rather than read off the first movement it happens to
+     * make. A cart has a front — its chain hangs off one end of it — so a cart that later runs the
+     * other way runs backwards instead of turning round to suit.
+     */
+    public static void faceAlongRail(Level level, AbstractMinecart cart, Vec3 look) {
+        BlockPos on = cart.getCurrentBlockPosOrRailBelow();
+        BlockPos exit = RailPath.ahead(level, on, look.horizontal());
+
+        if (exit == null) {
+            return;
+        }
+
+        cart.setFlipped(false);
+        cart.setYRot(yawOf(Vec3.atLowerCornerOf(exit.subtract(on)).horizontal()));
+    }
+
+    /** The yaw a cart wears to point along {@code heading}, in vanilla's own reckoning. */
+    public static float yawOf(Vec3 heading) {
+        return (float) ((180.0 - Math.atan2(heading.z, heading.x) * 180.0 / Math.PI) % 360.0);
+    }
+
+    /** Which way a cart at yaw {@code yaw} points its front: the inverse of {@link #yawOf}. */
+    public static Vec3 facingOf(float yaw) {
+        double radians = Math.toRadians(180.0F - yaw);
+
+        return new Vec3(Math.cos(radians), 0.0, Math.sin(radians));
     }
 
     /** Whether {@code entity} is a cart currently sitting on no rail. */
