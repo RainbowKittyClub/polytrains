@@ -42,6 +42,11 @@ public final class TrainPlacer {
     // Below this an arc step is treated as no direction at all.
     private static final double EPSILON = 1.0E-5;
 
+    // A reversal, and how far either side of it still reads as one. Vanilla's own figures, from
+    // NewMinecartBehavior.setRotation: a turn of 175 to 185 degrees is a cart running backwards.
+    private static final float HALF_TURN = 180.0F;
+    private static final float FLIP_SLACK = 5.0F;
+
     /**
      * Why a train could not be seated. The tag is the finite part, so an intermittent fault is read
      * by what kind it is rather than by a detail line that differs every tick; the detail carries
@@ -297,16 +302,34 @@ public final class TrainPlacer {
     // Points a car along the ground it just covered, which is how vanilla's own stepper turns the
     // cart it moves. Grade comes out of the step rather than off the rail, so a car crossing onto a
     // slope pitches by what it climbed instead of snapping to a fixed angle.
+    //
+    // Reversal is a flip, not a half turn. A car that starts travelling the other way keeps the end
+    // it was already pointing and runs backwards, which is what vanilla records in isFlipped rather
+    // than by turning the cart through 180 degrees. Turning it instead sweeps everything drawn
+    // against the cart — the chain to the car behind — straight through its body.
     private static void aim(AbstractMinecart car, Vec3 moved) {
         if (moved.horizontalDistanceSqr() < EPSILON * EPSILON) {
             return;
         }
 
-        double yaw = 180.0 - Math.atan2(moved.z, moved.x) * 180.0 / Math.PI;
-        double pitch = 90.0 - Math.atan2(moved.horizontalDistance(), moved.y) * 180.0 / Math.PI;
+        float yaw = (float) (180.0 - Math.atan2(moved.z, moved.x) * 180.0 / Math.PI);
+        float pitch = (float) (90.0
+                - Math.atan2(moved.horizontalDistance(), moved.y) * 180.0 / Math.PI);
 
-        car.setYRot((float) (yaw % 360.0));
-        car.setXRot((float) Math.clamp(pitch, -45.0, 45.0));
+        if (car.isFlipped()) {
+            yaw += HALF_TURN;
+        }
+
+        double turned = Math.abs(yaw - car.getYRot());
+
+        if (turned >= HALF_TURN - FLIP_SLACK && turned <= HALF_TURN + FLIP_SLACK) {
+            car.setFlipped(!car.isFlipped());
+            yaw -= HALF_TURN;
+            pitch *= -1.0F;
+        }
+
+        car.setXRot(Math.clamp(pitch, -45.0F, 45.0F) % 360.0F);
+        car.setYRot(yaw % 360.0F);
     }
 
     // The stretch of arc a ribbon covers, for a bail line to say what it fell outside of.
