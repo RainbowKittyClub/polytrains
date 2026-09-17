@@ -39,6 +39,10 @@ public enum CartInteraction {
     // against clear but does no harm doing so, and is stopped by it as vanilla intends.
     private static final double HURTING_SPEED = 0.2;
 
+    // Below this a cart is standing rather than moving slowly, so nothing it is up against is being
+    // run down however hard it is trying to pull away.
+    private static final double STANDING = 1.0E-3;
+
     private final boolean blocks;
     private final boolean strikes;
 
@@ -189,10 +193,15 @@ public enum CartInteraction {
     // Whether the cart owns the collision rather than yielding to it: an engine at any speed, and
     // any cart at all once it is moving fast enough to injure.
     private static boolean runsOver(AbstractMinecart cart, Entity other) {
+        double speed = cart.getDeltaMovement().lengthSqr();
+
         // Speed first: underPower walks the train, and a cart about to hit something is almost
-        // always over the bar anyway.
-        if (cart.getDeltaMovement().lengthSqr() > HURTING_SPEED * HURTING_SPEED
-                || TrainCoupling.underPower(cart)) {
+        // always over the bar anyway. Power only counts while the cart is actually moving — it
+        // covers a laden train pulling away too slowly to clear the bar, not a standing one. A
+        // burning furnace cart held against a buffer is under power indefinitely, and because the
+        // drive is shared every car of its train would answer yes and let players walk through it.
+        if (speed > HURTING_SPEED * HURTING_SPEED
+                || (speed > STANDING * STANDING && TrainCoupling.underPower(cart))) {
             return true;
         }
 
