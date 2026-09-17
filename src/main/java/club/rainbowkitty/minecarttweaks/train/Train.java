@@ -66,7 +66,7 @@ public final class Train {
     private int orderAt = -1;
 
     // How the last seating attempt went, so only a change of answer is worth reporting.
-    private boolean seated;
+    private TrainPlacer.@Nullable Bail bail;
 
     // Consecutive ticks each link has been stretched past saving, indexed by the car behind it.
     // Allocated with the train and dropped with it, so a train rebuilt around a link change starts
@@ -176,15 +176,18 @@ public final class Train {
     }
 
     /**
-     * Records how a seating attempt went and answers whether that differs from the attempt before.
-     * A train that starts or stops being placed on its track says so once either way, which is the
-     * only rate an intermittent fault can be read at: every tick buries it and once a second misses
-     * it outright.
+     * Records how a seating attempt went — null for seated, otherwise why not — and answers whether
+     * that differs from the attempt before. A train that starts or stops being placed on its track,
+     * or starts failing for a different reason, says so once each time, which is the only rate an
+     * intermittent fault can be read at: every tick buries it and once a second misses it outright.
+     *
+     * <p>Compared on the reason and not on the line reporting it, since that line carries arcs and
+     * block positions that differ every tick and would report a steady fault as a new one.
      */
-    public boolean seatedChanged(boolean now) {
-        boolean changed = seated != now;
+    public boolean seatingChanged(TrainPlacer.@Nullable Bail now) {
+        boolean changed = bail != now;
 
-        seated = now;
+        bail = now;
 
         return changed;
     }

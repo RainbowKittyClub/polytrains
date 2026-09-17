@@ -83,13 +83,30 @@ public final class TrainCoupling {
         // Links are undirected, so which car chases which is derived from them rather than stored.
         Train train = Train.of(cart);
 
-        // One car settles the whole train once a tick, rather than each link fighting the one next
-        // to it. Which one is settled between the cars themselves so no cart has to be told.
-        if (train.settler() == cart) {
-            holdTrain(level, train);
+        return train.follows(cart);
+    }
+
+    /**
+     * Lays out {@code cart}'s train if it is the car that drives it, called once {@code cart} has
+     * finished moving. The train is placed against where its leading car ended the tick, so this
+     * has to run after that car's own movement and before nothing in particular.
+     *
+     * <p>The leading car drives rather than a fixed end of the train, because it is the one whose
+     * position everything else is measured from. A train with no leading end — closed, or never yet
+     * moved — falls back to its settler, so that a train the placer cannot drive is still corrected
+     * exactly as it is today.
+     */
+    public static void holdAfterMove(ServerLevel level, AbstractMinecart cart) {
+        if (!MTGameRules.trainsEnabled(level) || !cart.hasLink()) {
+            return;
         }
 
-        return train.follows(cart);
+        Train train = Train.of(cart);
+        AbstractMinecart driver = train.leader();
+
+        if ((driver == null ? train.settler() : driver) == cart) {
+            holdTrain(level, train);
+        }
     }
 
     /**
@@ -282,12 +299,22 @@ public final class TrainCoupling {
     }
 
     /**
-     * Settles every link in {@code train}, breaking any that have been stretched past saving. A car
-     * off the track keeps its link and its own physics until it lands or is dragged past the
-     * breaking distance, with the runs either side of it settled meanwhile.
+     * Holds {@code train} together: seated on its ribbon where that can answer for every car, and
+     * otherwise by settling every link and breaking any stretched past saving. A car off the track
+     * keeps its link and its own physics until it lands or is dragged past the breaking distance,
+     * with the runs either side of it settled meanwhile.
      */
     private static void holdTrain(ServerLevel level, Train train) {
         reachTrain(level, train);
+
+        // Spacing built along the recorded track beats spacing corrected towards it, so everything
+        // below runs only for a train the ribbon could not answer for. What that costs is named in
+        // the placer's own bail line, which is the record of what still has to be handled by name.
+        if (TrainPlacer.seat(train, TARGET_SPACING)) {
+            trimRibbon(train);
+            TrainMeter.measure(level, train);
+            return;
+        }
 
         List<AbstractMinecart> members = train.cars();
         List<AbstractMinecart> cars = new ArrayList<>();

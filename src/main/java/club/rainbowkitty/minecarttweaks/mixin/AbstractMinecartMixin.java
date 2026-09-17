@@ -37,6 +37,7 @@ import club.rainbowkitty.minecarttweaks.rail.RailPath.Bend;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
+import club.rainbowkitty.minecarttweaks.train.TrainPlacer;
 import club.rainbowkitty.minecarttweaks.visual.LinkChain;
 
 /**
@@ -95,6 +96,14 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     // The train this cart was last placed in, which knows for itself whether it is still good.
     @Unique
     private @Nullable Train minecarttweaks$train;
+
+    // Where along its train's ribbon the placer last put this cart, and the tick it did. Zero
+    // rather than a sentinel because the field starts at Java's default, so a cart's very first
+    // tick reads as never seated, which costs that one tick of steering and nothing after.
+    @Unique
+    private double minecarttweaks$seatedArc;
+    @Unique
+    private long minecarttweaks$seatedTick;
 
     // This cart's stretch of track, and the tick it was read on. The tick only matters once the
     // context is non-null, so its own zero never reads as fresh.
@@ -219,6 +228,26 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     }
 
     @Override
+    public long minecarttweaks$seatedAt() {
+        return minecarttweaks$seatedTick;
+    }
+
+    @Override
+    public void minecarttweaks$setSeatedAt(long gameTime) {
+        minecarttweaks$seatedTick = gameTime;
+    }
+
+    @Override
+    public double minecarttweaks$seatArc() {
+        return minecarttweaks$seatedArc;
+    }
+
+    @Override
+    public void minecarttweaks$setSeatArc(double arc) {
+        minecarttweaks$seatedArc = arc;
+    }
+
+    @Override
     public long minecarttweaks$resyncAt() {
         return minecarttweaks$resyncUntil;
     }
@@ -254,6 +283,27 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         }
 
         cir.setReturnValue(fastest);
+    }
+
+    // A seated cart is placed along its train's track, so vanilla moving it as well would leave it
+    // wherever the two happened to be applied in — and which came last is entity tick order, which
+    // nothing here chooses. Only the movement is refused; everything the stepper does besides move
+    // is owed by the placer instead.
+    @Inject(method = "moveAlongTrack", at = @At("HEAD"), cancellable = true)
+    private void minecarttweaks$placedInstead(ServerLevel level, CallbackInfo info) {
+        if (TrainPlacer.seated(minecarttweaks$self())) {
+            info.cancel();
+        }
+    }
+
+    // After the leading cart has moved, not before: the whole train is laid out against where that
+    // cart ended this tick, so reading it at the start of some other cart's tick reads it stale by
+    // however far the leader is about to travel — four blocks a tick at the speeds this allows.
+    @Inject(method = "tick", at = @At("TAIL"))
+    private void minecarttweaks$holdTrain(CallbackInfo info) {
+        if (level() instanceof ServerLevel serverLevel) {
+            TrainCoupling.holdAfterMove(serverLevel, minecarttweaks$self());
+        }
     }
 
     // Vanilla's stepper is the only thing that knows which rail blocks a cart really crossed, and
@@ -416,8 +466,14 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
 
         AbstractMinecart self = minecarttweaks$self();
 
-        JunctionRailBlock.steer(serverLevel, self);
-        SwitchedRailBlock.steer(serverLevel, self);
+        // A seated cart is put on its track rather than driven along it, so it reads no rail shape
+        // and has none to lay. Steering from one would write the world out of a position the placer
+        // chose and a heading it copied off the leader, for a block the cart may not even be on.
+        if (!TrainPlacer.seated(self)) {
+            JunctionRailBlock.steer(serverLevel, self);
+            SwitchedRailBlock.steer(serverLevel, self);
+        }
+
         RailBrake.tick(serverLevel, self);
 
         // Each cart draws exactly the one chain, to whichever cart it follows.

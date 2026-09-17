@@ -53,6 +53,18 @@ public interface AbstractMinecartExt extends Linkable {
     /** Hands this cart the train it belongs to, sparing its siblings walking their own. */
     public void minecarttweaks$setTrain(Train train);
 
+    /** The game time the placer last seated this cart on its train's track, or zero for never. */
+    public long minecarttweaks$seatedAt();
+
+    /** Records that the placer seated this cart at {@code gameTime}. */
+    public void minecarttweaks$setSeatedAt(long gameTime);
+
+    /** The arc along its train's ribbon this cart was last seated at. */
+    public double minecarttweaks$seatArc();
+
+    /** Records the arc this cart has just been seated at, for the next sweep to start from. */
+    public void minecarttweaks$setSeatArc(double arc);
+
     /** The game time this cart's tracker withholds position updates until, or zero for none. */
     public long minecarttweaks$resyncAt();
 
