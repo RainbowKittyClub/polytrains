@@ -95,7 +95,12 @@ with `RailPath.between` as an independent oracle, logged at `DEBUG` behind the t
 
 The standing test track needs a straight run, a single 90° corner, a pure-curve diagonal, a 2-block
 staircase, a slope in both directions, a junction rail, a switch, a circuit that closes on itself, and
-a bumper stop that reverses a train under power.
+a bumper stop, and a grade a train can be stalled part-way up so that it rolls back down.
+
+Nothing bounces a cart in this game: a bumper stop is a place a train comes to rest, and what it
+tests is that the train stops as one piece rather than concertinaing or severing. A reversal has to
+be produced by the train running out of momentum and rolling back, by a shove from the far end, or by
+a furnace cart re-aimed the other way.
 
 A stage is not finished until its "Done when" is observed, so a failure at stage N implicates stage N
 and not the ones before it.
@@ -272,7 +277,8 @@ The fallback stays, but every bail is instrumented with its reason. That log is 
 
 **Done when.** The meter beats S4's baseline on every track feature, within a tenth of a block of the
 car pitch at full speed; an eight-car train round the diagonal, through the circuit and up a slope
-shows no visible jump in any car; a train reversed by a bumper stop runs back coherently. The absence
+shows no visible jump in any car; a train stalled part-way up a grade rolls back down coherently,
+through the moment it is stationary and the end that leads changes. The absence
 of the jump is the requirement that matters — a teleport is what the old clamps existed to hide.
 
 ## S6 — The placer made total — **planned**
