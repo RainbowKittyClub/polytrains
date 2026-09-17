@@ -254,8 +254,8 @@ public final class TrainCoupling {
      * How fast {@code cart}'s train is travelling along {@code line}, averaged over its cars.
      *
      * <p>What a car is about to be doing rather than what it is doing. A shove lands whole on the
-     * one car that was touched and is not shared out until the train next settles, so a car read
-     * the instant it is pushed reports the same speed whatever it is coupled to.
+     * one car that carries it and is not shared out at all, so a car read the instant its train is
+     * pushed reports the same speed whatever it is coupled to.
      */
     public static double sharedSpeed(AbstractMinecart cart, Vec3 line) {
         List<AbstractMinecart> cars = Train.of(cart).cars();

@@ -59,8 +59,8 @@ public abstract class EntityMixin {
     }
 
     // Every shove in the game funnels through this one method, so a train is made heavy here rather
-    // than at each of them. Length is divided out twice and both are meant — here, and again when
-    // the train settles to the mean of its cars' speeds; either alone loses out to rail friction.
+    // than at each of them. Length is divided out once now: the mean of the cars' speeds that used
+    // to divide it again is gone, so this figure still wants retuning against rail friction.
     @Inject(method = "push(DDD)V", at = @At("HEAD"), cancellable = true)
     private void minecarttweaks$shoveTrain(
             double xa, double ya, double za, CallbackInfo info) {
