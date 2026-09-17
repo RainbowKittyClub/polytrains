@@ -11,6 +11,7 @@ import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.init.MTAttachments;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
+import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /**
  * What a powered rail does to a cart standing on it. Vanilla's unpowered powered rail is a brake
@@ -97,11 +98,14 @@ public final class RailBrake {
     }
 
     // Sends a waiting cart off the way it came in. A cart still rolling never stopped to need this,
-    // and vanilla's own boost already has it.
+    // and vanilla's own boost already has it. Every car of a train remembers its own heading, but
+    // only the car vanilla drives is launched on it — a placed car's movement is written over
+    // before it carries the launch anywhere.
     private static void release(AbstractMinecart cart) {
         Direction heading = MTAttachments.getHeldHeading(cart);
 
         if (heading == null
+                || TrainCoupling.driven(cart) != cart
                 || cart.getDeltaMovement().horizontalDistanceSqr()
                         > ROLLING_SPEED * ROLLING_SPEED) {
             return;

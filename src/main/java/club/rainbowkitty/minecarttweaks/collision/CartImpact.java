@@ -178,17 +178,20 @@ public final class CartImpact {
         return push >= 0 ? Math.max(own, push) : Math.min(own, push);
     }
 
-    // Bleeds the accumulated impact off every car of the train equally: one car's worth of momentum
-    // loss spread over the whole train, so the speed a given impact costs falls off as one over the
-    // number of cars. Drag arrives as the fraction a lone cart would lose.
+    // Bleeds the accumulated impact off the train: one car's worth of momentum loss spread over the
+    // whole of it, so the speed a given impact costs falls off as one over the number of cars. Drag
+    // arrives as the fraction a lone cart would lose.
+    //
+    // Laid on the one car vanilla drives rather than written to each of them. The falloff is the
+    // intent and survives; writing every car's movement was the pattern that had to go, since the
+    // placer overwrites all but one of them from that one.
     private static void slowTrain(AbstractMinecart cart, double drag) {
-        List<AbstractMinecart> cars = Train.of(cart).cars();
-        double loss = Math.min(MAX_IMPACT_DRAG, drag / cars.size());
+        double loss = Math.min(MAX_IMPACT_DRAG, drag / Train.of(cart).cars().size());
+        AbstractMinecart driven = TrainCoupling.driven(cart);
+        Vec3 movement = driven.getDeltaMovement();
 
-        for (AbstractMinecart car : cars) {
-            Vec3 m = car.getDeltaMovement();
-            car.setDeltaMovement(m.x() * (1.0 - loss), m.y(), m.z() * (1.0 - loss));
-        }
+        driven.setDeltaMovement(
+                movement.x() * (1.0 - loss), movement.y(), movement.z() * (1.0 - loss));
     }
 
     // A struck entity's size relative to a player, clamped: how far the throw carries it divides by
