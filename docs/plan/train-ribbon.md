@@ -375,16 +375,15 @@ leaving. S6's diverted-sever check changes what the right answer is — once a s
 the train's track is a stated sever reason, throwing under a car may be allowed and simply sever.
 Settled by building S6.
 
-**Whether `furnace_minecart_speed` should respect `max_minecart_speed`.** It does not today: the
-furnace mixin sets the ceiling outright from its own rule, defaulting to 20 blocks per second against
-the vanilla rule's 8, and `trainSpeed` then hands that to every car the furnace cart tows by taking
-the highest ceiling in the train. So a furnace train runs at two and a half times the world's stated
-cap and lowering that cap does nothing to it. The mixin's reason for existing is sound — vanilla
-halves a furnace cart, leaving it the slowest car in its own train — but undoing that by replacing
-the ceiling rather than working within it makes the vanilla rule a lie. Clamping to it would keep
-both rules honest at the cost of slowing live furnace trains from 1.0 to 0.4 blocks per tick unless
-`max_minecart_speed` is raised to 20 to match. A deploy-affecting decision, so it is the server's to
-make rather than this plan's.
+**`furnace_minecart_speed` is gone**, settled by removing it. It set a furnace cart's ceiling
+outright from its own rule — 20 blocks per second against the vanilla rule's 8 — and `trainSpeed`
+handed that to every car the furnace cart towed by taking the highest ceiling in the train, so a
+furnace train ran at two and a half times the world's stated cap and lowering that cap did nothing to
+it. One speed rule now governs every cart. The mixin keeps its real job, undoing vanilla's halving of
+a furnace cart so it is not the slowest car in its own train, and takes the ceiling from
+`max_minecart_speed` like everything else. Furnace trains run at 0.4 blocks per tick at the vanilla
+default rather than 1.0; a world that wants the old speed raises `max_minecart_speed` to 20, which
+now also raises the carts it tows instead of leaving them behind.
 
 **What the car pitch should be.** Settled at 1.5, by watching a train on the test track after S5.
 The 2.0 it had was tuned as a correction target — the value a spacing error was measured against —
