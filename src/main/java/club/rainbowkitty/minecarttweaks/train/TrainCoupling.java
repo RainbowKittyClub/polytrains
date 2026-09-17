@@ -17,6 +17,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
+import club.rainbowkitty.minecarttweaks.rail.RailBrake;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
@@ -62,7 +63,9 @@ public final class TrainCoupling {
     private static final int PUSHABLE_CARS = 8;
 
     // Trailers each engine pulls at full output before the rest of the train divides it down.
-    private static final int FREE_CARS = 2;
+    // Only has to exclude a dead stop, since the placer writes a car's movement along its own rail
+    // and any of it at all names the direction the train is going.
+    private static final double ANY_MOVEMENT = 1.0E-10;
 
     // Track kept either side of the train when the ribbon is trimmed, on top of the train's own
     // length. Room for the leading car to run into before the next record extends it.
@@ -142,26 +145,39 @@ public final class TrainCoupling {
     }
 
     /**
-     * The acceleration each car in {@code cart}'s train gets. Every engine hauls {@link #FREE_CARS}
-     * trailers at its full output before the rest of the train starts dividing that output down, so
-     * a furnace cart and two cars climb a slope as readily as one alone and only a longer train
-     * falls off. A cart on its own is a train of one and is unaffected.
+     * The train's drive laid on {@code movement}, or null where this car is owed none of it.
+     *
+     * <p>Only the leading car reaches vanilla's slowdown at all, and the leading car is not
+     * necessarily an engine: a plain cart at the front of a train with a furnace cart behind it has
+     * no impulse of its own to be driven by. So the train's whole output is applied here, to the
+     * one car carrying it, and a car that is its own engine is left to the furnace's own path.
      */
-    public static double sharedDrive(AbstractMinecart cart) {
-        List<AbstractMinecart> cars = Train.of(cart).cars();
-        double drive = 0.0;
-        int engines = 0;
-
-        for (AbstractMinecart member : cars) {
-            double output = member.minecarttweaks$driveAcceleration();
-            drive += output;
-
-            if (output > 0.0) {
-                engines++;
-            }
+    public static @Nullable Vec3 hauled(AbstractMinecart cart, Vec3 movement) {
+        if (!cart.hasLink()
+                || !MTGameRules.trainsEnabled(cart.level())
+                || cart.minecarttweaks$driveAcceleration() > 0
+                || RailBrake.brakes(cart)) {
+            return null;
         }
 
-        return engines == 0 ? 0.0 : drive / Math.max(1, cars.size() - FREE_CARS * engines);
+        double drive = Train.of(cart).drive();
+
+        if (drive <= 0.0) {
+            return null;
+        }
+
+        // A standing train has no movement to read a heading off, so it leaves on the aim of its
+        // powered carts. Without that only those carts move and the train never gets going — and
+        // they are the carts the placer is not moving, so it never gets going at all.
+        Vec3 heading = movement.horizontal();
+
+        if (heading.lengthSqr() <= ANY_MOVEMENT) {
+            heading = driveHeading(cart);
+        }
+
+        return heading.lengthSqr() > ANY_MOVEMENT
+                ? movement.add(heading.normalize().scale(drive))
+                : null;
     }
 
     /**
@@ -170,7 +186,7 @@ public final class TrainCoupling {
      */
     public static boolean underPower(AbstractMinecart cart) {
         return cart.minecarttweaks$driveAcceleration() > 0
-                || (cart.hasLink() && sharedDrive(cart) > 0);
+                || (cart.hasLink() && Train.of(cart).drive() > 0);
     }
 
     /**

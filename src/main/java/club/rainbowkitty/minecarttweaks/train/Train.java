@@ -44,6 +44,9 @@ public final class Train {
     // it. A reversal names it for every tick after it; a blip names it once.
     private static final int LEADER_FLIP_TICKS = 3;
 
+    // Trailers one engine hauls before its output starts being divided down.
+    private static final int FREE_CARS = 2;
+
     private final List<AbstractMinecart> cars;
     private final boolean closed;
 
@@ -227,6 +230,28 @@ public final class Train {
         bail = now;
 
         return changed;
+    }
+
+    /**
+     * The acceleration this train's engines give it, shared over the cars they haul. Every engine
+     * hauls {@link #FREE_CARS} trailers at its full output before the rest of the train starts
+     * dividing that output down, so a furnace cart and two cars climb a slope as readily as one
+     * alone and only a longer train falls off. A train of one is unaffected.
+     */
+    public double drive() {
+        double drive = 0.0;
+        int engines = 0;
+
+        for (AbstractMinecart car : cars) {
+            double output = car.minecarttweaks$driveAcceleration();
+            drive += output;
+
+            if (output > 0.0) {
+                engines++;
+            }
+        }
+
+        return engines == 0 ? 0.0 : drive / Math.max(1, cars.size() - FREE_CARS * engines);
     }
 
     /**

@@ -32,7 +32,7 @@ import club.rainbowkitty.minecarttweaks.init.MTTicketTypes;
 import club.rainbowkitty.minecarttweaks.rail.RailBrake;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
-import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
+import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.util.FurnaceFuel;
 
 /** Furnace-cart speed, burning any fuel, the parking brake, and keeping chunks loaded. */
@@ -171,12 +171,13 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         minecarttweaks$headingRail = rail;
     }
 
-    // Its own full output when it runs alone, and the train's share of the whole when it is
-    // coupled — which is the same figure every carriage behind it is taking.
+    // Its own full output when it runs alone, and its train's whole output shared over the cars
+    // that carry it when it is coupled — the engines behind it counted in, since only the leading
+    // car reaches this and it is answering for all of them.
     @Unique
     private double minecarttweaks$sharedAcceleration() {
         return hasLink() && MTGameRules.trainsEnabled(level())
-                ? TrainCoupling.sharedDrive(this)
+                ? Train.of(this).drive()
                 : ACCELERATION;
     }
 
