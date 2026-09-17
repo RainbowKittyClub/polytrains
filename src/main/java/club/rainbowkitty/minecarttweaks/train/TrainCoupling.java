@@ -17,6 +17,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
+import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
@@ -282,6 +283,36 @@ public final class TrainCoupling {
         AbstractMinecart leader = Train.of(cart).leader();
 
         return (leader == null ? cart : leader).getDeltaMovement().length();
+    }
+
+    /**
+     * How much of vanilla's downhill pull on {@code cart} its whole train is owed, as a multiple of
+     * the one car's worth vanilla works out.
+     *
+     * <p>Gravity is the one force the placer took away without replacing. It is added inside
+     * {@code moveAlongTrack}, which a seated car never reaches, so a train on a grade gets exactly
+     * one car's pull however many cars are on the slope — and carries the mass of all of them.
+     *
+     * <p>Force over mass, which is what the rest of this class already does with the engine. Each
+     * car on a grade pulls downhill and each car anywhere at all resists, so the share is the sum
+     * of the cars' grades over their number, signed by the grade vanilla read off the leading car.
+     * A train wholly on one slope comes to exactly one, which is right: a long train rolls downhill
+     * no faster than a single cart. A train with one car over the brow comes to a fraction of it,
+     * and one balanced across a crest comes to nothing.
+     */
+    public static double slopeShare(AbstractMinecart cart, int under) {
+        if (under == 0 || !cart.hasLink() || !MTGameRules.trainsEnabled(cart.level())) {
+            return 1.0;
+        }
+
+        List<AbstractMinecart> cars = Train.of(cart).cars();
+        int grades = 0;
+
+        for (AbstractMinecart car : cars) {
+            grades += RailPath.bend(car).grade();
+        }
+
+        return (double) (under * grades) / cars.size();
     }
 
     /**
