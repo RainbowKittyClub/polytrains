@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.jspecify.annotations.Nullable;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -14,6 +15,7 @@ import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
+import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 
@@ -52,6 +54,10 @@ public final class TrainCoupling {
 
     // Fraction of the train's speed each bend costs, billed to the whole train, not the one car.
     private static final double BEND_LOSS = 0.005;
+
+    // Track kept either side of the train when the ribbon is trimmed, on top of the train's own
+    // length. Room for the leading car to run into before the next record extends it.
+    private static final double RIBBON_MARGIN = 8.0;
 
     // Below this a length is treated as zero.
     private static final double EPSILON = 1.0E-5;
@@ -186,6 +192,31 @@ public final class TrainCoupling {
         return MAX_LINK_DISTANCE;
     }
 
+    /** The distance along the rails the coupling holds consecutive cars at. */
+    public static double targetSpacing() {
+        return TARGET_SPACING;
+    }
+
+    /**
+     * Records the rail block {@code cart} is stepping through on its train's ribbon. Only the car
+     * leading its train records: a trailing car crosses blocks the ribbon already holds in its
+     * middle, which the ribbon cannot tell from a jump and would answer by starting over.
+     *
+     * <p>Nothing is driven from the ribbon yet. This only builds it.
+     */
+    public static void recordTrack(AbstractMinecart cart, BlockPos pos) {
+        if (!MTGameRules.trainsEnabled(cart.level()) || !cart.hasLink()) {
+            return;
+        }
+
+        Train train = Train.of(cart);
+
+        if (train.leader() == cart) {
+            train.ribbon().record(
+                    cart.level(), pos, cart.getDeltaMovement().horizontal());
+        }
+    }
+
     /**
      * Whether {@code cart}'s train is short enough to be shifted by leaning on it at all, which
      * stops at {@link #PUSHABLE_CARS}. How hard it is below that is {@link #mass}'s to say.
@@ -256,6 +287,8 @@ public final class TrainCoupling {
      * breaking distance, with the runs either side of it settled meanwhile.
      */
     private static void holdTrain(ServerLevel level, Train train) {
+        reachTrain(level, train);
+
         List<AbstractMinecart> members = train.cars();
         List<AbstractMinecart> cars = new ArrayList<>();
         List<RailPath> links = new ArrayList<>();
@@ -293,6 +326,54 @@ public final class TrainCoupling {
         }
 
         settle(cars, links);
+        trimRibbon(train);
+        TrainMeter.measure(level, train);
+    }
+
+    // Makes sure the ribbon reaches the whole train before anything is measured against it. A
+    // ribbon is thrown away and restarted whenever the link graph moves, so a train that gains a
+    // car is a train whose track begins again at one block — with cars already spread over it.
+    private static void reachTrain(ServerLevel level, Train train) {
+        TrackRibbon ribbon = train.ribbon();
+        AbstractMinecart leader = train.leader();
+
+        if (leader == null || ribbon.isEmpty()) {
+            return;
+        }
+
+        Double arc = ribbon.arcOfLeader(leader);
+
+        if (arc == null) {
+            return;
+        }
+
+        // Both ways, not just behind: a train reverses by swapping which end leads, and the cars
+        // that were behind the old one are ahead of the new.
+        double span = (train.size() - 1) * TARGET_SPACING + 1.0;
+
+        ribbon.extendTo(level, arc - span, arc + span);
+    }
+
+    // Keeps the ribbon to the train's own span plus a margin, measured out from the leading car
+    // symmetrically so it does not matter which end that car is. Trimming any tighter walks the
+    // last car off the end on a circuit shorter than the train, where the leader re-enters blocks
+    // the tail has not left yet. Without it a recording train grows nodes for as long as it runs.
+    private static void trimRibbon(Train train) {
+        TrackRibbon ribbon = train.ribbon();
+        AbstractMinecart leader = train.leader();
+
+        if (leader == null || ribbon.isEmpty()) {
+            return;
+        }
+
+        Double arc = ribbon.arcOfLeader(leader);
+
+        if (arc == null) {
+            return;
+        }
+
+        double reach = train.size() * TARGET_SPACING + RIBBON_MARGIN;
+        ribbon.trim(arc - reach, arc + reach);
     }
 
     // Gives every car in one unbroken run of the train a shared speed along its own rails, and

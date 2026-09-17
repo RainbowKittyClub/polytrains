@@ -21,6 +21,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.block.JunctionRailBlock;
@@ -253,6 +254,15 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         }
 
         cir.setReturnValue(fastest);
+    }
+
+    // Vanilla's stepper is the only thing that knows which rail blocks a cart really crossed, and
+    // it is called once for each of them — so the ribbon is recorded here rather than traced
+    // separately, which would be a second opinion about the track to disagree with the first.
+    @Inject(method = "makeStepAlongTrack", at = @At("HEAD"))
+    private void minecarttweaks$recordTrack(
+            BlockPos pos, RailShape shape, double budget, CallbackInfoReturnable<Double> cir) {
+        TrainCoupling.recordTrack(minecarttweaks$self(), pos);
     }
 
     // A towed cart is under power as much as the cart towing it, so it takes the train's

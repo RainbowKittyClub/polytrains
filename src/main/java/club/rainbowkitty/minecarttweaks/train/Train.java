@@ -10,6 +10,7 @@ import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
+import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
 
 /**
  * One train's cars in order, head first, held across ticks. Every coupling question is the same
@@ -18,10 +19,6 @@ import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
  *
  * <p>A train is derived state and is never saved: the links are the durable half
  * ({@code MTAttachments.LINK}), and a train is rebuilt from them on the first tick after a load.
- *
- * <p>Which way round a train lies on its track, and the ribbon of track it records as it runs,
- * land in a later stage; {@link #leader()} is the part of that already here, and the comments
- * below name the ribbon where it is what the reading is ultimately for.
  */
 public final class Train {
 
@@ -51,10 +48,22 @@ public final class Train {
     // once a call: membership is asked per collision candidate per movement step.
     private long checkedTick;
 
+    private final TrackRibbon ribbon = new TrackRibbon();
+
     // Decided once a tick and held. Which end leads steers what the ribbon records, so two callers
     // in one tick disagreeing would record from both ends of the train at once.
     private @Nullable AbstractMinecart leader;
     private long leaderTick = Long.MIN_VALUE;
+
+    // Which way round this train lies on its ribbon: +1 when its head sits at the higher arc, and
+    // zero until that has been settled. Owned rather than measured, because measuring it means
+    // resolving a car's block back to a node, and a circuit records every one of its blocks twice.
+    // A reversal changes which end leads; it does not change which end is where.
+    private int order;
+
+    // The ribbon reset count this order was settled against. A reset renumbers the arcs, so an
+    // order taken before one says nothing about the frame that came after it.
+    private int orderAt = -1;
 
     // How the last seating attempt went, so only a change of answer is worth reporting.
     private boolean seated;
@@ -115,6 +124,15 @@ public final class Train {
     }
 
     /**
+     * The track this train is running on, recorded by its leading car and empty until that car has
+     * crossed a rail block. One ribbon per train, so a train rebuilt from its links starts a fresh
+     * one rather than inheriting track it may no longer be on.
+     */
+    public TrackRibbon ribbon() {
+        return ribbon;
+    }
+
+    /**
      * The end car this train is travelling towards, or null if it closes on itself or has never
      * moved. Not the same thing as its head: head is a fixed identity that survives a reversal, and
      * a train reverses routinely — a bumper stop, a reversed furnace cart, a shove from behind.
@@ -169,6 +187,20 @@ public final class Train {
         seated = now;
 
         return changed;
+    }
+
+    /**
+     * Which way round this train lies on its ribbon — +1 when its head sits at the higher arc — or
+     * zero if that has not been settled against the ribbon's current numbering.
+     */
+    public int order() {
+        return ribbon.resets() == orderAt ? order : 0;
+    }
+
+    /** Settles which way round this train lies, for as long as the ribbon keeps its arc frame. */
+    public void setOrder(int sign) {
+        order = sign;
+        orderAt = ribbon.resets();
     }
 
     /** The cars of this train, head first, or in no particular order when it closes on itself. */
