@@ -154,7 +154,7 @@ failure neither throws nor fails to compile; it shows up as a train holding the 
 the mixin check reports no failures. `mass()` still short-circuits on `hasLink()` before walking
 anything: it is asked of every cart every tick and most carts on a server are linked to nothing.
 
-## S4 — The ribbon, recorded inert and measured — **planned**
+## S4 — The ribbon, recorded inert and measured — **in progress**
 
 **Build.** Add `TrackRibbon` and `TrainMeter`, and the `RailPath.crossing` query that builds every
 ribbon node. Record from `recordTrack` at `makeStepAlongTrack` HEAD, leading car only. `extendTo`
