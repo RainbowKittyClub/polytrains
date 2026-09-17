@@ -411,8 +411,11 @@ public final class TrainCoupling {
             AbstractMinecart car = cars.get(i);
 
             if (car != leader && ribbon.diverted(level, car.minecarttweaks$seatArc())) {
-                LOGGER.debug("train of {} severing at car {}: switch diverts its track",
-                        train.size(), i);
+                double arc = car.minecarttweaks$seatArc();
+                LOGGER.debug("train of {} severing at car {}: switch at {} diverts its track,"
+                        + " car at arc {} of {}..{}, rail now {}",
+                        train.size(), i, ribbon.blockAt(arc), arc, ribbon.from(), ribbon.to(),
+                        level.getBlockState(car.getCurrentBlockPosOrRailBelow()));
                 sever(level, train, i);
                 return true;
             }

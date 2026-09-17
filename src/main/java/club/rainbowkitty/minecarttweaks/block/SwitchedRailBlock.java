@@ -3,6 +3,7 @@ package club.rainbowkitty.minecarttweaks.block;
 import java.util.EnumMap;
 import java.util.Map;
 
+import com.mojang.logging.LogUtils;
 import com.mojang.serialization.MapCodec;
 import eu.pb4.polymer.blocks.api.BlockModelType;
 import eu.pb4.polymer.blocks.api.MultiPolymerBlockModel;
@@ -11,6 +12,7 @@ import eu.pb4.polymer.blocks.api.PolymerBlockResourceUtils;
 import eu.pb4.polymer.blocks.api.PolymerTexturedBlock;
 import net.fabricmc.fabric.api.networking.v1.context.PacketContext;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -44,6 +46,8 @@ import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
  * running along the forward axis passes straight through the half the switch is not joined to.
  */
 public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedBlock {
+
+    private static final Logger LOGGER = LogUtils.getLogger();
     /** The forward direction — the way the placer was looking; the branch leaves the right edge. */
     public static final EnumProperty<Direction> FACING = BlockStateProperties.HORIZONTAL_FACING;
 
@@ -259,6 +263,8 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         RailShape wanted = shapeFor(state, travel);
 
         if (state.getValue(SHAPE) != wanted) {
+            LOGGER.debug("switch at {} steered to {} from {} by a cart heading {}",
+                    pos, wanted, state.getValue(SHAPE), travel);
             level.setBlock(pos, state.setValue(SHAPE, wanted), Block.UPDATE_CLIENTS);
         }
         // Keep a settle pending for as long as a car is crossing straight, so the switch does not
@@ -312,6 +318,8 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         if (occupied(level, pos)) {
             level.scheduleTick(pos, this, SETTLE_DELAY);
         } else {
+            LOGGER.debug("switch at {} laying its resting curve {} over {}",
+                    pos, resting, state.getValue(SHAPE));
             level.setBlock(pos, state.setValue(SHAPE, resting), Block.UPDATE_CLIENTS);
         }
     }
