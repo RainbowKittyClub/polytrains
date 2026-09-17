@@ -154,16 +154,17 @@ public final class TrainPlacer {
         int order = train.order();
 
         if (order == 0) {
-            if (facing == 0.0) {
+            Integer lie = lieOf(ribbon, cars, lead, leadArc, pitch);
+
+            if (lie == null) {
                 return new Refusal(Bail.ORDER_UNREADABLE, Refusal.NONE,
-                        "leader at " + round(leadArc) + ", tangent " + (tangent == null
-                                ? "none" : "across its motion"));
+                        "leader at " + round(leadArc) + " of " + span(ribbon)
+                        + ", next car not far enough along it to say");
             }
 
-            // The cars trail the leading one, so the train runs back against the way that car is
-            // going. Settled once: from here on it is remembered, not read off the cars again.
-            train.setOrder(lead == 0 ? (int) facing : -(int) facing);
-            order = train.order();
+            // Settled once: from here on it is remembered, not read off the cars again.
+            train.setOrder(lie);
+            order = lie;
         }
 
         // A train too slow to read a heading off has not stopped lying the way it lies.
@@ -207,6 +208,28 @@ public final class TrainPlacer {
                 ext.minecarttweaks$setSeatedAt(0L);
             }
         }
+    }
+
+    // Which way round the train lies on its ribbon: +1 with its head at the higher arc. Read off
+    // where the car beside the leading one actually sits, not off which way the train is moving.
+    //
+    // Motion answers this wrongly at exactly the moment it is most often asked. A train that has
+    // just been coupled, or has just come to rest against something, has a leading car whose
+    // remaining movement is noise — and the answer is then held for the life of the ribbon's
+    // numbering, so one bad reading lays the train backwards for good, seating its cars off the end
+    // of the track it is standing on. Two cars closer together than a quarter of the pitch are not
+    // far enough apart to say, which is also what a train that has already collapsed looks like.
+    private static @Nullable Integer lieOf(TrackRibbon ribbon, List<AbstractMinecart> cars,
+            int lead, double leadArc, double pitch) {
+        Double nextArc = ribbon.arcOf(cars.get(lead == 0 ? 1 : cars.size() - 2));
+
+        if (nextArc == null) {
+            return null;
+        }
+
+        double away = (leadArc - nextArc) * (lead == 0 ? 1.0 : -1.0);
+
+        return Math.abs(away) < pitch * 0.25 ? null : (int) Math.signum(away);
     }
 
     // Which way along the ribbon the leading car is travelling, as a sign on the tangent, or zero
