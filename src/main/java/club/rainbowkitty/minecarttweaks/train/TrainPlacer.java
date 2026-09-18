@@ -162,7 +162,7 @@ public final class TrainPlacer {
                 target, nextArc == null ? 0.0 : Math.abs(leadArc - nextArc), speed);
 
         Vec3 tangent = ribbon.tangentAt(leadArc);
-        double facing = facing(leader, tangent);
+        double read = facing(leader, tangent);
         int order = train.order();
 
         if (order == 0) {
@@ -179,10 +179,11 @@ public final class TrainPlacer {
             order = lie;
         }
 
-        // A train too slow to read a heading off has not stopped lying the way it lies.
-        if (facing == 0.0) {
-            facing = lead == 0 ? order : -order;
-        }
+        // A train too slow to read a heading off has not stopped lying the way it lies, so its
+        // movement is still laid along the end that leads — at this speed the zero vector either
+        // way. What that does not license is turning the cars: which end nominally leads is a held
+        // answer, and on a train rebuilt around a link change it is whichever end came first.
+        double facing = read != 0.0 ? read : (lead == 0 ? order : -order);
 
         double headArc = leadArc + order * lead * pitch;
         Seat[] seats = new Seat[cars.size()];
@@ -204,7 +205,8 @@ public final class TrainPlacer {
 
         for (int i = 0; i < cars.size(); i++) {
             if (i != lead) {
-                place(train, cars.get(i), seats[i], headArc - order * i * pitch, facing, speed);
+                place(train, cars.get(i), seats[i], headArc - order * i * pitch,
+                        facing, speed, read != 0.0);
             }
         }
 
@@ -288,7 +290,7 @@ public final class TrainPlacer {
     // Puts one car on its seat, and pays back by hand everything vanilla hangs off the move this
     // car is no longer making.
     private static void place(Train train, AbstractMinecart car, Seat seat, double arc,
-            double facing, double speed) {
+            double facing, double speed, boolean turn) {
         Vec3 was = car.position();
         Vec3 forward = seat.tangent().scale(facing);
 
@@ -312,7 +314,7 @@ public final class TrainPlacer {
         }
 
         Vec3 moved = car.position().subtract(was);
-        aim(car, moved);
+        aim(car, turn ? forward : Vec3.ZERO, moved);
 
         // Nothing else tells the client this car moved, and a step short of the ground it covered
         // leaves the client still replaying this tick's move during the next.
@@ -361,35 +363,51 @@ public final class TrainPlacer {
     // it was already pointing and runs backwards, which is what vanilla records in isFlipped rather
     // than by turning the cart through 180 degrees. Turning it instead sweeps everything drawn
     // against the cart — the chain to the car behind — straight through its body.
-    private static void aim(AbstractMinecart car, Vec3 moved) {
-        if (moved.horizontalDistanceSqr() < EPSILON * EPSILON) {
+    private static void aim(AbstractMinecart car, Vec3 heading, Vec3 moved) {
+        if (heading.horizontalDistanceSqr() < EPSILON * EPSILON) {
             return;
         }
+
+        // The rail the car is now on, not the jump that put it there. A placed car is teleported
+        // between seats, and seat-to-seat displacement only equals travel where the track is
+        // straight: round a tight turn the two seats are neighbours in space while being a turn
+        // apart along the track, so the jump points nowhere the car is going and reads as a
+        // reversal. It is the same vector this car's movement is laid along.
+        Vec3 along = heading.horizontal().normalize();
 
         // Which end leads is decided against the heading this car was last laid along — its front,
         // turned back round if it was already running backwards — rather than against the yaw it
         // would otherwise take. Vanilla's own test is a window 175 to 185 degrees wide, which a
         // placed car covering several blocks of track in one tick steps straight over.
         Vec3 ahead = MinecartHelper.facingOf(car.getYRot()).scale(car.isFlipped() ? -1.0 : 1.0);
+        boolean was = car.isFlipped();
 
-        if (ahead.dot(moved.horizontal().normalize()) < REVERSAL_DOT) {
-            car.setFlipped(!car.isFlipped());
+        if (ahead.dot(along) < REVERSAL_DOT) {
+            car.setFlipped(!was);
         }
 
-        float yaw = (float) (180.0 - Math.atan2(moved.z, moved.x) * 180.0 / Math.PI);
+        boolean flipped = car.isFlipped();
+        float yaw = (float) (180.0 - Math.atan2(along.z, along.x) * 180.0 / Math.PI);
+
+        // A flipped car is pointing its other end, so both angles describe the end it is no longer
+        // leading with — left alone, a flipped car climbing renders as one descending.
+        car.setYRot((flipped ? yaw + HALF_TURN : yaw) % 360.0F);
+
+        // The climb has only the ground covered to read from, so a car that was placed where it
+        // already stood keeps the angle it has — turned round with it if it flipped this tick,
+        // since the angle it holds was written under the other one.
+        if (moved.horizontalDistanceSqr() < EPSILON * EPSILON) {
+            if (flipped != was) {
+                car.setXRot(-car.getXRot());
+            }
+
+            return;
+        }
+
         float pitch = (float) (90.0
                 - Math.atan2(moved.horizontalDistance(), moved.y) * 180.0 / Math.PI);
 
-        // Both of these, and both every tick. A flipped car is pointing its other end, so the pitch
-        // read off the ground it covered describes the end it is no longer leading with — left
-        // alone, a flipped car climbing renders as one descending.
-        if (car.isFlipped()) {
-            yaw += HALF_TURN;
-            pitch *= -1.0F;
-        }
-
-        car.setXRot(Math.clamp(pitch, -45.0F, 45.0F) % 360.0F);
-        car.setYRot(yaw % 360.0F);
+        car.setXRot(Math.clamp(flipped ? -pitch : pitch, -45.0F, 45.0F) % 360.0F);
     }
 
     // The stretch of arc a ribbon covers, for a bail line to say what it fell outside of.
