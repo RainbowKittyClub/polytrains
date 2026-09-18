@@ -52,10 +52,13 @@ public enum CartInteraction {
     // run down however hard it is trying to pull away.
     private static final double STANDING = 1.0E-3;
 
+    // Whether the cart's movement is stopped by it — what canCollideWith answers.
     private final boolean blocks;
+    // Whether the cart hits it, throwing it clear and injuring it if moving fast enough.
     private final boolean strikes;
 
-    CartInteraction(boolean blocks, boolean strikes) {
+    // Construct a collision type with its blocking and striking properties.
+    private CartInteraction(boolean blocks, boolean strikes) {
         this.blocks = blocks;
         this.strikes = strikes;
     }

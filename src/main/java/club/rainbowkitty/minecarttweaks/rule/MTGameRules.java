@@ -13,7 +13,7 @@ import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 /** This mod's game rules. Every setting is live-toggleable; none of them are cached. */
 public final class MTGameRules {
 
-    // Ceiling shared with vanilla's max_minecart_speed.
+    // Ceiling shared with vanilla's max_minecart_speed, for gamerule bounds.
     private static final int MAX_SPEED = 1000;
 
     /**
@@ -111,6 +111,7 @@ public final class MTGameRules {
     public static final GameRule<Integer> FURNACE_MAX_BURN_TIME =
             registerInteger("furnace_max_burn_time", 72000, 0, Integer.MAX_VALUE);
 
+    // Whether the loaded world carries the TRAINS_ENABLED feature requirement; cached on init.
     // GameRules.get throws for a rule the world's features exclude, and there is no public way to
     // ask whether one is present, so the answer is settled once on load and read from here instead.
     // Enabled features are fixed for the lifetime of a loaded world, so once is enough.

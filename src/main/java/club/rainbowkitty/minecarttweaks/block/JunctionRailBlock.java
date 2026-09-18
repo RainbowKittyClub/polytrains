@@ -87,28 +87,6 @@ public class JunctionRailBlock extends BaseRailBlock implements PolymerTexturedB
         }
     }
 
-    // Points the junction at pos along movement, if that is what is there and it is not already.
-    private static void lay(Level level, BlockPos pos, Vec3 movement) {
-        if (movement.horizontalDistanceSqr() <= 0) {
-            return;
-        }
-
-        BlockState state = level.getBlockState(pos);
-
-        if (!(state.getBlock() instanceof JunctionRailBlock)) {
-            return;
-        }
-
-        RailShape wanted = shapeFor(movement);
-
-        // Vanilla reads the rail shape straight off the blockstate at a dozen inlined call sites,
-        // so the junction has to be a real world edit. Writing only on a change, and without
-        // neighbour updates, keeps adjacent rails from re-orienting every tick.
-        if (state.getValue(SHAPE) != wanted) {
-            level.setBlock(pos, state.setValue(SHAPE, wanted), Block.UPDATE_CLIENTS);
-        }
-    }
-
     @Override
     public Property<RailShape> getShapeProperty() {
         return SHAPE;
@@ -133,5 +111,27 @@ public class JunctionRailBlock extends BaseRailBlock implements PolymerTexturedB
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
         builder.add(SHAPE, WATERLOGGED);
+    }
+
+    // Points the junction at pos along movement, if that is what is there and it is not already.
+    private static void lay(Level level, BlockPos pos, Vec3 movement) {
+        if (movement.horizontalDistanceSqr() <= 0) {
+            return;
+        }
+
+        BlockState state = level.getBlockState(pos);
+
+        if (!(state.getBlock() instanceof JunctionRailBlock)) {
+            return;
+        }
+
+        RailShape wanted = shapeFor(movement);
+
+        // Vanilla reads the rail shape straight off the blockstate at a dozen inlined call sites,
+        // so the junction has to be a real world edit. Writing only on a change, and without
+        // neighbour updates, keeps adjacent rails from re-orienting every tick.
+        if (state.getValue(SHAPE) != wanted) {
+            level.setBlock(pos, state.setValue(SHAPE, wanted), Block.UPDATE_CLIENTS);
+        }
     }
 }

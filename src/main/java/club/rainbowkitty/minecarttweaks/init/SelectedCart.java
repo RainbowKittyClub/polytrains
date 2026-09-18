@@ -15,9 +15,11 @@ import net.minecraft.network.codec.StreamCodec;
  */
 public record SelectedCart(UUID value) {
 
+    /** Serialization codec for SelectedCart records. */
     public static final Codec<SelectedCart> CODEC =
             UUIDUtil.CODEC.xmap(SelectedCart::new, SelectedCart::value);
 
+    /** Network streaming codec for SelectedCart records. */
     public static final StreamCodec<ByteBuf, SelectedCart> STREAM_CODEC =
             UUIDUtil.STREAM_CODEC.map(SelectedCart::new, SelectedCart::value);
 }

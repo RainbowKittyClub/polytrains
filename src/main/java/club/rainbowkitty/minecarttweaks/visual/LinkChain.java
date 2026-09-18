@@ -41,6 +41,7 @@ public final class LinkChain extends ElementHolder {
     private final Entity cart;
     private final Entity parent;
 
+    // The block display element rendering the chain itself.
     private final BlockDisplayElement chain;
 
     // The passenger point the display rides at, which every offset is measured from.

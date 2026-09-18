@@ -35,7 +35,6 @@ public class MinecartTweaks implements ModInitializer {
     /** The mod's namespace, used for all Identifier construction. */
     public static final String MOD_ID = "minecarttweaks";
 
-    // This mod's logger.
     private static final Logger LOGGER = LogUtils.getLogger();
 
     // CreativeModeTabs keeps its tab keys private, so the vanilla keys are rebuilt here. Vanilla

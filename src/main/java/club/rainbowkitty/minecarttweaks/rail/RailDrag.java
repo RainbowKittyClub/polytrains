@@ -77,14 +77,50 @@ public final class RailDrag {
     // this much less friction. An empty chest cart keeps 0.995 against a plain cart's 0.975.
     private static final double CONTAINER_KEEP = 0.98;
 
+    // Fraction of rolling friction lost per step up from empty for a container cart.
     private static final double CONTAINER_EMPTIER = 0.001;
 
+    // Redstone comparator signal level of a full container.
     private static final int FULL_SIGNAL = 15;
 
     // What vanilla leaves of any cart's kept fraction once it is in water.
     private static final double WATER_KEEP = 0.95;
 
-    private RailDrag() {
+    // Static-only; blocks instantiation.
+    private RailDrag() {}
+
+    /**
+     * Takes off {@code cart} the speed its train has just lost running through {@code turn} right
+     * angles of kink in its track, or nothing at all under a model that does not charge for
+     * cornering. Charged where the turn is measured rather than through {@link #resisted}: vanilla
+     * asks for slowdown once per rail block a car crosses, which at speed is several times a tick,
+     * and an event billed per block would be billed several times over.
+     *
+     * <p>A fraction of the speed, not a flat loss, and the one place in this class where that is
+     * the right shape. Rolling resistance is a force and a flat loss is how a force reads; a kink
+     * is an impact, and what an impact costs is the sideways component of whatever speed arrived at
+     * it — so a fast train loses proportionally the same at a corner as a slow one, which is what
+     * makes the charge per corner rather than per tick spent in it. It also cannot stall anything:
+     * the loss goes to nothing as the speed does, so an engine or a rider always outruns it from
+     * rest, and bend loss needs none of the guards rolling resistance needs.
+     *
+     * <p>Not divided by the length of the train, and not divided by its mass either. Every car
+     * takes its own impact and every car carries its own mass, so a long train loses the same
+     * fraction to a corner as a single cart, and a loaded one the same fraction as an empty one.
+     * This is the one force here with no mass term, and adding one for consistency with the rest
+     * would be wrong: what an impact costs is a fraction of the arriving speed, and the mass
+     * cancels on both sides of that.
+     */
+    public static void bend(AbstractMinecart cart, double turn) {
+        double lost = turn <= 0.0 ? 0.0 : RailForces.of(cart.level()).bendLoss(turn);
+
+        if (lost <= 0.0) {
+            return;
+        }
+
+        double left = Math.max(0.0, 1.0 - lost);
+
+        cart.setDeltaMovement(cart.getDeltaMovement().multiply(left, 1.0, left));
     }
 
     /**
@@ -210,40 +246,6 @@ public final class RailDrag {
         return container.getContainerLootTable() != null
                 ? 0
                 : FULL_SIGNAL - AbstractContainerMenu.getRedstoneSignalFromContainer(container);
-    }
-
-    /**
-     * Takes off {@code cart} the speed its train has just lost running through {@code turn} right
-     * angles of kink in its track, or nothing at all under a model that does not charge for
-     * cornering. Charged where the turn is measured rather than through {@link #resisted}: vanilla
-     * asks for slowdown once per rail block a car crosses, which at speed is several times a tick,
-     * and an event billed per block would be billed several times over.
-     *
-     * <p>A fraction of the speed, not a flat loss, and the one place in this class where that is
-     * the right shape. Rolling resistance is a force and a flat loss is how a force reads; a kink
-     * is an impact, and what an impact costs is the sideways component of whatever speed arrived at
-     * it — so a fast train loses proportionally the same at a corner as a slow one, which is what
-     * makes the charge per corner rather than per tick spent in it. It also cannot stall anything:
-     * the loss goes to nothing as the speed does, so an engine or a rider always outruns it from
-     * rest, and bend loss needs none of the guards rolling resistance needs.
-     *
-     * <p>Not divided by the length of the train, and not divided by its mass either. Every car
-     * takes its own impact and every car carries its own mass, so a long train loses the same
-     * fraction to a corner as a single cart, and a loaded one the same fraction as an empty one.
-     * This is the one force here with no mass term, and adding one for consistency with the rest
-     * would be wrong: what an impact costs is a fraction of the arriving speed, and the mass
-     * cancels on both sides of that.
-     */
-    public static void bend(AbstractMinecart cart, double turn) {
-        double lost = turn <= 0.0 ? 0.0 : RailForces.of(cart.level()).bendLoss(turn);
-
-        if (lost <= 0.0) {
-            return;
-        }
-
-        double left = Math.max(0.0, 1.0 - lost);
-
-        cart.setDeltaMovement(cart.getDeltaMovement().multiply(left, 1.0, left));
     }
 
     /**

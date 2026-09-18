@@ -782,15 +782,13 @@ public final class TrainCoupling {
         return closing * massA * massB / (massA + massB);
     }
 
-    /**
-     * Holds {@code train} together by seating it on the track its leading car recorded, and cuts it
-     * where that cannot be done.
-     *
-     * <p>There is no second system. A train is placed or it is not, and a train that is not is
-     * either waiting — standing still, or on a ribbon not yet grown to reach it — or else coming
-     * apart for a reason this can name. Nothing corrects a car towards where it ought to be, so
-     * there is no correction to lose a race against, and no gap that has to be measured.
-     */
+    // Holds train together by seating it on the track its leading car recorded, and cuts it
+    // where that cannot be done.
+    //
+    // There is no second system. A train is placed or it is not, and a train that is not is
+    // either waiting — standing still, or on a ribbon not yet grown to reach it — or else coming
+    // apart for a reason this can name. Nothing corrects a car towards where it ought to be, so
+    // there is no correction to lose a race against, and no gap that has to be measured.
     private static void holdTrain(ServerLevel level, Train train) {
         reachTrain(level, train);
 

@@ -72,12 +72,14 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
     // Ticks the switch is held straight for a passthrough before it is asked to settle back.
     private static final int SETTLE_DELAY = 3;
 
+    // Below this a cart is treated as stopped and steer() leaves its facing alone.
     private static final double MOVING_EPSILON = 1.0E-6;
 
     // Both textures are drawn with the bottom edge toward the placer, so each is rotated half a
     // turn from FACING's own y-rotation to bring that edge round to FACING's opposite.
     private static final Map<Direction, BlockState> BRANCH_BACK = new EnumMap<>(Direction.class);
 
+    // Polymer states for the forward branch when powered.
     private static final Map<Direction, BlockState> BRANCH_FORWARD = new EnumMap<>(Direction.class);
 
     static {

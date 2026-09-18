@@ -148,14 +148,17 @@ public enum RailForces {
     // great deal, so it is both the heaviest empty cart and much the heaviest loaded one.
     private static final double CHEST_MASS = 1.2;
 
+    // A chest cart fully laden.
     private static final double CHEST_LADEN = 3.0;
 
     // A hopper cart empty and full. A funnel, not cargo: empty it weighs what a plain cart does,
     // and five slots cannot hold much.
     private static final double HOPPER_MASS = 1.0;
 
+    // A hopper cart fully laden.
     private static final double HOPPER_LADEN = 1.5;
 
+    // Mass of one rider or passenger.
     private static final double RIDER_MASS = 1.0;
 
     // The comparator reading a full container gives.

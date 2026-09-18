@@ -39,6 +39,7 @@ public final class RailBrake {
     // stops the cart dead rather than halving it (NewMinecartBehavior#calculateHaltTrackSpeed).
     public static final double HALT_KEEP = 0.5;
 
+    // Below this speed a braking cart is stopped dead.
     public static final double HALT_FLOOR = 0.03;
 
     // Below this a cart is not travelling any way worth remembering.

@@ -57,6 +57,7 @@ public final class TrackRibbon {
     // cumulative length at entry, so a node covers [arc, arc + span].
     private record Node(BlockPos block, Vec3 entry, Vec3 exit, double arc, double span) {}
 
+    // The rail blocks and crossing points this train has traversed, in order.
     private final Deque<Node> nodes = new ArrayDeque<>();
 
     // Where along this ribbon the leading car was last recorded. Held rather than looked back up:

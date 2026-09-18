@@ -55,7 +55,9 @@ public final class Train {
     // have collapsed into each other rather than been stood close together.
     private static final double PITCH_FLOOR = 0.25;
 
+    // The minecarts in this train, head first.
     private final List<AbstractMinecart> cars;
+    // Whether this train closes on itself (forms a cycle).
     private final boolean closed;
 
     // Set when the link graph under this train changes. It lives on the one object every car of
@@ -67,15 +69,18 @@ public final class Train {
     // once a call: membership is asked per collision candidate per movement step.
     private long checkedTick;
 
+    // The rail track this train has been recorded on.
     private final TrackRibbon ribbon;
 
     // Decided once a tick and held. Which end leads steers what the ribbon records, so two callers
     // in one tick disagreeing would record from both ends of the train at once.
     private @Nullable AbstractMinecart leader;
+    // The tick when the leading end was last settled.
     private long leaderTick = Long.MIN_VALUE;
 
     // The other end, while it is being argued for but not yet granted.
     private @Nullable AbstractMinecart flipTo;
+    // How many consecutive ticks flipTo has been the prospective leading end.
     private int flipHeld;
 
     // Which way round this train lies on its ribbon: +1 when its head sits at the higher arc, and
@@ -92,16 +97,19 @@ public final class Train {
     // means. A reset re-records the ribbon along the leading car's travel, so the sign before one
     // describes nothing after it.
     private int facing;
+    // The ribbon reset count when facing was last recorded.
     private int facingAt = -1;
 
     // This train's mean rolling friction, held for the tick that worked it out. Read once for every
     // rail block the leading car crosses, and working it out walks every car's inventory.
     private double rolling;
+    // The tick when rolling friction was last calculated.
     private long rollingTick = Long.MIN_VALUE;
 
     // This train's total mass, held the same way and for the same reason: the friction, drive and
     // shove paths all ask for it, and a container car's own mass is a walk of its inventory.
     private double mass;
+    // The tick when mass was last calculated.
     private long massTick = Long.MIN_VALUE;
 
     // The interval the cars are being seated at, or zero before there is anything to ease from.
@@ -111,6 +119,7 @@ public final class Train {
     // it means. A reset renumbers the arcs, so a position taken before one describes nothing after
     // it and the turn between the two would be the whole ribbon.
     private double headArc;
+    // The ribbon reset count when headArc was last recorded.
     private int headArcAt = -1;
 
     // How far the head turned reaching that arc, in right angles. Charged as it happens and kept

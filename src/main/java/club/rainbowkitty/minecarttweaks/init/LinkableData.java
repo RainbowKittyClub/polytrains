@@ -16,8 +16,10 @@ import net.minecraft.core.UUIDUtil;
  */
 public record LinkableData(Optional<UUID> first, Optional<UUID> second) {
 
+    /** The link state with neither slot occupied. */
     public static final LinkableData EMPTY = new LinkableData(Optional.empty(), Optional.empty());
 
+    /** Persistence codec for this record. */
     public static final Codec<LinkableData> CODEC = RecordCodecBuilder.create(instance ->
             instance.group(
                     UUIDUtil.CODEC.optionalFieldOf("first").forGetter(LinkableData::first),

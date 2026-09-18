@@ -44,6 +44,7 @@ public final class TrainMeter {
     // have severed them anyway, so a longer walk measures a train that no longer exists.
     private static final double REACH = 2.0;
 
+    // Static-only; blocks instantiation.
     private TrainMeter() {}
 
     /**
