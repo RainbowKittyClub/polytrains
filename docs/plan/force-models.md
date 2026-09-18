@@ -411,6 +411,41 @@ The meter now reports `mass=` on its line. It measures nothing — the model is 
 but it is the one field that says which model a coast or grade reading was taken under, and S3's and
 S5's numbers are worthless without that recorded alongside them.
 
+**The container figures are retuned per kind, which is the adjustment the Build text above deferred.**
+One cargo term over a shared 1.0 chassis gave every container cart the same 1.0-to-2.0 range, and that
+is wrong in both directions: a chest cart is a heavy box before it holds anything and its 27 slots
+hold a great deal, while a hopper cart's five slots cannot hold much at all. So each kind carries its
+own pair of endpoints instead:
+
+| Cart | Empty | Full |
+|---|---|---|
+| Chest | 1.2 | 3.0 |
+| Hopper | 1.0 | 1.5 |
+
+That makes an empty hopper cart the same as a plain cart, which is right — a hopper is a funnel, not
+cargo — and a full chest cart the heaviest single car in the mod at three times an empty one. The
+comparator reading is unchanged; what changed is that it now interpolates between two figures the
+cart's kind supplies rather than scaling one shared cargo mass. An unopened loot cart still reads as
+full, so a loot chest cart is 3.0.
+
+Any other container cart, a modded one included, takes the chest pair. There is nothing else to
+measure it by, and a box of goods on a cart is what that pair describes.
+
+**Three figures downstream move with this, and all three are gameplay-visible.** Coast distance is
+exactly proportional to mass under the physical model, so the spread across a chest cart's fill widens
+from 2:1 to 2.5:1 — see the retuned table in Reference. A full chest cart's wreck threshold and its
+share of a shove both scale with the same figure, since `TrainCoupling.mass` is what they read. And on
+a grade the loaded two-car train that S5's table calls *marginal* now does not climb at all; that is
+recorded against S5 rather than here, because whether to retune `ENGINE_FORCE` for it is that stage's
+question.
+
+**`PUSHABLE_CARS` is left at 8 and its comment is now the weaker half-truth it always was under the
+rule.** It says "counted in cars because the length is the part a player can see before they try",
+but it is compared against `mass`, so under the physical model three full chest carts (9.0) refuse a
+shove where three empty ones (3.6) do not. That was already true at the old 2.0 ceiling, at four cars
+instead of three; the new figures only make it easier to hit. Whether the shove ceiling should be a
+car count or a mass is S7's to settle, and it is listed there.
+
 ## S3 — Friction, as two separate laws — **built**
 
 **Build.** The vanilla model keeps what is there: vanilla's per-cart factor, averaged over the train
@@ -564,6 +599,26 @@ a normalised one is observably the same engine.
 got the only free ride, and the table's `4.00 × gravity` for a lone engine already assumed it did
 not. One formula either way: force over mass.
 
+**The grade table's middle row moved when the container masses were retuned, and the constant was
+left alone.** At a full chest cart's 3.0 the loaded pair the table calls *marginal* comes to 7.5 and
+gets 0.80 × gravity, so it does not climb:
+
+| Train | Mass | Output | Ratio | Climbs? |
+|---|---|---|---|---|
+| Furnace + 2 empty chest | 3.9 | `6 ×` | 1.54 | yes |
+| Furnace + 3 empty chest | 5.1 | `6 ×` | 1.18 | yes |
+| Furnace + 1 full chest | 4.5 | `6 ×` | 1.33 | yes |
+| Furnace + 2 full chest | 7.5 | `6 ×` | 0.80 | **no** |
+| Two furnaces + 2 full chest | 9.0 | `12 ×` | 1.33 | yes |
+| Furnace + 4 empty hopper | 5.5 | `6 ×` | 1.09 | marginal |
+
+`6 × SLOPE_PULL` still stands, because what replaced the marginal row is a better statement of the
+same idea: a pair of loaded chest carts needs a second engine, which is double-heading earning its
+place on a two-car train rather than only on an eleven-tonne one. The observable target shifts from
+"loading tips it to marginal" to "loading a short train stops it, and a second engine recovers it".
+If the softer version is wanted back, the lever is `ENGINE_FORCE` — `8 × SLOPE_PULL` puts the loaded
+pair at 1.07 — and not the chest cart's 3.0, which is the figure the whole load effect rests on.
+
 **The ceiling is shared across the train, which S5 had not planned for.** See Findings — restoring
 the halving made the ceiling depend on which end leads, and the repair is that the driven car takes
 the lowest figure in its train. It recurses unless the walk is refused by every car that is not the
@@ -630,6 +685,16 @@ the rule and exactly as shoveable as vanilla without it, which is the clearest s
 
 `wreckMomentum`'s own car counts are S6's, not this stage's, and `CartImpact`'s falloff landed there
 too — both were the same question and S6 answered it.
+
+**`shovable`'s ceiling is the one comment this stage has to settle rather than confirm.**
+`PUSHABLE_CARS = 8` is compared against `mass`, and its comment claims the figure is "counted in cars
+because the length is the part a player can see before they try" — which stopped being true the
+moment mass did. With the retuned container figures it takes three full chest carts (9.0) to refuse a
+shove and eight empty plain ones, so the same visible train length answers differently depending on
+what is in it. Either is defensible; what is not defensible is a comment describing one while the
+code does the other. Decide between a car count (compare `Train.size()`, and the rule changes nothing)
+and a mass ceiling (keep the comparison, rewrite the comment and rename the constant), then say which
+and why.
 
 **Done when.** A player shoving a parked three-car train moves it the same distance with the rule on
 and off while it is empty, and visibly less far once the cars are loaded. A train whose leader alone
@@ -758,27 +823,44 @@ kind, which is the whole point of the change:
 
 | Mass | What it is | `PHYSICAL` after S3 | `VANILLA` |
 |---|---|---|---|
-| 1.0 | any empty cart | 11.8 blocks | 15.2 plain / 77.6 chest |
-| 1.5 | a half-loaded container | 17.9 | 19.1 to 77.6, on fill |
-| 2.0 | a full container, or a rider | 24.0 | 19.1 full chest / 129.6 ridden |
+| 1.0 | a plain cart, or an empty hopper cart | 11.8 blocks | 15.2 plain / 77.6 hopper |
+| 1.2 | an empty chest cart | 14.2 | 77.6 |
+| 1.5 | a full hopper cart, or an unlit furnace | 17.7 | 19.1 hopper / 8.4 furnace |
+| 2.0 | a plain cart with a rider | 23.6 | 129.6 |
+| 2.0 | a half-loaded chest cart | 23.6 | 29.8 |
+| 3.0 | a full chest cart | 35.4 | 19.1 |
+
+Coast distance is exactly proportional to mass under the physical model — the closed form is
+`(m / 0.025) × (v₀ − a·ln((v₀ + a) / (v₁ + a)))` with `a` the flat term over the rate, and `m` factors
+straight out — so any mass not listed is 11.8 blocks times it.
 
 The vanilla column is not monotone in mass and cannot be made so: a *ridden* cart is vanilla's
-longest coast and a *full* chest cart is nearly its shortest, though both are mass 2.0. That
-disagreement is the clearest single statement of what the two models are for.
+longest coast at mass 2.0 and a *full* chest cart is nearly its shortest at 3.0, while an *empty*
+chest cart at 1.2 is vanilla's second longest. The two models order the same five carts almost
+exactly backwards, and that is the clearest single statement of what they are for.
 
 Terminal speed rolling downhill, with the ceiling applied:
 
-| Cart | `VANILLA` | `PHYSICAL` |
-|---|---|---|
-| Plain, empty | 6.09 m/s | 5.31 |
-| Plain, ridden | 8.00, clamped | 8.00, clamped |
-| Chest, empty | 8.00, clamped | 8.00, clamped |
-| Chest, full | 7.66 | 6.68 |
-| Furnace, unlit | 3.35 | 2.92 |
+| Cart | Mass | `VANILLA` | `PHYSICAL` |
+|---|---|---|---|
+| Plain, empty | 1.0 | 6.09 m/s | 5.31 |
+| Chest, empty | 1.2 | 8.00, clamped | 6.52 |
+| Plain, ridden | 2.0 | 8.00, clamped | 8.00, clamped |
+| Chest, full | 3.0 | 7.66 | 8.00, clamped |
+| Furnace, unlit | 1.5 | 3.35 | 8.00, clamped |
 
-Two rows are identical because the speed ceiling binds before friction does, which is worth knowing
-before reading a downhill test: only empty plain carts, loaded chest carts and unlit furnace carts
-were ever slower downhill than vanilla.
+**Above mass 1.375 the physical model has no terminal speed on a grade at all** — it runs away to the
+ceiling. Gravity's pull is `max(SLOPE_PULL, |v| × 0.02)` and mass-independent, while the retarding
+rate is `0.025 / m`, so once `m > 1.25` the growing branch of the pull outruns drag outright, and the
+constant branch stops binding first at 1.375. Everything at or above a full hopper cart therefore
+reaches 8 m/s downhill and stays there, and only a plain cart and an empty chest cart find a speed of
+their own. That is a consequence of dividing the *proportional* term by mass as well as the flat one
+— the amplification S3's As built owns up to — and it means a loaded train on a downgrade is
+speed-limited rather than friction-limited, which a player will read as needing brakes.
+
+The unlit furnace cart is the sharpest reversal in the table: 3.35 m/s in vanilla, where its ceiling
+is halved and its mass is not counted, against the clamp under the rule, where the halving is undone
+and its 1.5 puts it past the runaway threshold.
 
 The lit furnace cart is the widest gap of anything here. `VANILLA` reaches `4.43 × |push|` and so
 its ceiling of `0.5 × max_minecart_speed` — 4 m/s at the default 8, and 3 m/s in water — almost at
