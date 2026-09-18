@@ -948,11 +948,20 @@ sensible position.
 `VANILLA` for any level that is not a `ServerLevel`, so the client guard inside it was unreachable
 once the rule read was gone.
 
-**A removed rule leaves its value behind.** The key stays in `data/world/data/minecraft/game_rules.dat`
-and logs `Failed to parse saved data for 'SavedDataType[minecraft:game_rules]'` at ERROR every boot
-until it is dropped with `scripts/nbt.py`, server stopped first or the next save undoes the edit. The
-live world already carries a stale `minecarttweaks:furnace_minecart_speed` from the 26.2 port, so
-both should be dropped in the same pass whenever this deploys.
+**A removed rule leaves its value behind**, and this was confirmed on the dev world rather than taken
+on trust — the key was still there at `rail_drag_speed = 3` after the removal, and the boot said so:
+
+```
+[main/ERROR] (Minecraft) Failed to parse saved data for 'SavedDataType[minecraft:game_rules]':
+  Unknown registry key in ResourceKey[minecraft:root / minecraft:game_rule]:
+  minecarttweaks:rail_drag_speed ... missed input: {"minecarttweaks:rail_drag_speed":3}
+```
+
+Logged by `main` at level load, ten lines *before* `Starting minecraft server`, so it is not a
+runtime complaint and will not appear in a tail of a busy log. Dropped with `scripts/nbt.py`, server
+stopped first or the next save undoes the edit. The live world also carries a stale
+`minecarttweaks:furnace_minecart_speed` from the 26.2 port, so both want dropping in one pass
+whenever this deploys.
 
 ## S10 — The engine put on a power curve — **built**
 
