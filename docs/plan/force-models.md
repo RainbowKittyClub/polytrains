@@ -1234,7 +1234,7 @@ on, because a fix aimed at a rig and not at a reproduction from play is aimed at
 turn up in play, the shape is a cooldown on the reversal, so that one flip gets a chance to take
 effect before the next.
 
-## S11 — The brake and the boost reach the whole train — **planned**
+## S11 — The brake and the boost reach the whole train — **done**
 
 **Build.** Two `RETURN` injections beside S7's, on `calculateHaltTrackSpeed` and
 `calculateBoostTrackSpeed`, each answering for a train and declining for an unlinked cart so the lone
@@ -1278,6 +1278,85 @@ cart at the default ceiling stops in the `0.73` blocks nearest vanilla's own `0.
   loaded train reads exactly as an empty one, which is what the default is for.
 - A longer train still takes longer to stop under either model, and `VANILLA` is unchanged to the
   digit by the share being recounted, every car weighing one there.
+
+### As built
+
+Two `RETURN` injections as planned, one share behind both, two methods the models answer for
+themselves — and a fifth site nobody had counted, found from play while the stage was open.
+
+**The share is the whole of it, and the first cut of it was wrong.** Written as a ratio of masses it
+cancelled the mass out entirely; the finding above has the measurements and the correction, which is
+that cars are counted on top and weighed underneath. Everything else here rests on that one
+expression, and the reason the fault survived a full round of measurement is that every cart in that
+round was empty, where the two forms agree exactly.
+
+**A cart coupled to nothing became a train of one**, which the Build text did not plan and which
+settles the Open decision below. Declining for an unlinked cart had left a lone loaded chest cart
+coasting three times as far as an empty one while accelerating and braking precisely like it — a step
+at the moment of coupling rather than a gradient. It cost the default nothing, because a cart weighs
+one under `VANILLA` and its share therefore comes to exactly one.
+
+**The standing kick carries the speed the cart already had**, `launch(movement.length() + 0.2, share)`
+rather than a flat `0.2`. Vanilla's own branch is `powerDirection.scale(length + 0.2)` and that
+length, though under the rolling threshold, is not always nothing; taking the whole of vanilla's
+figure is what keeps a lone cart bit-exact under the default.
+
+**The fifth site was the engine's own parking brake**, which read `RailBrake.brakes(this)` while the
+brake beside it had already been made to read the train. A furnace train whose engine overran a brake
+rail drove against a brake that zeroed it every tick and crawled for ever at exactly one tick of
+engine impulse. Its own finding is above. It is the fourth instance of the leader-only fault after
+gravity, the brake and the boost, and the pattern is now worth stating as a rule: any question a
+force asks about "the rail under this cart" is a question about the train.
+
+Measured on the dev server with `tick freeze` and single steps, then watched in play.
+
+| One tick from `0.100`, fully over lit rails | `PHYSICAL` | `VANILLA` |
+| --- | --- | --- |
+| lone empty cart | `0.1565234375` | `0.1575` |
+| four empty cars | `0.1565234375` | `0.1575` |
+| lone full chest cart | `0.1188411458` | `0.158` |
+| four full chest cars | `0.1188411458` | `0.158` |
+
+| One tick from `0.400`, fully over brake rails | `PHYSICAL` | `VANILLA` |
+| --- | --- | --- |
+| lone empty cart | `0.2823828125` | `0.195` |
+| four empty cars | `0.2823828125` | `0.195` |
+| lone full chest cart | `0.3601866319` | `0.196` |
+
+The default column is vanilla's own arithmetic rather than a remembered figure: `0.1 × 0.975 + 0.06`
+for a plain cart and `0.1 × 0.98 + 0.06` for a container one, which is vanilla's emptiness bonus at
+full; and `0.4 × 0.5` times each of those factors on the brake. Load does nothing there, which is
+what the default is for. Under the rule a train and a lone cart of the same load now read alike at
+every length, and three times the load is three times less of both forces.
+
+| Launch, one lit rail under a stopped train | `PHYSICAL` | `VANILLA` |
+| --- | --- | --- |
+| one empty cart | `0.2` | `0.2` |
+| two empty cars | `0.1` | `0.2` |
+| four empty cars | `0.05` | `0.2` |
+| one full chest cart | `0.0666666667` | `0.2` |
+
+Length still tells on a brake under both models, which the conservation argument says it should not
+and which the finding above explains as a feedback rather than an error. Entering one brake rail at
+`0.4`, overrun past it:
+
+| | `PHYSICAL` | `VANILLA` |
+| --- | --- | --- |
+| two cars | `0.51` | `0.68` |
+| four cars | `1.68` | `2.10` |
+| eight cars | `2.78` | `3.75` |
+
+The reported faults both close. A brake under the **third** car of four stops a four-car train dead
+from `0.3` in `1.63` blocks, against about five that friction alone would take, and it cannot be
+towed off. A furnace train entering one brake rail at `0.40` stops at `x=321.92` where it used to
+crawl at `0.010417` for ever, with `0.10`, `0.20` and `0.30` unchanged to the digit; powering the
+rail sends it away again, `x=334` at `0.204` inside sixty ticks.
+
+One consequence to live with, stated rather than hidden: a brake under any car now cuts the engine
+for as long as any car is over it, so a long train clipping a single brake rail at speed loses its
+drive for the whole crossing and not merely while the engine passes. That is what a parking brake
+should do and what `hauled` already did for every train without an engine at its head, but it is a
+real change to how a furnace train reads on mixed track.
 
 ## Open decisions
 
