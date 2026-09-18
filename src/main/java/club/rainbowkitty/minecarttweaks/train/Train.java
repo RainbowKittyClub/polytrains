@@ -507,7 +507,21 @@ public final class Train {
         double speed = heading.length();
 
         if (speed < EPSILON) {
-            return cars.size() == 1 ? null : heldLeader();
+            if (cars.size() == 1) {
+                return null;
+            }
+
+            // A train that has never moved has no heading to read a leading end off, and without
+            // one the placer refuses outright — so every car runs on vanilla's own pipeline, and a
+            // train straddling a grade rolls the cars that are on the slope into the ones that are
+            // not until it collapses. A collapse is then permanent, because lieOf cannot read which
+            // way round a train lies once its cars are closer together than a quarter of the pitch.
+            //
+            // Either end answers, because the orientation is read off the cars themselves and not
+            // off this choice. The same hole is why driven() falls back to the anchor.
+            AbstractMinecart held = heldLeader();
+
+            return held != null ? held : cars.getFirst();
         }
 
         if (cars.size() == 1) {
