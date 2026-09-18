@@ -31,5 +31,5 @@ public abstract class MinecartItemMixin implements MinecartItemExt {
 
     @Accessor("type")
     @Override
-    public abstract EntityType<? extends AbstractMinecart> minecarttweaks$getType();
+    public abstract EntityType<? extends AbstractMinecart> minecarttweaks$type();
 }

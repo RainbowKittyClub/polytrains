@@ -198,7 +198,7 @@ public final class MinecartHelper {
 
         Entity replacement = AbstractMinecart.createMinecart(
                 level, originalMinecart.getX(), originalMinecart.getY(), originalMinecart.getZ(),
-                craftedCart.minecarttweaks$getType(), EntitySpawnReason.DISPENSER, crafted, player);
+                craftedCart.minecarttweaks$type(), EntitySpawnReason.DISPENSER, crafted, player);
 
         originalMinecart.ejectPassengers();
         replacement.copyPosition(originalMinecart);

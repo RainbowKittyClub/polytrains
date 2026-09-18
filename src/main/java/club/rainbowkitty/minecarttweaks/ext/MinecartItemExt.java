@@ -7,7 +7,7 @@ import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 public interface MinecartItemExt {
 
     /** Returns the entity type this item places when used on a rail. */
-    public default EntityType<? extends AbstractMinecart> minecarttweaks$getType() {
+    public default EntityType<? extends AbstractMinecart> minecarttweaks$type() {
         throw new AssertionError("MinecartItemMixin supplies the body of this accessor");
     }
 }
