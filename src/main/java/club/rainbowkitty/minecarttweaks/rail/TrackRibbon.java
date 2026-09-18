@@ -258,10 +258,19 @@ public final class TrackRibbon {
         return node == null ? null : node.block();
     }
 
-    /** Which way the track runs at arc length {@code arc}, or null if that is off the ends. */
+    /**
+     * Which way a cart at arc length {@code arc} is travelling, or null if that is off the ends or
+     * the block's two edge midpoints coincide.
+     *
+     * <p>The node's own chord, not the direction it exits by. This whole ribbon is built of chords:
+     * {@link #positionAt} lerps a car between the two edge midpoints, {@code span} is how far apart
+     * they are, and {@link #turnBetween} measures the joints between them. A corner's two edges are
+     * square to each other, so its chord runs at 45 degrees to either — a car placed along that
+     * chord and aimed along the exit is aimed 45 degrees off the way it is going, once per corner.
+     */
     public @Nullable Vec3 tangentAt(double arc) {
         Node node = nodeAt(arc);
-        return node == null ? null : node.forward();
+        return node == null ? null : heading(node);
     }
 
     /**
