@@ -194,6 +194,29 @@ cart cannot move that way and vanilla discards it at the rail a moment later.
 Confirmed in play rather than headless. A mob driven into a cart never triggered
 `getPushableEntities`, so there was no rig for it; a player walking into a cart is the whole test.
 
+**A train that is moving with no ribbon can never form one, and the deadlock is permanent.**
+`Train.decideLeader` reads the cars' arcs along the ribbon to decide which end leads; the ribbon only
+grows behind the car already decided to be leading. Above `EPSILON` of speed there is no entry to
+that loop — the arcs come back null, `decideLeader` returns the held leader, and a train that has
+never had one holds nothing. `TrainPlacer` then logs `not seated, NO_LEADING_END: cars=n` every tick
+while every car runs vanilla's pipeline for itself, so the train stretches out across the track
+without severing: a four-car train measured opening from its 4.5-block span to over fifteen blocks in
+forty ticks, links intact throughout. At rest the deadlock does not arise, because `decideLeader`
+falls back to the head.
+
+Two things make it worse than a stretched train. Every force read over "the whole train" still counts
+cars that are now far adrift — a boost measured feeding the runaway head at three quarters share from
+three cars stranded on a booster twenty blocks behind it. And nothing reports it above `DEBUG`, so
+the symptom that reaches play is a train that came apart for no stated reason.
+
+**Reproduced from a rig rather than from play** — summoning a linked train with a `Motion` puts it
+straight into the deadlock state — but the same shape is reachable in play by any route that leaves a
+train moving with no recorded ribbon, a restart with a train under way being the obvious one, and it
+has been seen there once or twice. Not fixed here. The fix is to give `decideLeader` the same
+fallback above `EPSILON` that it has below it, or to let the ribbon grow from a moving train's own
+head before a leader is required; which of those is right depends on whether a moving train's leading
+end can be read from its velocity alone, which on a U-turn it cannot.
+
 ## How these stages get tested
 
 On this mod's own dev server, `scripts/devserver.sh rkc/mods/minecart-tweaks restart`, against a world
