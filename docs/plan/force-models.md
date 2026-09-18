@@ -421,6 +421,30 @@ The same loop runs backwards under the boost, where a train that accelerates gen
 more slowly and collects marginally more — the three percent by which a four-car train's peak fell
 short of a single cart's.
 
+**An engine reads its own rail for the parking brake, so a furnace train can crawl for ever.**
+Reported from play as a furnace train that slows to a crawl over a brake rail above a certain speed
+instead of stopping, and reproduced exactly: entering a single brake rail at `0.10`, `0.20` and
+`0.30` the train stopped dead, and at `0.40` it settled at `0.010416666666666666` blocks a tick and
+held it indefinitely.
+
+That figure names the fault. It is `ENGINE_FORCE / train mass` — `6 × 0.0078125` over `4.5` — one
+tick of engine impulse exactly, so the train was carrying precisely what the engine had just given it
+and nothing more. Each tick the brake found the speed under its `0.03` floor and returned `Vec3.ZERO`;
+each tick the engine added its impulse straight back. Neither ever won.
+
+The speed threshold is the two halves of the fault meeting. `minecarttweaks$parked` was
+`RailBrake.brakes(this)`, the engine's **own** rail, while the brake itself had already been made to
+read the whole train. Below `0.40` the train came to rest with the furnace still over the rail, so it
+parked and stopped properly; at `0.40` the furnace overran the rail and only the fourth car was left
+on it, which the brake saw and the engine did not.
+
+So it is the same repair as the brake, the boost and gravity before it, and the fourth instance of
+it: `TrainCoupling.held`, the whole train's answer. The consequence is worth stating — a brake under
+any car now cuts the engine for as long as any car is over it, so a long train clipping one brake
+rail at speed loses its drive for the whole crossing rather than only while the engine is passing.
+That is what a parking brake should do, and what `hauled` already did for every train with something
+other than an engine at its head.
+
 ## How these stages get tested
 
 On this mod's dev server, `scripts/devserver.sh rkc/mods/minecart-tweaks restart`, port 25603,
@@ -1310,18 +1334,19 @@ with what becomes the opt-in model, and after this work the default is the one a
 runs and the one no stage of that document ever tested. Either the default gets its own pass over
 the standing test track, or this document ends with the better-tested half switched off.
 
-**Whether a lone cart should feel the physical model's rail forces.** `boostPull` and `braked`
-decline for an unlinked cart, so vanilla's own `+0.06` and `× 0.5` reach it untouched under both
-models. Under the default that is exactly right and is the point. Under the rule it leaves a lone
-loaded chest cart coasting three times as far as an empty one — mass reaches its drag, its engine and
-its gravity — while accelerating and braking precisely like it, which is not a model anyone would
-have designed on purpose. The discontinuity is sharp rather than gradual: one loaded chest cart gains
-`0.06` a tick on a booster, and the moment a second is coupled to it the pair gains `0.02`.
+**~~Whether a lone cart should feel the physical model's rail forces.~~ Settled: it should, and it
+does.** The first cut declined for an unlinked cart, which left a lone loaded chest cart coasting
+three times as far as an empty one — mass reaches its drag, its engine and its gravity — while
+accelerating and braking precisely like it, with a step at the moment of coupling rather than a
+gradient: one loaded chest cart gained `0.06` a tick on a booster and the pair it became gained
+`0.02`. A cart coupled to nothing is now a train of one, so the same share answers for it.
 
-The fix is small and cannot touch the default: let the share answer for a single car as `1 / cartMass`,
-which under `VANILLA` is `1 / 1` and changes nothing at all. Not taken with S11 because lone carts are
-the overwhelming majority of what runs on a real railway, which is a far wider blast radius than
-trains, and it deserves its own round rather than riding along with one aimed at coupling.
+It cost the default nothing, which is the part worth recording: under `VANILLA` every cart weighs
+one, so a lone cart's share comes to exactly one and every law hands back the figure vanilla
+computed. Measured after the change — a lone empty cart on a lit rail left `0.100` at `0.1575`,
+which is vanilla's `0.975` slowdown and its `0.06`; a full chest cart at `0.158`, which is vanilla's
+own container figure of `0.98`; and both halved to `0.195` and `0.196` on a brake. Bit-exact, with
+load doing nothing at all, which is what the default is for.
 
 ## Reference: the two models, computed
 
