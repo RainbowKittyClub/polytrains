@@ -250,6 +250,48 @@ vehicle that can drive itself over terrain. The only real cost is the wasted fue
 worth changing, the shape is a small impulse inside `comeOffTrack` aimed at the nearest rail,
 unconditional in both models like the other two impulse fixes.
 
+**`CartImpact` handed a struck cart the striker's whole movement and billed the striker nothing, so
+a line of loose carts created momentum out of one nudge.** The line read
+`struck.setDeltaMovement(movement)` — a copy, not an exchange. One cart at `v` became two carts at
+`v`, and `drag`, which is what `slowTrain` bills the striker through, was only ever fed by the
+living-entity branch. Every cart in the sweep got the copy, and each of them re-ran it the next tick.
+
+Measured on nine unlinked carts standing one block apart, a single `0.05` blocks-a-tick nudge — one
+block a second — to the fifth of them:
+
+| | Peak speed reached | Carts left |
+|---|---|---|
+| Physical model, before | `0.437` | 5 of 9 |
+| Vanilla model, before | `0.293` | 9 of 9 |
+| Either model, after | `0.069` | 9 of 9 |
+
+Two separate faults in the one line, and this is why it presented as violently as it did. **The
+amplification is not gated** — the copy runs under both models, and the vanilla row above shows the
+same nudge reaching six times its own size with the rule off. **Only the destruction is gated**, by
+`wrecks()`, which is why carts were seen breaking with `realistic_physics` on and not without it: the
+amplification pushes closing momentum past `cart_wreck_momentum` and then S6's wrecking does exactly
+what it is meant to. The gating was right; what it was gating was a fault.
+
+The second fault is subtler and was visible in the tail of the measurement: the carts drifted at a
+**constant** `-0.013` blocks a tick for over a hundred and twenty ticks, where vanilla's `0.975` a
+tick should have left a thousandth of it. A copy overwrites a decayed velocity with a neighbour's
+undecayed one, so a close-packed group of carts rewrites each other's movement often enough that
+**friction never gets a tick's hold on any of them** and they coast for ever. Neither model's
+retarding law was reaching them at all.
+
+Fixed as an inelastic meeting along the track: both sides leave at the momentum-weighted mean of
+what they arrived with, the struck side written onto the car its train is driven by for the reason
+`slowTrain` gives, and the striker billed through the same `drag` a struck mob costs it — so what one
+side gains the other loses, whatever their masses. The bill is in `shove`'s own units, which is what
+makes the two accountings the same one. Shunting survives and is now physical: a cart arriving at
+`0.34` into three standing carts leaves at `0.046` while the three move off at about `0.06` each,
+where before it would have handed each of them the whole `0.34`.
+
+The fix also stops the exchange reaching **behind** the striker. The sweep deliberately looks both
+ways so a fast cart still catches a mob it passed clean through in one tick, but a cart cannot drag
+along one it is moving away from, and reaching backwards is what let one nudge light up a line in
+both directions at once.
+
 ## How these stages get tested
 
 On this mod's dev server, `scripts/devserver.sh rkc/mods/minecart-tweaks restart`, port 25603,
@@ -898,15 +940,17 @@ on the flat at the top — which is the constant-power behaviour worth having, a
 dropping to a lower speed on the bank rather than holding its own. A furnace and two full chest carts
 got five blocks up and stopped, as mass 7.5 against `6 ×` gravity must.
 
-**Found while testing and not fixed here: the stall counter oscillates without effect on a grade.**
-The loaded train that failed to climb froze on the bank rather than rolling back down, and the engine's
-`PushX` was measured flipping between `+1.0` and `-1.0` every four ticks with `Motion[0]` and
-`Motion[1]` both at exactly zero throughout. So `minecarttweaks$countStall` is firing as designed and
-reversing faster than the train can build any movement, which cancels itself out — and gravity is not
-reaching the wedged train either. Pre-existing: neither the counter's trigger nor its action is
-touched by this stage, and a train that could not climb would have wedged the same way before it. The
-remedy is a cooldown on the reversal, or letting gravity rather than the impulse resolve a wedge on a
-grade, and it wants a stage of its own.
+**One measurement here is contradicted by play, and the play is the authority.** The loaded train
+that failed to climb froze on its bank rather than rolling back, with the engine's `PushX` measured
+flipping between `+1.0` and `-1.0` every four ticks while both movement components stayed at exactly
+zero — so `minecarttweaks$countStall` was firing and reversing faster than the train could build any
+movement, cancelling itself out. In play a grade stall reverses as intended, so whatever that
+headless case was, it is narrower than "the counter does not work on a grade": most likely the
+continuous twenty-step 45° bank it was standing on, steeper and longer than anything a player builds,
+or that the rig's engine was a placed trailing car rather than the leader. Recorded rather than acted
+on, because a fix aimed at a rig and not at a reproduction from play is aimed at nothing. Should it
+turn up in play, the shape is a cooldown on the reversal, so that one flip gets a chance to take
+effect before the next.
 
 ## Open decisions
 
