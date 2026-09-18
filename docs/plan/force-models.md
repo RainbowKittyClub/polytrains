@@ -54,6 +54,8 @@ hand-off to a non-engine leader, the shove divided by mass, and the impact drag 
 | `RailBrake:115` — the brake launching the driven car | repair |
 | `RailDrag.shared` — friction averaged over the train | repair, **vanilla model only** |
 | `TrainCoupling.slopePull` — gravity from the cars on the grade | repair, **weighted per model** |
+| `TrainCoupling.braked` — the brake from the cars holding | repair |
+| `TrainCoupling.boostPull` — the boost from the cars on lit rails | repair, **launch per model** |
 | `RailDrag.slowed`'s retarding law | **departure** |
 | `RailDrag.bend` — the per-kink charge | **departure** |
 | `Train.drive`'s divisor | **departure** |
@@ -334,6 +336,53 @@ that way in S7, which records what the computed pull is made of and what it meas
 Worth noting what is *not* wrong: a lone cart rolls down a grade correctly in both models, measured
 accelerating to `-0.20` blocks a tick and coasting out onto the flat, and a train entirely on a grade
 rolls correctly too. Only the straddling case fails, which is why it took a report from play to find.
+
+**The brake and the boost are the same fault as gravity, and they do not take the same repair.**
+Every per-cart track force lives inside the `moveAlongTrack` the placer cancels, so each reaches
+exactly one car of a train. Measured on a four-car train: a leading car onto an unpowered powered
+rail stops dead at `x=320.988`, while the same rail under a **trailing** car does nothing at all —
+the train rolls off it on friction alone, which is the "a train can be pulled off the brake" report.
+A trailing car over two *lit* powered rails gains nothing either.
+
+Gravity's repair does not carry over, because vanilla states these forces in three different units:
+
+| Force | Vanilla's expression | Kind |
+| --- | --- | --- |
+| Slope | `movement + 0.0078125` along the grade | an impulse |
+| Boost, rolling | `normalize().scale(len + 0.06)` | an impulse |
+| Boost, standing | `powerDirection.scale(len + 0.2)` | a velocity, **assigned** |
+| Brake | `movement.scale(0.5)`, or `ZERO` below 0.03 | a fraction, **multiplied** |
+
+Only the impulses divide by mass. `Σf / Σmᵢ` is meaningless for the other two: an assigned velocity
+has no mass to act on, and a fraction has no units at all. What generalises to all four is
+**momentum**. A car whose speed is set to `v` while coupled to a train shares that momentum with it,
+so the train leaves at `v × Σ_lit mᵢ / Σmᵢ`; a car whose speed is cut to a fraction `k` shares the
+loss the same way, so the train keeps `1 − share × (1 − k)`. Both collapse to vanilla's own figure
+when every car is on the rail, which is the ensemble test, and both reduce to a car-count ratio under
+`VANILLA`, where every car weighs one.
+
+**The rolling boost needs no gate at all, and that is worth stating because it looks like it should.**
+`Σ 0.06 / Σmᵢ` at a uniform mass is `k/n × 0.06`, which reads as a train accelerating a tenth as hard
+as it does today. It does not: over a whole crossing every car spends the same time on the section,
+so the car-ticks sum back to exactly what the leader alone collects now. A ten-car train over an
+eight-block booster at 0.4 blocks a tick gains `20 × 0.06` either way. A section a train sits fully
+across is unchanged outright; only partial coverage changes, from all-or-nothing at the head to
+proportional. What the gate buys here is the mass term and nothing else — a loaded train gains less,
+an empty one gains what it always did.
+
+**The standing start is the one departure, and the two models want opposite answers.** Vanilla's
+launch branch exists to unstick a stopped cart, and a train is exactly where "unstick" and
+"accelerate a mass" come apart. Under `VANILLA` the kick stays whole: one lit rail under any car
+launches the train at 0.2, as it launches one cart, so a railway built on a single kick rail keeps
+working. Under `PHYSICAL` nothing is free, so it takes the momentum share like everything else and a
+long or loaded train needs proportionally more lit rail beneath it to start — the same constraint
+the engine and the grade already impose, and one to build around rather than a penalty.
+
+**A brake is a hold, not only a retardation**, which splits its two branches. The `× 0.5` is shared
+by momentum, so a train one car of ten onto a brake sheds speed gently and a train fully on brakes
+halves exactly as vanilla does. The dead stop below `0.03` is not shared: a clamped brake is a static
+constraint, and a held car holds the train coupled to it. All-or-nothing on any car is both what the
+report asks for and what stops a train creeping off a rail it is only fractionally standing on.
 
 ## How these stages get tested
 
@@ -1123,6 +1172,36 @@ or that the rig's engine was a placed trailing car rather than the leader. Recor
 on, because a fix aimed at a rig and not at a reproduction from play is aimed at nothing. Should it
 turn up in play, the shape is a cooldown on the reversal, so that one flip gets a chance to take
 effect before the next.
+
+## S11 — The brake and the boost reach the whole train — **planned**
+
+**Build.** Two `RETURN` injections beside S7's, on `calculateHaltTrackSpeed` and
+`calculateBoostTrackSpeed`, each answering for a train and declining for an unlinked cart so the lone
+case stays bit-exact.
+
+`TrainCoupling.boostPull` walks the cars, sums `cartMass` over those standing on a lit powered rail,
+and lays `Σ_lit mᵢ / Σmᵢ` of vanilla's own figure along `RailPath.crossing(...).forward()` — the
+direction `slopePull` already uses, because a stopped train has no movement to read a heading off.
+Its standing branch asks `RailForces.launch` for the magnitude instead, which is the one new method
+the model gains: `VANILLA` answers `powered > 0 ? kick : 0`, `PHYSICAL` answers
+`kick × powered / mass`.
+
+`TrainCoupling.braked` is the same walk against `RailBrake.brakes`, returning the fraction of its
+speed the train keeps. `RailBrake` gains `holds`, the train-aware sibling of `brakes`, and
+`hauled`'s parking-brake check and `release` both move onto it — so a brake under any car suppresses
+the engine and holds the train, rather than only one under the leader.
+
+**Done when.**
+
+- A four-car train whose **trailing** car crosses an unpowered powered rail is stopped by it, and a
+  player cannot pull the train off it.
+- A train standing fully on lit powered rails accelerates at 0.06 a tick, matching a single cart.
+- The same train with one car of four on a lit rail gains 0.015 a tick, and over a full crossing of
+  that section reaches the speed the leader-only behaviour reaches today. **The integral is the
+  check, not the instantaneous figure** — the per-tick number is meant to be a quarter.
+- With `realistic_physics` off, one lit rail under a stopped four-car train launches it at 0.2; with
+  it on, at 0.05, and a loaded train slower still.
+- A lone cart reads identically on all four counts under both models.
 
 ## Open decisions
 
