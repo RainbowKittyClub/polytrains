@@ -450,10 +450,16 @@ public final class TrainCoupling {
     public static @Nullable Vec3 boostPull(AbstractMinecart cart, Vec3 movement) {
         List<AbstractMinecart> cars = drivenCars(cart);
 
-        // A brake anywhere under the train outranks a rail lit anywhere else: the parking brake is
-        // a hold, and a train that boosted against one would only be stopped again the same tick.
-        if (cars == null || braking(cars)) {
+        if (cars == null) {
             return null;
+        }
+
+        // A brake anywhere under the train outranks a rail lit anywhere else, the driven car's own
+        // included: the parking brake is a hold, and a train launched off one lit rail would only
+        // be halted again a tick later. Declined outright rather than left to vanilla, which would
+        // still boost the driven car off whatever it is standing on.
+        if (braking(cars)) {
+            return movement;
         }
 
         RailForces forces = RailForces.of(cart.level());
