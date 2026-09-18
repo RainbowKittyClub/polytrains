@@ -12,8 +12,9 @@ computed from those verified force laws, not measured in-world — the model beh
 the three numbers `train-ribbon.md` recorded from observation (4.53, 5.09 and 6.09 blocks per second
 downhill), which is why they are quoted, but they are arithmetic and a stage is not closed by them.
 
-Stage order. **S1 names both models and adds the rule, and S2 defines cart mass**; everything after
-depends on both, since the physical model divides almost everything by mass. S3 (friction), S4 (bend
+Stage order. **S1 names both models and adds the rule, and S2 defines cart mass** — landed
+together, for the reason S1's "As built" gives; everything after depends on both, since the physical
+model divides almost everything by mass. S3 (friction), S4 (bend
 loss), S5 (the engine) and S6 (wrecking) are independent of each other and can land in any order;
 **the feature is complete at the end of S6**, since those four cover every gated force and the one
 consequence of force this mod lets destroy a player's property. S7 reviews the repairs. S8 documents
@@ -133,6 +134,14 @@ the car count when every car weighs one. `slopeShare`'s weighting is the same id
 left model-dependent is only the three places where the two models run genuinely different laws —
 the retarding law, the bend charge and the engine — plus the furnace ceiling.
 
+**`RailDrag.keepOf` mirrors vanilla's container friction with one cart wrong, which S3 inherits.**
+For an unopened loot cart it falls through to `cart.getBehavior().getSlowdownFactor()` and reads
+0.975, where vanilla reads 0.98 — vanilla skips only the *emptiness bonus* for a loot cart, not the
+container factor itself (`AbstractMinecartContainer.java:102-106`). It reaches nothing today but the
+train mean, and only for a train carrying an unopened loot cart, so the stakes are small; but the
+vanilla model's whole claim is that it returns vanilla's own figure, and this one does not. Fixed in
+S3, which owns `keepOf`, rather than folded into an otherwise inert stage.
+
 ## How these stages get tested
 
 On this mod's dev server, `scripts/devserver.sh rkc/mods/minecart-tweaks restart`, port 25603,
@@ -158,7 +167,7 @@ gone from the code and its stale key still sits in the live world's
 `scripts/nbt.py` with the container *stopped*. S6 must not remove another rule without doing the
 same.
 
-## S1 — Both models named, the rule added, nothing gated — **planned**
+## S1 — Both models named, the rule added, nothing gated — **done**
 
 **Build.** Add `MTGameRules.REALISTIC_PHYSICS`, a boolean defaulting to **false**. Add
 `rail/RailForces`, an enum of two constants — `VANILLA` and `PHYSICAL` — with one abstract method per
@@ -168,14 +177,23 @@ inventory above:
 | Method | `VANILLA` | `PHYSICAL` |
 |---|---|---|
 | `cartMass(cart)` | `1.0`, always | the real figure from S2 |
-| `decelerationOf(cart, movement)` | vanilla's own factor, train-averaged | `(own + flat) / mass` |
+| `retarded(cart, movement)` | vanilla's own factor, train-averaged | `(own + flat) / mass` |
 | `bendLoss(turn)` | `0.0` | `BEND_LOSS * turn` |
-| `engineImpulse(cart, movement)` | vanilla's `0.8`-decay branch | the flat engine force |
-| `topSpeed(halved)` | `halved` — the mixin does not fire | `super.getMaxSpeed(level)` |
+| `engine(movement, push, drive)` | null — vanilla's own branch runs | the flat engine force |
+| `topSpeed(halved, full)` | `halved` | `full` |
+| `wrecks()` | `false` | `true` |
 
-Five methods, not the six an earlier draft of this document had: `cartMass` at a uniform 1.0 makes
-the drive divisor and the slope weighting count-weighted without either needing a model of its own,
-as Findings sets out.
+`cartMass` at a uniform 1.0 makes the drive divisor and the slope weighting count-weighted without
+either needing a model of its own, as Findings sets out — which is what keeps this list to six
+entries rather than the eight the gated-sites table has rows for.
+
+Two of these return something other than a figure, for the same reason. `engine` returns null under
+`VANILLA` rather than reconstructing vanilla's line, because the site is an `@Inject` that can
+simply decline to cancel and leave vanilla's own method to run — reimplementing
+`MinecartFurnace.applyNaturalSlowdown` in order to return what it would have returned is strictly
+more code and strictly more drift. `wrecks` is a plain predicate because that is genuinely all S6
+needs; it is the sixth method the S1 draft did not list, and it belongs here rather than as a
+seventh rule.
 
 `topSpeed` is the one that was written wrongly the first time. The mixin injects at `getMaxSpeed`
 RETURN, where the value has *already* been halved by `MinecartFurnace.getMaxSpeed`
@@ -196,7 +214,33 @@ The default is `false`, which inverts this mod's current behaviour for every exi
 the point of the work, but it means a saved world quietly changes how its carts move on the first
 boot after the update — worth a line in the README rather than left for someone to discover.
 
-## S2 — Cart mass, the quantity — **planned**
+### As built
+
+Landed with S2, in one commit, because the two cannot be separated in the direction this document
+puts them. `RailForces` cannot name `cartMass` without a figure for `PHYSICAL` to return, and S2's
+gate is `cartMass` itself — so an S1 that compiles on its own has to state a mass the plan calls
+wrong and then correct it one commit later. The stages stay numbered as written; only the commit is
+shared.
+
+`realistic_physics` is the name, settling the first Open decision by taking this document's own
+default.
+
+Six methods, not five. `wrecks()` is the sixth and is listed in the table above; the S1 draft had
+left it implicit in S6.
+
+`engine` and `topSpeed` came out differently from the draft signatures. Neither can call `super`
+from an enum, which is what the draft's `super.getMaxSpeed(level)` assumed, so `topSpeed` takes both
+figures and picks — the mixin, which *can* call `super`, computes them. `engine` returns null for
+"leave vanilla's own method alone", which is what an `@Inject` that declines to cancel already does.
+`retarded` names the two whole laws by delegating to `RailDrag`: `shared` for the vanilla model,
+which needed only its `private` dropped, and `slowed` for the physical one, which is today's
+behaviour unchanged. So S3's work is to split `slowed` apart, not to write a law from nothing.
+
+Verified on the dev server: `gamerule minecarttweaks:realistic_physics` answers `false`, mixins
+report `None.`, and `grep -rn REALISTIC_PHYSICS src/main/java` finds it in `MTGameRules` and
+`RailForces` only.
+
+## S2 — Cart mass, the quantity — **done**
 
 **Build.** Mass has to exist before friction or the engine can divide by it, which is why it comes
 first. `TrainCoupling.mass(cart)` already has the right name and returns a car count; generalise it
@@ -231,6 +275,33 @@ tick the way `Train.rolling` is, since the friction path asks for it once per ra
 **Done when.** A debug line reports plausible mass for a mixed train — a full chest cart, an empty
 one, a ridden cart and a plain one summing to 6.0 under the rule and 4.0 without it — and nothing
 about how anything moves has changed yet, because nothing reads it.
+
+### As built
+
+**"Nothing reads it" was wrong, and the stage is better for it.** `TrainCoupling.mass` has three
+readers already — the shove at `EntityMixin:79`, `shovable`'s eight-car ceiling, and
+`closingMomentum`'s reduced mass — so generalising it as this stage asks makes all three mass-aware
+the moment the rule is on. That is what S7 wanted from it ("S2 changes what it means for free") and
+not a leak, so it stands; the claim of inertness is the part that was wrong. The invariant that
+actually holds is the one worth testing: **with the rule off, every one of those three reads the car
+count it read before**, because `cartMass` is a uniform 1.0 and a sum of ones is a count.
+
+So the stage is inert at the default and live under the rule, in three places S3 does not cover. A
+shove and a wreck threshold are the first two things to feel the model, before any friction or
+engine work lands.
+
+`Train.mass(forces, tick)` holds the total for the tick beside `Train.rolling`, for the reason the
+plan gave. `RailForces.weigh` is the per-cart figure and is not cached at all — a hopper cart's mass
+changes continuously and the comparator read is a short loop.
+
+One vanilla detail the figures had to follow: an **unopened loot cart reads as full**, mass 2.0.
+That is vanilla's own choice — `AbstractMinecartContainer.applyNaturalSlowdown` skips the emptiness
+bonus entirely when `lootTable != null` (`:102-106`), giving it a full cart's `keep` of 0.98 — so
+matching it costs nothing and diverging from it would be a second rule to remember.
+
+The meter now reports `mass=` on its line. It measures nothing — the model is asked and it answers —
+but it is the one field that says which model a coast or grade reading was taken under, and S3's and
+S5's numbers are worthless without that recorded alongside them.
 
 ## S3 — Friction, as two separate laws — **planned**
 
@@ -405,11 +476,11 @@ values.
 
 ## Open decisions
 
-**What the rule should be called.** `realistic_physics` throughout this document, which fits the
-mod's existing descriptive naming. `physical_forces` is the narrower and more accurate name, since
-nothing outside friction and acceleration is gated, and this would sit badly if the rule later grew
-to cover collision or wrecking. Settled by picking one before S1, since renaming a rule later resets
-every saved value for it.
+**~~What the rule should be called.~~ Settled in S1: `realistic_physics`.** The alternative,
+`physical_forces`, was the narrower name on the argument that nothing outside friction and
+acceleration is gated — and by the time S1 landed that argument had already expired, since S6 moves
+wrecking inside the model. Renaming it later resets every saved value for it, so it does not get
+revisited.
 
 **Whether a real momentum exchange should replace the cart-against-cart handoff.** Both the mod's
 line (`CartImpact.java:104`, the struck cart takes the striker's whole movement) and vanilla's own
