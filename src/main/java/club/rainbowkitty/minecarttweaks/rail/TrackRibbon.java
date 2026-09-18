@@ -55,8 +55,7 @@ public final class TrackRibbon {
 
     // One rail block's worth of track, in ribbon order rather than in travel order. Arc is the
     // cumulative length at entry, so a node covers [arc, arc + span].
-    private record Node(BlockPos block, Vec3 entry, Vec3 exit, Vec3 forward, double arc,
-            double span) {}
+    private record Node(BlockPos block, Vec3 entry, Vec3 exit, double arc, double span) {}
 
     private final Deque<Node> nodes = new ArrayDeque<>();
 
@@ -154,8 +153,7 @@ public final class TrackRibbon {
         RailPath.Crossing crossing = RailPath.crossing(level, pos, movement);
 
         if (crossing != null) {
-            nodes.add(new Node(pos, crossing.entry(), crossing.exit(), crossing.forward(), 0.0,
-                    crossing.span()));
+            nodes.add(new Node(pos, crossing.entry(), crossing.exit(), 0.0, crossing.span()));
             leaderArc = 0.0;
         }
     }
@@ -523,10 +521,10 @@ public final class TrackRibbon {
 
         Node end = nearEnd ? nodes.getFirst() : nodes.getLast();
 
-        // Away from the ribbon, which is the heading the builders read a crossing by: at the near
-        // end that is against ribbon order, and prepend turns the result back round.
-        Vec3 out = nearEnd ? end.forward().reverse() : end.forward();
-        BlockPos next = onward(level, end.block(), out);
+        // Out through the edge the ribbon ends on, which is the heading the builders read a
+        // crossing by; prepend turns the near end's result back round into ribbon order.
+        Vec3 out = outward(end, nearEnd);
+        BlockPos next = out == null ? null : onward(level, end.block(), out);
 
         // Not stopped by track this ribbon already holds: a circuit re-enters its own blocks a lap
         // on, and refusing to walk there leaves a looping train with no arc to sit at. A switch
@@ -546,6 +544,16 @@ public final class TrackRibbon {
         }
 
         return nodes.size() > before;
+    }
+
+    // The flat unit axis out of a node through its entry edge or its exit edge, or null where the
+    // two coincide. Read off the edge itself: on a corner the entry is square to the exit, so the
+    // reverse of the way out is not the way in.
+    private static @Nullable Vec3 outward(Node node, boolean entry) {
+        Direction edge = edge(entry ? node.entry() : node.exit(),
+                Vec3.atCenterOf(node.block()).horizontal());
+
+        return edge == null ? null : new Vec3(edge.getStepX(), 0.0, edge.getStepZ());
     }
 
     // Whichever rail the block at from exits onto in the direction of out, or null where the track
@@ -583,12 +591,12 @@ public final class TrackRibbon {
         }
 
         Node last = nodes.getLast();
-        nodes.addLast(new Node(pos, crossing.entry(), crossing.exit(), crossing.forward(),
-                last.arc() + last.span(), crossing.span()));
+        nodes.addLast(new Node(pos, crossing.entry(), crossing.exit(), last.arc() + last.span(),
+                crossing.span()));
     }
 
     // Extends the near end, which a train that has reversed is the one growing. The car crosses
-    // this block against ribbon order, so its entry, exit and heading are all the other way round.
+    // this block against ribbon order, so its entry and exit are the other way round.
     private void prepend(Level level, BlockPos pos, Vec3 movement) {
         RailPath.Crossing crossing = RailPath.crossing(level, pos, movement);
 
@@ -598,7 +606,7 @@ public final class TrackRibbon {
 
         Node first = nodes.getFirst();
         nodes.addFirst(new Node(pos, crossing.exit(), crossing.entry(),
-                crossing.forward().reverse(), first.arc() - crossing.span(), crossing.span()));
+                first.arc() - crossing.span(), crossing.span()));
     }
 
     // Whether two rail blocks can be consecutive: orthogonal neighbours, allowing the one-block
