@@ -749,7 +749,7 @@ change to what it *means* rather than to how strong the friction is.
 values produces three different measured coasting distances, or the rule no longer takes three
 values.
 
-## S10 — The engine put on a power curve — **planned**
+## S10 — The engine put on a power curve — **built**
 
 **Build.** `ENGINE_FORCE` is a constant, so a lit engine pulls just as hard at seven blocks a second
 as it does from a standstill, and its top speed is whatever `getMaxSpeed` truncates it to. Replace
@@ -836,6 +836,77 @@ reaches a measurably higher top speed than the same train behind one engine. Eve
 table still reads as it does now, since the flat region is unchanged. And a lit engine held at its
 top speed for a minute neither oscillates nor reports itself unpowered — the flat rolling term stays
 off the whole time.
+
+### As built
+
+Flat-then-`1/v`, as recommended. `BASE_SPEED = 0.077` blocks a tick.
+
+**The stage found a bug that made its own premise false: a cart under power had no retarding force at
+all.** Both of the `applyNaturalSlowdown` HEAD injections — `TrainCoupling.hauled` for a train and
+the furnace engine for a lone cart — end by setting the return value, which *cancels* the method. So
+neither vanilla's own slowdown nor this mod's `@At("RETURN")` friction hook was ever reached, and a
+lit engine accelerated against nothing. The parked branch already handled exactly this and says so in
+its comment; the two powered paths never did.
+
+Flat effort hid it completely. The free-running speed with no resistance is the speed ceiling, and
+with flat effort the balance point would have sat above the default 8 m/s anyway, so a lit cart
+pinned the clamp and looked right. What it actually meant is stronger than a missing term: **train
+length had no effect whatever on a powered train's top speed** — every powered train, of any length
+and any load, ran to whatever `max_minecart_speed` allowed. The length effect this document has been
+describing since S5 existed only in how quickly a train got there.
+
+The fix is composition rather than another hook. The furnace branch applies the retarding law itself,
+as the parked branch does. `hauled` stops being a HEAD cancel and stops being `@Nullable`: it takes
+the movement the retarding law has already been applied to and adds the drive to it, called from the
+one RETURN hook that was already there. Resistance then drive, in that order, in both paths — and no
+second `@At("RETURN")` injection whose order against the first would be undefined.
+
+**The base speed is derived from the balance that actually obtains, which is not the one the Build
+text above computes.** Under power `underPower` suppresses the flat rolling term — deliberately, and
+for the reason S3 records — so effort meets only the proportional loss. Resistance divides by the
+mean per-car mass and effort by the train total, so mass cancels from both sides and the balance is
+
+`E × ENGINE_FORCE × BASE_SPEED / v = 0.025 × n × v`, and so
+`v = √(E × ENGINE_FORCE × BASE_SPEED / 0.025 n)`
+
+for `n` cars behind `E` engines. Three things fall straight out of that and are worth stating plainly:
+**load does not change a powered train's top speed at all**, length divides it as `1/√n`, and engines
+multiply it as `√E`. Load still decides acceleration and whether a grade can be climbed, which is
+where it belongs. The Build text's figures assumed the flat term applied and so read low; the first
+`BASE_SPEED` of 0.085 put a lone engine at 7.96 m/s, effectively still pinned against the clamp, and
+0.077 is the value that puts it at 7.6.
+
+Measured on a 400-block straight at `realistic_physics true`, `max_minecart_speed 8`:
+
+| Train | Cars | Engines | Predicted | Measured |
+|---|---|---|---|---|
+| Lone engine | 1 | 1 | 7.60 | **7.578** |
+| Single-headed | 3 | 1 | 4.39 | **4.351** |
+| Double-headed | 3 | 2 | 6.21 | **6.179** |
+| Single-headed | 6 | 1 | 3.10 | **3.051** |
+
+Every row within 1.6 percent, and the double-headed three-car train runs half again as fast as the
+same train behind one engine — which it could not do before, both engines' output having been
+truncated by the same clamp. Raising `max_minecart_speed` from 8 to 100 left the three-car and
+six-car figures unchanged to every digit, so the ceiling is now a backstop and not the answer. The
+lone engine held `0.3789158434708194` blocks a tick identically across forty seconds of sampling: no
+oscillation, and the flat rolling term stayed off throughout.
+
+On a twenty-step 45° bank the grade rows read as S5's table says. A lone engine climbed the whole
+ramp. A furnace and two empty cars climbed it at a steady 1.86 m/s and then accelerated away to 4.35
+on the flat at the top — which is the constant-power behaviour worth having, and reads as a train
+dropping to a lower speed on the bank rather than holding its own. A furnace and two full chest carts
+got five blocks up and stopped, as mass 7.5 against `6 ×` gravity must.
+
+**Found while testing and not fixed here: the stall counter oscillates without effect on a grade.**
+The loaded train that failed to climb froze on the bank rather than rolling back down, and the engine's
+`PushX` was measured flipping between `+1.0` and `-1.0` every four ticks with `Motion[0]` and
+`Motion[1]` both at exactly zero throughout. So `minecarttweaks$countStall` is firing as designed and
+reversing faster than the train can build any movement, which cancels itself out — and gravity is not
+reaching the wedged train either. Pre-existing: neither the counter's trigger nor its action is
+touched by this stage, and a train that could not climb would have wedged the same way before it. The
+remedy is a cooldown on the reversal, or letting gravity rather than the impulse resolve a wedge on a
+grade, and it wants a stage of its own.
 
 ## Open decisions
 
