@@ -189,6 +189,27 @@ is a trap for exactly the audience the default model is for, and the physical mo
 copes, since its engine is a fixed force and its acceleration is gradual at any ceiling. Worth a
 README line rather than a code change; see Open decisions.
 
+**Vanilla annihilates its own impulse at any 90-degree change of direction, and a two-block U-turn
+is one.** `calculateNewPushAlong` re-aims by
+`push.projectedOn(deltaMovement).normalize().scale(push.length())`
+(`MinecartFurnace.java:100-106`). The projection onto a perpendicular heading is the zero vector, and
+`Vec3.normalize` returns `ZERO` below `1.0E-5` (`Vec3.java:83-86`), so `push` becomes zero — and
+vanilla only reaches its own re-aiming while `push.lengthSqr() > 1.0E-7`, so a zeroed impulse locks
+the engine off for good. Measured on a two-block U-turn: `push` went from `(0.7071, 0.7071)` to
+`(0.0, 0.0)` between the two corner blocks and the cart coasted to a halt with fuel burning.
+
+A single 90-degree corner does not do it — vanilla builds one from two 45-degree kinks, so the dot
+product is 0.707 at each and the projection is healthy. It takes a direction change of a right angle
+in *one* step, which is what a two-block U-turn is.
+
+**This mod's own `aimAlong` was shielding vanilla from that, and S5 wrongly put the shield behind the
+model gate.** The plan already said the aiming is unconditional in both models; the first
+implementation bundled it in with the force and declined both together under `VANILLA`, which handed
+the fault straight back. Aiming *before* the model decides whose force applies fixes it for a reason
+worth stating: once the impulse is already parallel to the movement, vanilla's projection has nothing
+left to do, and a projection with nothing to do cannot be degenerate. Verified after the fix —
+`|push|` holds at 1.0 through the turn in both models and the cart runs the return leg at full speed.
+
 **A stall is the one state neither model can read a heading in, and a fuelled cart at a dead end
 wedges there for good.** Both models re-aim the impulse from the cart's own movement — vanilla in
 `calculateNewPushAlong`, which needs `deltaMovement.horizontalDistanceSqr() > 0.001`
@@ -208,7 +229,10 @@ The fix has to count the stall rather than derive it, there being no movement to
 cart has, and turns the impulse round after four ticks of no progress under power. Unconditional in
 both models, on the same grounds as the impulse projection — the trap is vanilla's, and a cart
 nothing can move is not behaviour worth mirroring. That makes two deliberate deviations in the
-default model, both of them about an impulse vanilla aims from information it does not have.
+default model, and they are the same deviation twice: vanilla aims its impulse from the cart's own
+movement, which is either absent or perpendicular in exactly the two cases above, and it has no
+fallback for either. Both fixes were verified together on a circuit holding two U-turns and a buffer
+stop, which both models now run indefinitely.
 
 **A lit furnace cart that comes off the rails is dead for good.** `AbstractMinecart.comeOffTrack`
 (`:377-388`) never calls `applyNaturalSlowdown`, which is where every engine in either model lives, so
