@@ -528,6 +528,15 @@ public final class Train {
             return read;
         }
 
+        // A train the placer is not holding is loose carts, each driven by vanilla, and a car of
+        // it moving towards the others is shunting them rather than leading a reversal. The end
+        // already named keeps recording: a change of mind starts the ribbon over from a car whose
+        // track may not reach the rest, which is what left them unplaced in the first place.
+        if (!placed()) {
+            flipHeld = 0;
+            return leader;
+        }
+
         if (read != flipTo) {
             flipTo = read;
             flipHeld = 0;
