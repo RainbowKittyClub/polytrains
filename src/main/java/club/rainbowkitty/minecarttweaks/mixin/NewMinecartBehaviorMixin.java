@@ -5,8 +5,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -14,7 +16,10 @@ import net.minecraft.world.phys.Vec3;
 import club.rainbowkitty.minecarttweaks.collision.CartInteraction;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
-/** Holds vanilla's pickup to the speed the resolver allows one at, and its gravity to the train. */
+/**
+ * Holds vanilla's pickup to the speed the resolver allows one at, and its track forces to the
+ * train rather than to whichever car happens to be leading it.
+ */
 @Mixin(NewMinecartBehavior.class)
 public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccessor {
 
@@ -42,6 +47,32 @@ public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccess
 
         if (pull != null) {
             cir.setReturnValue(movement.add(pull));
+        }
+    }
+
+    // The brake reaches one car of a train for the same reason gravity did, so a rail under a
+    // trailing car held nothing and a train could be towed off one by its far end. Read over the
+    // whole train instead — TrainCoupling.braked shares the retardation and holds outright.
+    @Inject(method = "calculateHaltTrackSpeed", at = @At("RETURN"), cancellable = true)
+    private void minecarttweaks$sharedHalt(
+            Vec3 movement, BlockState state, CallbackInfoReturnable<Vec3> cir) {
+        Vec3 braked = TrainCoupling.braked(minecarttweaks$cart(), movement);
+
+        if (braked != null) {
+            cir.setReturnValue(braked);
+        }
+    }
+
+    // The same again for the other half of a powered rail, which drove nothing at all under a
+    // trailing car. Answered from the raw movement rather than from vanilla's own return, because
+    // the train's share supersedes it whether or not the leading car is over a rail itself.
+    @Inject(method = "calculateBoostTrackSpeed", at = @At("RETURN"), cancellable = true)
+    private void minecarttweaks$sharedBoost(
+            Vec3 movement, BlockPos pos, BlockState state, CallbackInfoReturnable<Vec3> cir) {
+        Vec3 boosted = TrainCoupling.boostPull(minecarttweaks$cart(), movement);
+
+        if (boosted != null) {
+            cir.setReturnValue(boosted);
         }
     }
 }

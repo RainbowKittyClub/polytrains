@@ -22,25 +22,47 @@ import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 public final class RailBrake {
 
     // The push vanilla gives a cart it launches from a standstill, so a cart released here leaves
-    // exactly as a block-assisted one does (NewMinecartBehavior#calculateBoostTrackSpeed).
-    private static final double LAUNCH_SPEED = 0.2;
+    // exactly as a block-assisted one does (NewMinecartBehavior#calculateBoostTrackSpeed). Shared
+    // with TrainCoupling, which shares it out over a train the way vanilla cannot.
+    public static final double LAUNCH_SPEED = 0.2;
+
+    // What vanilla adds each tick to a cart already rolling over a lit rail, as against the launch
+    // above, which it assigns to one that is not. Two branches of one method and two kinds of
+    // quantity, which is why a train takes them differently.
+    public static final double BOOST_SPEED = 0.06;
+
+    // Above this a cart is still rolling, so it is not waiting on anything. Vanilla's own figure
+    // for the same question, at the head of the boost it would otherwise be getting.
+    public static final double ROLLING_SPEED = 0.01;
+
+    // What vanilla leaves a cart each tick a brake has hold of it, and the speed under which it
+    // stops the cart dead rather than halving it (NewMinecartBehavior#calculateHaltTrackSpeed).
+    public static final double HALT_KEEP = 0.5;
+
+    public static final double HALT_FLOOR = 0.03;
 
     // Below this a cart is not travelling any way worth remembering.
     private static final double MOVING_EPSILON = 1.0E-6;
 
-    // Above this a cart is still rolling, so it is not waiting on anything. Vanilla's own figure
-    // for the same question, at the head of the boost it would otherwise be getting.
-    private static final double ROLLING_SPEED = 0.01;
-
     // Static-only; blocks instantiation.
     private RailBrake() {}
 
-    /** Whether {@code cart} is standing on a rail that should stop it. */
+    /**
+     * Whether {@code cart} is standing on a rail that should stop it. One car's own answer; for
+     * whether a train is being held, see {@link TrainCoupling#held}.
+     */
     public static boolean brakes(AbstractMinecart cart) {
         BlockState rail = cart.level().getBlockState(cart.getCurrentBlockPosOrRailBelow());
 
         // A powered rail brakes while it has no signal, and accelerates once it has one.
         return rail.is(Blocks.POWERED_RAIL) && !rail.getValue(PoweredRailBlock.POWERED);
+    }
+
+    /** Whether {@code cart} is standing on a rail that should drive it. */
+    public static boolean boosts(AbstractMinecart cart) {
+        BlockState rail = cart.level().getBlockState(cart.getCurrentBlockPosOrRailBelow());
+
+        return rail.is(Blocks.POWERED_RAIL) && rail.getValue(PoweredRailBlock.POWERED);
     }
 
     /**
@@ -104,16 +126,24 @@ public final class RailBrake {
     private static void release(AbstractMinecart cart) {
         Direction heading = MTAttachments.getHeldHeading(cart);
 
+        // A train with a brake still under any of its cars is not leaving, whatever the rail under
+        // this one is doing; it would only be stopped again in the same tick.
         if (heading == null
                 || TrainCoupling.driven(cart) != cart
+                || TrainCoupling.held(cart)
                 || cart.getDeltaMovement().horizontalDistanceSqr()
                         > ROLLING_SPEED * ROLLING_SPEED) {
             return;
         }
 
+        double speed = TrainCoupling.launchSpeed(cart);
+
+        if (speed <= 0.0) {
+            return;
+        }
+
         forget(cart);
-        cart.setDeltaMovement(
-                heading.getStepX() * LAUNCH_SPEED, 0.0, heading.getStepZ() * LAUNCH_SPEED);
+        cart.setDeltaMovement(heading.getStepX() * speed, 0.0, heading.getStepZ() * speed);
     }
 
     // Drops a remembered heading, if there is one.

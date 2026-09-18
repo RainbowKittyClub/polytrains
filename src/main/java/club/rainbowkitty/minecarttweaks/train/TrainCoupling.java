@@ -1,6 +1,7 @@
 package club.rainbowkitty.minecarttweaks.train;
 
 import java.util.List;
+import java.util.function.Predicate;
 
 import com.mojang.logging.LogUtils;
 import org.jspecify.annotations.Nullable;
@@ -173,7 +174,7 @@ public final class TrainCoupling {
         if (!cart.hasLink()
                 || !MTGameRules.trainsEnabled(cart.level())
                 || cart.minecarttweaks$driving()
-                || RailBrake.brakes(cart)) {
+                || held(cart)) {
             return resisted;
         }
 
@@ -422,6 +423,197 @@ public final class TrainCoupling {
                 RailDrag.SLOPE_PULL, movement.horizontalDistance() * SLOPE_SPEED_GAIN);
 
         return cart.isInWater() ? slide * WATER_SLIDE : slide;
+    }
+
+    /**
+     * What {@code cart}'s train should leave a lit powered rail doing, given the {@code movement}
+     * it arrived with, or null where vanilla's own answer stands.
+     *
+     * <p>The boost lives inside the {@code moveAlongTrack} the placer cancels, so today a lit rail
+     * under any car but the leading one does nothing whatever. Read over the whole train instead:
+     * the share of its mass standing on lit rails, times vanilla's own figure.
+     *
+     * <p>Sharing it reads as a weakening and is not one. Every car spends the same time over a
+     * section, so the share integrates back to exactly what the leading car collects alone today —
+     * a train lying fully across a booster accelerates at vanilla's 0.06, and one a quarter across
+     * gains a quarter as much for four times as long. What the share moves is where the boost
+     * lands, not how much of it there is.
+     *
+     * <p>The standing branch is the exception and the one place the models part, because vanilla
+     * launches a stopped cart by <em>assigning</em> it a speed rather than by adding an impulse,
+     * and a speed has no mass to be divided by — so {@link RailForces#launch} decides it.
+     *
+     * <p>Answers for a cart coupled to nothing as readily as for a train, since a load is a load
+     * whether or not anything is linked to it. That costs the default nothing: a lone cart weighs
+     * one there, so its share is one and every branch here hands back the figure vanilla computed.
+     */
+    public static @Nullable Vec3 boostPull(AbstractMinecart cart, Vec3 movement) {
+        List<AbstractMinecart> cars = drivenCars(cart);
+
+        // A brake anywhere under the train outranks a rail lit anywhere else: the parking brake is
+        // a hold, and a train that boosted against one would only be stopped again the same tick.
+        if (cars == null || braking(cars)) {
+            return null;
+        }
+
+        RailForces forces = RailForces.of(cart.level());
+        double share = railShare(cars, forces, RailBrake::boosts);
+
+        if (share <= 0.0) {
+            return null;
+        }
+
+        // Rolling, vanilla's boost ignores which way the rail points and merely speeds the cart up,
+        // so the train's own travel is the whole of the heading.
+        if (movement.length() > RailBrake.ROLLING_SPEED) {
+            return movement.normalize().scale(movement.length() + RailBrake.BOOST_SPEED * share);
+        }
+
+        // Vanilla's kick carries whatever speed the cart already had, which is under the rolling
+        // threshold but need not be nothing, so the whole of its figure is what gets shared.
+        return launched(
+                cart, cars, forces.launch(movement.length() + RailBrake.LAUNCH_SPEED, share));
+    }
+
+    /**
+     * What {@code cart}'s train should leave a braking rail doing, or null where no car of it is on
+     * one. The same fault as the boost and the same repair, but for the hold.
+     *
+     * <p>How much braking the share buys is {@link RailForces#halted}'s to say, because this is the
+     * one force the two models cannot state in the same units — vanilla's is a fraction of the
+     * speed and the physical model's is a force over the mass. What is settled here is the share
+     * itself, and it reaches a whole train either way.
+     *
+     * <p>Only the retardation shares. A clamped shoe is a constraint and not a force, so the dead
+     * stop under vanilla's own floor is all-or-nothing on any car — which is both what stops a
+     * train creeping off a rail it is fractionally standing on, and what stops a player towing one
+     * off a brake by its far end.
+     */
+    public static @Nullable Vec3 braked(AbstractMinecart cart, Vec3 movement) {
+        List<AbstractMinecart> cars = drivenCars(cart);
+
+        if (cars == null) {
+            return null;
+        }
+
+        double share = railShare(cars, RailForces.of(cart.level()), RailBrake::brakes);
+
+        if (share <= 0.0) {
+            return null;
+        }
+
+        return movement.length() < RailBrake.HALT_FLOOR
+                ? Vec3.ZERO
+                : RailForces.of(cart.level()).halted(movement, share);
+    }
+
+    /** Whether a brake has hold of any car of {@code cart}'s train, or of {@code cart} alone. */
+    public static boolean held(AbstractMinecart cart) {
+        return cart.hasLink() && MTGameRules.trainsEnabled(cart.level())
+                ? braking(Train.of(cart).cars())
+                : RailBrake.brakes(cart);
+    }
+
+    /**
+     * How fast a standing train leaves a brake whose signal has come back, sharing vanilla's own
+     * kick over the cars that are actually over lit rails. Vanilla's figure outright for one cart.
+     */
+    public static double launchSpeed(AbstractMinecart cart) {
+        List<AbstractMinecart> cars = drivenCars(cart);
+
+        if (cars == null) {
+            return RailBrake.LAUNCH_SPEED;
+        }
+
+        RailForces forces = RailForces.of(cart.level());
+
+        return forces.launch(RailBrake.LAUNCH_SPEED, railShare(cars, forces, RailBrake::boosts));
+    }
+
+    // The cars whose rails this cart answers for: a whole train when it is the car driving one,
+    // itself alone when it is coupled to nothing, and null when it is a car the placer is about to
+    // move anyway. Every track force below is written into the movement vanilla is going to step
+    // along, and on a train that movement belongs to one car; the rest are placed from it.
+    //
+    // A cart coupled to nothing is a train of one rather than a case to decline, so that its load
+    // reaches its rails the way it already reaches its drag, its engine and its gravity. Under
+    // VANILLA every cart weighs one, so a lone cart's share comes to exactly one and vanilla's own
+    // figure is what comes back out of every law here.
+    //
+    // Asked through driven rather than the leading end, because a train that has never moved has no
+    // leading end and is exactly the train a launch is for.
+    private static @Nullable List<AbstractMinecart> drivenCars(AbstractMinecart cart) {
+        if (!cart.hasLink() || !MTGameRules.trainsEnabled(cart.level())) {
+            return List.of(cart);
+        }
+
+        if (driven(cart) != cart) {
+            return null;
+        }
+
+        List<AbstractMinecart> cars = Train.of(cart).cars();
+
+        return cars.size() < 2 ? List.of(cart) : cars;
+    }
+
+    // Which way a standing train leaves, read at each car that is over a lit rail and carried up to
+    // the driven one along the track. The rail need not be anywhere near the car vanilla drives,
+    // and two cars round a bend do not agree on a direction; lit rails that disagree cancel.
+    private static @Nullable Vec3 launched(
+            AbstractMinecart cart, List<AbstractMinecart> cars, double speed) {
+        if (speed <= 0.0) {
+            return null;
+        }
+
+        Vec3 heading = Vec3.ZERO;
+
+        for (AbstractMinecart car : cars) {
+            Vec3 way = RailBrake.boosts(car)
+                    ? car.getRedstoneDirection(car.getCurrentBlockPosOrRailBelow())
+                    : Vec3.ZERO;
+
+            if (way.lengthSqr() > 0.0) {
+                heading = heading.add(alongTrack(car, cart, way));
+            }
+        }
+
+        return heading.lengthSqr() <= ANY_MOVEMENT ? null : heading.normalize().scale(speed);
+    }
+
+    // How much of one car's worth of track force a train is owed, from nought to one: the cars
+    // standing on rails that answer test, over what the whole train weighs.
+    //
+    // Counted on top and weighed underneath, which is the whole of how mass reaches a rail force. A
+    // rail pushes each car on it with the same fixed force whatever that car is carrying, so the
+    // numerator is a count; the train's own mass is what that force has to move, so the denominator
+    // is a sum of masses. Weighing both would cancel the mass out again and leave a loaded train
+    // accelerating and stopping exactly like an empty one. Under VANILLA every car weighs one, so
+    // this is the plain car ratio it has always been.
+    private static double railShare(
+            List<AbstractMinecart> cars, RailForces forces, Predicate<AbstractMinecart> test) {
+        int matched = 0;
+        double total = 0.0;
+
+        for (AbstractMinecart car : cars) {
+            if (test.test(car)) {
+                matched++;
+            }
+
+            total += forces.cartMass(car);
+        }
+
+        return total <= 0.0 ? 0.0 : matched / total;
+    }
+
+    // Whether any of these cars is standing on a brake.
+    private static boolean braking(List<AbstractMinecart> cars) {
+        for (AbstractMinecart car : cars) {
+            if (RailBrake.brakes(car)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

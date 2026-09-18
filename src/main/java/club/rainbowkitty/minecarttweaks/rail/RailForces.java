@@ -63,6 +63,16 @@ public enum RailForces {
         }
 
         @Override
+        public double launch(double kick, double share) {
+            return share > 0.0 ? kick : 0.0;
+        }
+
+        @Override
+        public Vec3 halted(Vec3 movement, double share) {
+            return movement.scale(1.0 - share * (1.0 - RailBrake.HALT_KEEP));
+        }
+
+        @Override
         public double topSpeed(double halved, double full) {
             return halved;
         }
@@ -100,6 +110,19 @@ public enum RailForces {
             return speed <= BASE_SPEED
                     ? ENGINE_FORCE
                     : ENGINE_FORCE * BASE_SPEED / speed;
+        }
+
+        @Override
+        public double launch(double kick, double share) {
+            return kick * share;
+        }
+
+        @Override
+        public Vec3 halted(Vec3 movement, double share) {
+            double speed = movement.length();
+            double left = speed - BRAKE_FORCE * share;
+
+            return left <= 0.0 ? Vec3.ZERO : movement.scale(left / speed);
         }
 
         @Override
@@ -154,6 +177,13 @@ public enum RailForces {
     // clamp is only a backstop. Train length divides it: n cars top out at one car's speed over
     // the square root of n.
     private static final double BASE_SPEED = 0.077;
+
+    // What one braked car takes out of a train per tick under the physical model, before the
+    // train's mass divides it down. Sized against the one reference vanilla offers: its own
+    // halving stops a lone empty cart from the default ceiling in about three quarters of a block,
+    // and a constant force of this size stops it in 0.73. Also comfortably twice the engine, so a
+    // brake holds a double-headed train.
+    private static final double BRAKE_FORCE = 14.0 * RailDrag.SLOPE_PULL;
 
     // Vanilla's engine, as a per-tick figure something other than the engine cart can be given.
     // Vanilla re-adds its whole impulse every tick against a 0.8 decay, so the impulse *is* the
@@ -224,6 +254,37 @@ public enum RailForces {
      * of whether the engine is lit — see {@code minecarttweaks$driving}.
      */
     public abstract double engineOutput(double speed);
+
+    /**
+     * How fast a standing train leaves when {@code share} of its mass is over lit rails, given the
+     * {@code kick} vanilla gives one cart.
+     *
+     * <p>The one track force the two models answer differently rather than differing only through
+     * {@link #cartMass}, because vanilla's launch is a velocity it <em>assigns</em> rather than an
+     * impulse it adds, and a velocity has no mass to be divided by. So there is no arithmetic that
+     * settles it and the two models are free to disagree, which they do: the default hands a train
+     * the whole of vanilla's kick off any one lit rail, keeping a railway built on a single starter
+     * rail working; the physical model shares it as momentum, so a long or loaded train wants
+     * proportionally more rail beneath it before it will start.
+     */
+    public abstract double launch(double kick, double share);
+
+    /**
+     * What a braking train leaves the rail doing, given the {@code movement} it arrived with and
+     * the {@code share} of one car's braking its whole mass is owed.
+     *
+     * <p>The other half of {@link #launch}: vanilla writes the brake as a fraction of the speed,
+     * which no mass divides and whose integral does not survive being spread along a train. The
+     * default keeps that fraction, because reproducing vanilla is what it is for — with the
+     * consequence, measured, that a longer train sheds less over the same rail, an eight-car train
+     * losing about a third less to one brake rail than a single cart does.
+     *
+     * <p>The physical model replaces it with a retarding force over the train's mass, which is the
+     * same shape the boost already has and the same shape gravity and the engine have. That is what
+     * makes a loaded train harder to stop than an empty one, and it is the only form under which
+     * accelerating and braking answer to a load the same way.
+     */
+    public abstract Vec3 halted(Vec3 movement, double share);
 
     /**
      * A furnace cart's speed ceiling, given the {@code halved} figure vanilla computes and the
