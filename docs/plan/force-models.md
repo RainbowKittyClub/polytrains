@@ -446,12 +446,22 @@ a grade the loaded two-car train that S5's table calls *marginal* now does not c
 recorded against S5 rather than here, because whether to retune `ENGINE_FORCE` for it is that stage's
 question.
 
-**`PUSHABLE_CARS` is left at 8 and its comment is now the weaker half-truth it always was under the
-rule.** It says "counted in cars because the length is the part a player can see before they try",
-but it is compared against `mass`, so under the physical model three full chest carts (9.0) refuse a
-shove where three empty ones (3.6) do not. That was already true at the old 2.0 ceiling, at four cars
-instead of three; the new figures only make it easier to hit. Whether the shove ceiling should be a
-car count or a mass is S7's to settle, and it is listed there.
+**`PUSHABLE_CARS` becomes `PUSHABLE_MASS`, still 8, and the unit is stated once rather than per
+site.** Its comment claimed it was "counted in cars because the length is the part a player can see
+before they try" while the code compared it against `mass`, so under the physical model three full
+chest carts (9.0) refuse a shove where three empty ones (3.6) do not. That was already true at the
+old 2.0 ceiling, at four cars instead of three. The mass reading is the one kept — what resists a
+player is the load, not the length — and the name and comment now say so.
+
+The sweep that went with it is the useful half: **every mass in the mod is in empty minecarts, and
+that unit is now named in those words wherever one appears** — `RailForces.cartMass`, `Train.mass`
+and `meanCarMass`, `TrainCoupling.mass` and `meanCarMass`, `PUSHABLE_MASS`, and
+`cart_wreck_momentum`, which is a player-facing figure on the same scale and previously said "empty
+carts". `EMPTY_MASS` carries the definition. Two divisors that look like the same thing and are not
+were checked and left as car counts: `RailDrag.shared` averages vanilla's per-cart *factors* and
+`TrainCoupling.sharedSpeed` averages *speeds*, neither of which is a mass. `slopeShare`'s count is
+the one genuine remaining candidate and belongs to S7, which already plans it as
+`Σ(mᵢ × gradeᵢ) / Σmᵢ`.
 
 ## S3 — Friction, as two separate laws — **built**
 
@@ -693,15 +703,11 @@ the rule and exactly as shoveable as vanilla without it, which is the clearest s
 `wreckMomentum`'s own car counts are S6's, not this stage's, and `CartImpact`'s falloff landed there
 too — both were the same question and S6 answered it.
 
-**`shovable`'s ceiling is the one comment this stage has to settle rather than confirm.**
-`PUSHABLE_CARS = 8` is compared against `mass`, and its comment claims the figure is "counted in cars
-because the length is the part a player can see before they try" — which stopped being true the
-moment mass did. With the retuned container figures it takes three full chest carts (9.0) to refuse a
-shove and eight empty plain ones, so the same visible train length answers differently depending on
-what is in it. Either is defensible; what is not defensible is a comment describing one while the
-code does the other. Decide between a car count (compare `Train.size()`, and the rule changes nothing)
-and a mass ceiling (keep the comparison, rewrite the comment and rename the constant), then say which
-and why.
+**~~`shovable`'s ceiling is the one comment this stage has to settle rather than confirm.~~ Settled
+with S2's retune: it is a mass.** `PUSHABLE_CARS` is now `PUSHABLE_MASS`, the comparison against
+`mass` is unchanged, and the comment says what the code does — what resists a player leaning on a
+train is its load, not its visible length. So this stage inherits the shove ceiling already correct
+and only has `slopeShare` left to change.
 
 **Done when.** A player shoving a parked three-car train moves it the same distance with the rule on
 and off while it is empty, and visibly less far once the cars are loaded. A train whose leader alone
@@ -742,6 +748,94 @@ change to what it *means* rather than to how strong the friction is.
 **Done when.** Whichever is chosen, `gamerule minecarttweaks:rail_drag_speed` at three different
 values produces three different measured coasting distances, or the rule no longer takes three
 values.
+
+## S10 — The engine put on a power curve — **planned**
+
+**Build.** `ENGINE_FORCE` is a constant, so a lit engine pulls just as hard at seven blocks a second
+as it does from a standstill, and its top speed is whatever `getMaxSpeed` truncates it to. Replace
+that with a traction curve: full effort up to a base speed, then effort falling as speed rises, the
+way an electric traction motor behaves once back-EMF sets in.
+
+Two regions, which is the textbook shape:
+
+| Region | Effort | Called |
+|---|---|---|
+| `v ≤ vBase` | `ENGINE_FORCE` | constant-torque |
+| `v > vBase` | `ENGINE_FORCE × vBase / v` | constant-power |
+
+The flat region is not a convenience. Starting effort is what a heavy train needs and what S5's
+grade table rests on, so it must not fall; and it is what keeps the falling branch from ever dividing
+by a speed near zero, which makes `vBase` a guard before it is a tuning knob. Above it, effort
+falling as `1/v` holds the product — the power — at whatever rating the flat region ends on.
+
+Proposed figures, and the third column is the point of the stage — the emergent top speed of a train
+under power on level track, where effort meets `n × (0.025 v + flat)` for `n` cars:
+
+| Cars | Today, flat effort | Flat then `1/v` | Linear falloff |
+|---|---|---|---|
+| 1 | 8.00, the clamp (36.7 free) | 7.60 | 7.60 |
+| 2 | 8.00, the clamp (18.0 free) | 5.27 | 6.16 |
+| 3 | 8.00, the clamp (11.7 free) | 4.23 | 5.15 |
+| 6 | 5.47 | 2.89 | 3.34 |
+| 10 | 2.97 | 2.16 | 2.15 |
+| 20 | 1.09 | 1.09 | 0.92 |
+
+`vBase = 1.70 m/s` is derived, not picked: it is the base speed at which a lone engine's own top
+speed lands at 7.60 m/s, just under the default ceiling, so the curve is what limits a furnace cart
+and the clamp is only a backstop. `ENGINE_FORCE` itself does not move — the flat region *is* the
+current figure, which is why the grade table survives this stage untouched.
+
+**The payoff is that `max_minecart_speed` stops being a furnace train's top speed.** Today every
+train of three cars or fewer pins the clamp, so the only thing separating them is how quickly they
+get there; under the curve they settle at 7.6, 5.3 and 4.2, and length sets speed continuously
+instead of in one step at six cars. That also finishes the raised-speed-rule decision already
+settled above: the physical engine becomes not merely gradual but genuinely indifferent to the rule,
+where vanilla's saturates whatever it is given.
+
+**Three things this must not break, each of which it would break if written the obvious way.**
+
+*`driveAcceleration() > 0` is a lit-or-not predicate at four sites and must stop carrying the
+output.* `TrainCoupling.hauled` asks it to find out whether a car is its own engine, `underPower`
+asks it to decide whether the flat rolling term applies, `driveHeading` asks it whether there is a
+heading to read, and `Train.drive() > 0` asks it of a whole train. A curve that can reach or approach
+zero silently answers "not powered" for a lit engine at speed — and `underPower` gating the flat term
+means the train would then have rolling resistance reapplied, slow down, regain effort and oscillate.
+So the effort and the fact of being lit have to become two separate questions before the curve lands,
+not after.
+
+*The grade table is preserved only because the flat region is.* A train that meets a grade at speed
+is on the falling branch and will slow until it re-enters the flat one, which is the behaviour worth
+having — a heavy train losing speed on a bank and holding a lower one — but it means the climb test
+has to be read as "does it settle" rather than "does it keep its speed".
+
+*The stall counter is unaffected and should be confirmed so in a comment.* `minecarttweaks$countStall`
+fires on a lit, unparked, motionless cart, and effort at rest is at its maximum under the curve, so
+nothing about the wedge detection changes. A reader will wonder; answer it where they look.
+
+**Shape of the change.** `RailForces.engineOutput()` takes the speed — `engineOutput(double speed)`
+— and `VANILLA` ignores it, because vanilla re-adds its whole impulse every tick whatever the cart is
+doing, so its synthesised `1.0` is speed-independent by construction. That keeps the property
+`RailForces` exists for: a law with no answer for both models is a compile error. The speed to hand
+it is `TrainCoupling.drivenSpeed(cart)`, which already reads the one car whose movement is an input.
+With two engines the efforts sum, so a double-headed train gets `2 × effort(v)` and reaches a higher
+top speed as well as accelerating harder — which it does not today, since two flat efforts are still
+truncated by the same clamp.
+
+**Open, and the one thing this draft does not settle: which falloff.** Flat-then-`1/v` is
+recommended, being the actual traction characteristic and the one whose flat region has a physical
+reason to exist. A linear `ENGINE_FORCE × (1 − v / vFree)` is the simpler alternative and needs no
+base speed at all, since it is already finite at rest. The two agree at both ends of the table above
+and differ across the middle, where linear holds more effort — 3.55 against 2.55 times gravity at 4
+m/s for a lone engine — so the choice is about how a three-to-six car train feels, not about top
+speeds. Decide it by driving both.
+
+**Done when.** A lone lit furnace cart settles at about 7.6 m/s and not at the ceiling, and raising
+`max_minecart_speed` to 100 no longer makes it faster. Trains of one, three, six and ten cars settle
+at four distinct speeds matching the chosen column to within a few tenths. A train double-headed
+reaches a measurably higher top speed than the same train behind one engine. Every row of S5's grade
+table still reads as it does now, since the flat region is unchanged. And a lit engine held at its
+top speed for a minute neither oscillates nor reports itself unpowered — the flat rolling term stays
+off the whole time.
 
 ## Open decisions
 
