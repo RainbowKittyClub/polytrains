@@ -66,9 +66,9 @@ public final class TrainCoupling {
     // player can see is the length, but what resists them is the load.
     private static final double PUSHABLE_MASS = 8.0;
 
-    // Trailers each engine pulls at full output before the rest of the train divides it down.
-    // Only has to exclude a dead stop, since the placer writes a car's movement along its own rail
-    // and any of it at all names the direction the train is going.
+    // Below this squared length a movement has no direction to read. Only has to exclude a dead
+    // stop, since the placer writes a car's movement along its own rail and any of it at all names
+    // the way the train is going.
     private static final double ANY_MOVEMENT = 1.0E-10;
 
     // Track kept either side of the train when the ribbon is trimmed, on top of the train's own
@@ -164,11 +164,9 @@ public final class TrainCoupling {
      * no impulse of its own to be driven by. So the train's whole output is applied here, to the
      * one car carrying it, and a car that is its own engine is left to the furnace's own path.
      *
-     * <p>Takes the movement the retarding law has already been applied to, and adds to it. It used
-     * to be asked at {@code applyNaturalSlowdown} HEAD and cancel, which skipped both vanilla's own
-     * slowdown and this mod's — so a train under power had no resistance at all and ran to whatever
-     * the speed ceiling was, whatever its length. Resistance then drive, in that order, is what
-     * gives a powered train a top speed of its own.
+     * <p>Takes the movement the retarding law has already been applied to, and adds to it.
+     * Resistance then drive, in that order, is what gives a powered train a top speed of its own;
+     * a drive that cancelled the slowdown would run to the ceiling whatever the train's length.
      */
     public static Vec3 hauled(AbstractMinecart cart, Vec3 resisted) {
         if (!cart.hasLink()
@@ -266,8 +264,6 @@ public final class TrainCoupling {
      * Records the rail block {@code cart} is stepping through on its train's ribbon. Only the car
      * leading its train records: a trailing car crosses blocks the ribbon already holds in its
      * middle, which the ribbon cannot tell from a jump and would answer by starting over.
-     *
-     * <p>Nothing is driven from the ribbon yet. This only builds it.
      */
     public static void recordTrack(AbstractMinecart cart, BlockPos pos) {
         if (!MTGameRules.trainsEnabled(cart.level()) || !cart.hasLink()) {

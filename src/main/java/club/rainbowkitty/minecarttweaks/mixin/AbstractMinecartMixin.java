@@ -322,9 +322,7 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         // The train's drive rides along, taken by the leading car when it is not itself an engine
         // — which is most trains, since the engine is as often behind. Every other car is placed,
         // so this is the only car that can carry it, and a container cart asks for itself.
-        //
-        // Resistance first and the drive on top. The drive used to be applied at HEAD and cancel,
-        // which skipped every slowdown there is, so a powered train had none at all.
+        // Resistance first and the drive on top.
         cir.setReturnValue(TrainCoupling.hauled(
                 self, RailForces.of(level()).retarded(self, movement, cir.getReturnValue())));
     }
