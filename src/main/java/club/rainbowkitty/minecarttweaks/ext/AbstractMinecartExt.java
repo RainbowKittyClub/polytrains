@@ -2,6 +2,7 @@ package club.rainbowkitty.minecarttweaks.ext;
 
 import org.jspecify.annotations.Nullable;
 
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.phys.Vec3;
 
@@ -25,6 +26,17 @@ public interface AbstractMinecartExt extends Linkable {
     public default Vec3 minecarttweaks$driveHeading() {
         return Vec3.ZERO;
     }
+
+    /**
+     * This cart's own speed ceiling, as its own kind of cart works it out. Exists so that the car
+     * driving a train can ask the cars behind it without reaching for a {@code protected} method on
+     * somebody else's instance.
+     *
+     * <p>Only ever asked of a car that is not driving its train, which is why it answers with that
+     * car's own figure and not its train's: the ceiling-sharing hook stands down for any car that
+     * is not the one being driven, so asking one is not asking the whole train again.
+     */
+    public double minecarttweaks$ownMaxSpeed(ServerLevel level);
 
     /**
      * The stretch of track this cart stands on, read once a tick and held. Collision asks this of

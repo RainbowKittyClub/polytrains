@@ -13,23 +13,29 @@ import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /**
- * The resistance this mod lays on a cart, over whatever vanilla's own slowdown left of its speed:
- * rolling resistance for every tick it is on rails, and a bend charge for every kink in the track
- * its train runs through. The two have opposite shapes on purpose, because they are different
- * mechanisms — see {@link #slowed} and {@link #bend}.
+ * How a cart loses speed: the two models' retarding laws, and the bend charge that goes with one of
+ * them. {@link RailForces} picks between them; nothing here reads the rule.
  *
- * <p>Rolling resistance is a flat loss of speed per tick rather than another fraction of it.
- * Vanilla's friction is purely proportional, so it never reaches zero and a cart crawls on long
- * after it looks stopped — worst with someone aboard, where the fraction is a three-hundredth a
- * tick. A constant loss reaches zero
+ * <p>{@link #shared} is the whole of the vanilla model — vanilla's own per-cart fraction, rescaled
+ * to a train's mean so a mixed train coasts on its ensemble rather than on whichever car leads it.
+ * {@link #resisted} is the physical model, which owns the law outright and discards vanilla's
+ * factor: a proportional rate plus a flat term, both divided by what one car weighs.
+ *
+ * <p>The flat term is what brings a cart to a dead stop. Vanilla's friction is purely
+ * proportional, so it never reaches zero and a cart crawls on long after it looks stopped — worst
+ * with someone aboard, where the fraction is a three-hundredth a tick. A constant loss reaches zero
  * in finite time by itself, and, being constant, cannot do what raising that fraction as the speed
  * fell used to: the product of two proportional terms has two equilibria on a slope, and a cart
  * starting from rest was caught at the slower of them, a little over one metre per second, with no
  * way to climb out to the speed the grade should have given it.
  *
- * <p>Nothing here scales with the length of a train, and that is not an omission. Resistance is per
+ * <p>Neither law scales with the length of a train, and that is not an omission. Resistance is per
  * car and so is mass, so a long train coasts like a short one — the same reason a long train rolls
- * downhill no faster than a single cart.
+ * downhill no faster than a single cart. It is what a car <em>carries</em> that the physical model
+ * answers to, which is why it divides by the mean per-car mass and not by the train's total.
+ *
+ * <p>{@link #bend} is a fraction of the arriving speed rather than a flat loss, and that opposite
+ * shape is deliberate: rolling resistance is a force, and a kink is an impact.
  *
  * <p>A class of its own rather than part of the mixin that asks for it, because vanilla overrides
  * that slowdown per kind of cart and not every override calls the one this used to hang off.
@@ -39,7 +45,9 @@ import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 public final class RailDrag {
 
     // Vanilla's own minimum per-tick pull on a slope (NewMinecartBehavior#calculateSlopeSpeed).
-    private static final double SLOPE_PULL = 0.0078125;
+    // Shared with RailForces, which sizes the engine against it: a force that cannot beat gravity
+    // is a force that cannot climb, and that is the only fixed bar either model has.
+    static final double SLOPE_PULL = 0.0078125;
 
     // Of the slope pull, the most rolling resistance is ever allowed to be. Gravity has to win on a
     // slope by a clear margin or a cart barely rolls down one: at an eighth an empty cart settles
@@ -75,41 +83,59 @@ public final class RailDrag {
     }
 
     /**
-     * {@code movement} with a train's shared friction and this mod's rolling resistance taken off
-     * it, or as little of either as is owed.
+     * The physical model's whole retarding law laid on {@code movement}, which is the movement the
+     * cart arrived with rather than anything vanilla left of it. Vanilla's own factor is discarded:
+     * it varies by kind of cart and runs the load dependence backwards, which is the whole of what
+     * this model is for.
      *
-     * <p>Resistance is not laid on while something is still driving the cart — an engine, or a
-     * rider holding a direction, whose nudge is a thousandth of a block a tick and would be taken
-     * off again here before it could accumulate into anything to start on. Bend loss is not behind
-     * that guard and does not come through here at all; see {@link #bend}.
+     * <p>One deceleration, {@code (rate x speed + flat) / mass}, where {@code mass} is what one car
+     * of the train weighs. The proportional part is the same rate for every cart — vanilla's own
+     * figure for an empty one — and the flat part is what stops it dead.
+     *
+     * <p>The flat term is not laid on while something is driving the cart: an engine, or a rider
+     * holding a direction, whose nudge is a thousandth of a block a tick and would be taken off
+     * again here before it could accumulate into anything to start on. The proportional term stays,
+     * because it cannot zero a speed and so cannot swallow a nudge. Bend loss is behind neither
+     * guard and does not come through here at all; see {@link #bend}.
      */
-    public static Vec3 slowed(AbstractMinecart cart, Vec3 movement) {
-        Vec3 slowed = shared(cart, movement);
+    static Vec3 resisted(AbstractMinecart cart, Vec3 movement) {
+        double speed = movement.horizontalDistance();
 
-        if (TrainCoupling.underPower(cart) || TrainCoupling.riderSteering(cart)) {
-            return slowed;
+        if (speed <= 0.0) {
+            return movement;
         }
 
-        double speed = slowed.horizontalDistance();
-        double roll = roll(cart);
-
-        if (roll <= 0.0 || speed <= 0.0) {
-            return slowed;
-        }
+        double flat = TrainCoupling.underPower(cart) || TrainCoupling.riderSteering(cart)
+                ? 0.0
+                : roll(cart);
+        double lost = (rate(cart) * speed + flat) / TrainCoupling.meanCarMass(cart);
 
         // The whole of what is left, where what is left is less than one tick's worth: a flat loss
         // is what brings a cart to a dead stop instead of forever approaching one.
-        if (speed <= roll) {
-            return new Vec3(0.0, slowed.y(), 0.0);
+        if (speed <= lost) {
+            return new Vec3(0.0, movement.y(), 0.0);
         }
 
-        double left = (speed - roll) / speed;
+        double left = (speed - lost) / speed;
 
-        return new Vec3(slowed.x() * left, slowed.y(), slowed.z() * left);
+        return new Vec3(movement.x() * left, movement.y(), movement.z() * left);
+    }
+
+    // The fraction of its speed the physical model takes each tick before mass is accounted for.
+    // One rate for every kind of cart, which is the point: vanilla's varies from a fortieth to a
+    // three-hundredth by what the cart holds and who is aboard, and this model answers to mass
+    // instead. Vanilla's own empty-cart figure, so a lone empty cart reads the same in both models
+    // but for the flat term. Water is vanilla's second helping, expressed as a rate rather than a
+    // factor.
+    private static double rate(AbstractMinecart cart) {
+        return cart.isInWater()
+                ? 1.0 - (1.0 - EMPTY_DRAG) * WATER_KEEP
+                : EMPTY_DRAG;
     }
 
     /**
-     * {@code slowed} rescaled from this car's own rolling friction to its whole train's mean, which
+     * What vanilla's slowdown {@code applied}, rescaled from this car's own rolling friction to
+     * its whole train's mean — which
      * is the whole of the vanilla model's retarding law — see {@link RailForces#retarded}.
      *
      * <p>Only the leading car reaches vanilla's slowdown at all now, so without this a train
@@ -121,9 +147,9 @@ public final class RailDrag {
      * <p>A train whose cars are all alike averages to exactly what its leader was already given,
      * whatever vanilla's figures happen to be, so this only ever moves a train of mixed cars.
      */
-    static Vec3 shared(AbstractMinecart cart, Vec3 slowed) {
+    static Vec3 shared(AbstractMinecart cart, Vec3 applied) {
         if (!cart.hasLink() || !MTGameRules.trainsEnabled(cart.level())) {
-            return slowed;
+            return applied;
         }
 
         Train train = Train.of(cart);
@@ -138,12 +164,12 @@ public final class RailDrag {
         double own = keepOf(cart);
 
         if (own <= 0.0) {
-            return slowed;
+            return applied;
         }
 
         double scale = mean / own;
 
-        return slowed.multiply(scale, 1.0, scale);
+        return applied.multiply(scale, 1.0, scale);
     }
 
     // Held for the tick by the train itself: vanilla asks for a slowdown once per rail block its
@@ -166,16 +192,19 @@ public final class RailDrag {
     // would be a second helping of friction on a car the placer is going to move anyway.
     private static double keepOf(AbstractMinecart cart) {
         double keep = cart instanceof AbstractMinecartContainer container
-                        && container.getContainerLootTable() == null
                 ? CONTAINER_KEEP + emptiness(container) * CONTAINER_EMPTIER
                 : cart.getBehavior().getSlowdownFactor();
 
         return cart.isInWater() ? keep * WATER_KEEP : keep;
     }
 
-    // How far from full a container cart is, on the comparator's own scale.
+    // How far from full a container cart is, on the comparator's own scale. An unopened loot cart
+    // is full: vanilla skips the emptiness bonus for one and leaves it a full cart's figure, rather
+    // than falling back to a plain cart's (AbstractMinecartContainer:102-106).
     private static int emptiness(AbstractMinecartContainer container) {
-        return FULL_SIGNAL - AbstractContainerMenu.getRedstoneSignalFromContainer(container);
+        return container.getContainerLootTable() != null
+                ? 0
+                : FULL_SIGNAL - AbstractContainerMenu.getRedstoneSignalFromContainer(container);
     }
 
     // How much speed rolling resistance takes off a cart in one tick, in blocks. rail_drag_speed
@@ -195,9 +224,10 @@ public final class RailDrag {
 
     /**
      * Takes off {@code cart} the speed its train has just lost running through {@code turn} right
-     * angles of kink in its track. Charged where the turn is measured rather than through
-     * {@link #slowed}: vanilla asks for slowdown once per rail block a car crosses, which at speed
-     * is several times a tick, and an event billed per block would be billed several times over.
+     * angles of kink in its track, or nothing at all under a model that does not charge for
+     * cornering. Charged where the turn is measured rather than through {@link #resisted}: vanilla
+     * asks for slowdown once per rail block a car crosses, which at speed is several times a tick,
+     * and an event billed per block would be billed several times over.
      *
      * <p>A fraction of the speed, not a flat loss, and the one place in this class where that is
      * the right shape. Rolling resistance is a force and a flat loss is how a force reads; a kink
@@ -207,16 +237,21 @@ public final class RailDrag {
      * the loss goes to nothing as the speed does, so an engine or a rider always outruns it from
      * rest, and bend loss needs none of the guards rolling resistance needs.
      *
-     * <p>Not divided by the length of the train. Every car takes its own impact and every car
-     * carries its own mass, so a long train loses the same fraction to a corner as a single cart —
-     * the same reason nothing else here scales with length.
+     * <p>Not divided by the length of the train, and not divided by its mass either. Every car
+     * takes its own impact and every car carries its own mass, so a long train loses the same
+     * fraction to a corner as a single cart, and a loaded one the same fraction as an empty one.
+     * This is the one force here with no mass term, and adding one for consistency with the rest
+     * would be wrong: what an impact costs is a fraction of the arriving speed, and the mass
+     * cancels on both sides of that.
      */
     public static void bend(AbstractMinecart cart, double turn) {
-        if (turn <= 0.0) {
+        double lost = turn <= 0.0 ? 0.0 : RailForces.of(cart.level()).bendLoss(turn);
+
+        if (lost <= 0.0) {
             return;
         }
 
-        double left = Math.max(0.0, 1.0 - BEND_LOSS * turn);
+        double left = Math.max(0.0, 1.0 - lost);
 
         cart.setDeltaMovement(cart.getDeltaMovement().multiply(left, 1.0, left));
     }

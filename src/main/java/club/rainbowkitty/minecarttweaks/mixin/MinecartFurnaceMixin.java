@@ -30,9 +30,11 @@ import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
 import club.rainbowkitty.minecarttweaks.init.MTTicketTypes;
 import club.rainbowkitty.minecarttweaks.rail.RailBrake;
+import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.train.Train;
+import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.util.FurnaceFuel;
 
 /** Furnace-cart speed, burning any fuel, the parking brake, and keeping chunks loaded. */
@@ -41,17 +43,6 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     // Chunks held either side of a burning cart, in chunks.
     @Unique
     private static final int CHUNK_TICKET_RADIUS = 3;
-
-    // Vanilla's minimum per-tick pull-back on an ascending rail
-    // (NewMinecartBehavior#calculateSlopeSpeed).
-    @Unique
-    private static final double SLOPE_PULL = 0.0078125;
-
-    // Engine output of a burning cart in blocks per tick squared. Above SLOPE_PULL with margin, and
-    // TrainCoupling hands the whole of it to a cart towing up to two others, so a short furnace
-    // train climbs a slope from any speed.
-    @Unique
-    private static final double ACCELERATION = 2.0 * SLOPE_PULL;
 
     // Below this squared length the impulse is treated as absent, matching vanilla.
     @Unique
@@ -75,6 +66,13 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     @Unique
     private static final int PARKED_FUEL_INTERVAL = 10;
 
+    // Ticks of no progress under power before the engine turns the cart round. Long enough that a
+    // cart just fuelled from rest is not mistaken for one wedged against a buffer — it is moving
+    // by its second tick under either model — and short enough to read as a reversal rather than
+    // as a cart that got stuck and recovered.
+    @Unique
+    private static final int STALL_TICKS = 4;
+
     // Ticks of burn time left.
     @Shadow private int fuel;
 
@@ -90,6 +88,10 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     @Unique
     private @Nullable BlockPos minecarttweaks$headingRail;
 
+    // Ticks in a row this cart has been given the engine and still covered no ground.
+    @Unique
+    private int minecarttweaks$stalled;
+
     // Never called: present only to satisfy the compiler about the superclass this mixin extends.
     protected MinecartFurnaceMixin(EntityType<?> entityType, Level level) {
         super(entityType, level);
@@ -98,7 +100,9 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
 
     @Override
     public double minecarttweaks$driveAcceleration() {
-        return fuel > 0 && !minecarttweaks$parked ? ACCELERATION : 0.0;
+        return fuel > 0 && !minecarttweaks$parked
+                ? RailForces.of(level()).engineOutput()
+                : 0.0;
     }
 
     @Override
@@ -106,14 +110,21 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         return minecarttweaks$driveAcceleration() > 0 ? push : Vec3.ZERO;
     }
 
-    // Undoes vanilla's halving, which would leave a furnace cart slower than the carts it tows and
-    // so make the engine the limit on its own train. The ceiling itself is max_minecart_speed, as
-    // it is for every other cart — raising the engine past what the world allows anything else is
-    // what a rule of its own used to do, and it made that rule a lie.
+    // Vanilla halves a furnace cart's ceiling, which leaves the engine slower than the carts it
+    // tows and so makes it the limit on its own train. The physical model undoes that, for a
+    // ceiling of max_minecart_speed like every other cart; the vanilla model keeps the halving,
+    // which is where its engine's 4 m/s comes from. Raising it past what the world allows anything
+    // else is what a rule of its own used to do, and it made that rule a lie.
     @Inject(method = "getMaxSpeed", at = @At("RETURN"), cancellable = true)
     private void minecarttweaks$furnaceSpeed(
             ServerLevel level, CallbackInfoReturnable<Double> cir) {
-        cir.setReturnValue(super.getMaxSpeed(level));
+        // The model first, then the train: a furnace cart's own ceiling is what it lends the train
+        // it heads, so the halving has to be settled before the lowest figure is looked for. This
+        // is the outermost override for a furnace cart, so the generic hook stands down and both
+        // happen here.
+        double own = RailForces.of(level).topSpeed(cir.getReturnValueD(), super.getMaxSpeed(level));
+
+        cir.setReturnValue(TrainCoupling.trainCeiling(this, level, own));
     }
 
     // Vanilla's powered branch decays the cart's own speed and re-adds the impulse each tick, so
@@ -127,7 +138,11 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         // unpowered branch verbatim; returning early instead would let vanilla re-add the impulse.
 
         if (minecarttweaks$parked) {
-            cir.setReturnValue(super.applyNaturalSlowdown(deltaMovement.multiply(0.98, 0.0, 0.98)));
+            // Cancelling here means the return hook below never sees this cart, so the retarding
+            // law is asked for on the spot. The super call no longer applies one of its own — the
+            // generic hook skips a furnace cart precisely so this is the only place it lands.
+            cir.setReturnValue(RailForces.of(level()).retarded(this, deltaMovement,
+                    super.applyNaturalSlowdown(deltaMovement.multiply(0.98, 0.0, 0.98))));
             return;
         }
 
@@ -140,10 +155,24 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         // The direction of travel is the only heading that survives a corner. A coupled cart's is
         // written along its own rail and trustworthy at any speed; a solo cart's needs a floor
         // under it, or the jitter of a near-stopped one decides which way it pushes.
+        //
+        // Aimed under both models, ahead of the decision about whose force drives the cart.
+        // Vanilla aims the impulse by projecting it onto the direction of travel and normalising
+        // the result, and the projection onto a perpendicular heading is the zero vector — which
+        // normalise() turns into a permanently dead engine, since vanilla then never reaches its
+        // own aiming again. A two-block U-turn swings the cart ninety degrees in a single step, so
+        // that is ordinary track rather than a corner case. Aiming first makes vanilla's own
+        // projection a no-op on a heading already parallel to the movement, which is the whole
+        // point: it cannot be degenerate if it has nothing left to do.
         double floor = hasLink() ? IMPULSE_EPSILON : MOVING_EPSILON;
 
         if (deltaMovement.horizontalDistanceSqr() > floor) {
             minecarttweaks$aimAlong(deltaMovement.horizontal().normalize());
+        }
+
+        // Vanilla's engine, when the model keeps it: its own branch supplies the force from here.
+        if (!RailForces.of(level()).drivesEngine()) {
+            return;
         }
 
         if (push.lengthSqr() <= IMPULSE_EPSILON) {
@@ -151,6 +180,19 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         }
 
         cir.setReturnValue(deltaMovement.add(push.scale(minecarttweaks$sharedAcceleration())));
+    }
+
+    // A furnace cart's retarding law, asked for at its own override rather than at the one it calls
+    // through to. Vanilla scales the movement before that super call — by 0.98 coasting, or by 0.8
+    // plus the impulse under power — so the generic hook is handed a figure a tick of friction has
+    // already been taken out of, and the physical model, which works from the movement the cart
+    // arrived with, would read a furnace cart as barely different from vanilla. Here the argument
+    // is still the real one.
+    @Inject(method = "applyNaturalSlowdown", at = @At("RETURN"), cancellable = true)
+    private void minecarttweaks$furnaceFriction(
+            Vec3 deltaMovement, CallbackInfoReturnable<Vec3> cir) {
+        cir.setReturnValue(
+                RailForces.of(level()).retarded(this, deltaMovement, cir.getReturnValue()));
     }
 
     // Aims the engine along a heading read off the cart's movement. A reversal without leaving the
@@ -171,14 +213,16 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         minecarttweaks$headingRail = rail;
     }
 
-    // Its own full output when it runs alone, and its train's whole output shared over the cars
-    // that carry it when it is coupled — the engines behind it counted in, since only the leading
-    // car reaches this and it is answering for all of them.
+    // Force over mass either way: its own output over its own weight when it runs alone, and its
+    // train's whole output over the train's weight when it is coupled — the engines behind it
+    // counted in, since only the leading car reaches this and it is answering for all of them.
+    // Dividing the solo case too is what keeps a lone furnace cart on the same curve as the trains
+    // it heads, rather than giving the one cart that carries a firebox the only free ride.
     @Unique
     private double minecarttweaks$sharedAcceleration() {
         return hasLink() && MTGameRules.trainsEnabled(level())
                 ? Train.of(this).drive()
-                : ACCELERATION;
+                : RailForces.of(level()).engineOutput() / TrainCoupling.mass(this);
     }
 
     // Reads the brake, holds chunks, and idles the fuel burn while parked.
@@ -193,6 +237,8 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         // Read before super.tick() moves the cart, so the movement path sees this tick's rail.
         minecarttweaks$parked = RailBrake.brakes(this);
 
+        minecarttweaks$countStall();
+
         if (fuel > 0 && rules.get(MTGameRules.FURNACE_MINECARTS_LOAD_CHUNKS)) {
             serverLevel.getChunkSource().addTicketWithRadius(
                     MTTicketTypes.FURNACE_MINECART, chunkPosition(), CHUNK_TICKET_RADIUS);
@@ -203,6 +249,36 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         if (fuel > 0 && tickCount % PARKED_FUEL_INTERVAL != 0 && minecarttweaks$parked) {
             fuel++;
         }
+    }
+
+    // Turns a stalled engine round, which is the one thing neither model can work out for itself.
+    // Both re-aim the impulse from the cart's own movement — vanilla in calculateNewPushAlong and
+    // this mod in aimAlong — and a cart against a buffer has none: stepAlongTrack zeroes a step
+    // that covered no ground, so the engine is handed its impulse back into the obstruction every
+    // tick and the gate that would turn it round never opens. Left alone a fuelled cart at a dead
+    // end wedges there until its fuel runs out, which is what makes a switchback impossible.
+    //
+    // So the stall is counted instead of derived, and read at the top of the tick where last
+    // tick's movement is still what the cart has. Unconditional in both models: the trap is
+    // vanilla's, and a cart nothing can move is not behaviour worth mirroring.
+    @Unique
+    private void minecarttweaks$countStall() {
+        if (fuel <= 0 || minecarttweaks$parked
+                || getDeltaMovement().horizontalDistanceSqr() > IMPULSE_EPSILON) {
+            minecarttweaks$stalled = 0;
+            return;
+        }
+
+        if (++minecarttweaks$stalled < STALL_TICKS) {
+            return;
+        }
+
+        minecarttweaks$stalled = 0;
+        push = push.scale(-1.0);
+
+        // Stamped on the rail it turned on, so aimAlong reads the movement that follows as
+        // agreeing with the new heading rather than as a reversal to be refused.
+        minecarttweaks$headingRail = getCurrentBlockPosOrRailBelow();
     }
 
     // Replaces vanilla's hardcoded burn-time ceiling with the rule's.

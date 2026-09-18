@@ -9,6 +9,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
@@ -44,9 +45,6 @@ public final class Train {
     // Consecutive ticks a confident reading must name the other end before the train is relaid onto
     // it. A reversal names it for every tick after it; a blip names it once.
     private static final int LEADER_FLIP_TICKS = 3;
-
-    // Trailers one engine hauls before its output starts being divided down.
-    private static final int FREE_CARS = 2;
 
     // The most of a block the seating interval closes on its target in one tick, however much room
     // the leading car has made. A ceiling only: what usually paces the expansion is the ground that
@@ -306,25 +304,35 @@ public final class Train {
     }
 
     /**
-     * The acceleration this train's engines give it, shared over the cars they haul. Every engine
-     * hauls {@link #FREE_CARS} trailers at its full output before the rest of the train starts
-     * dividing that output down, so a furnace cart and two cars climb a slope as readily as one
-     * alone and only a longer train falls off. A train of one is unaffected.
+     * The acceleration this train's engines give it: their summed output over what the train
+     * weighs, which is force over mass and nothing else.
+     *
+     * <p>The divisor used to be the car count less two trailers per engine — an arbitrary
+     * generosity standing in for the mass effect, so that a furnace cart and two cars climbed a
+     * slope as readily as one alone. Real mass produces that curve directly and better: a furnace
+     * cart weighs more than the cars it hauls, so double-heading buys more than the cars it costs,
+     * and loading a short train is enough to stop it climbing where adding cars used to be the only
+     * way.
+     *
+     * <p>The mass is the whole train's, not the mean per car, and that difference is the point.
+     * Resistance is per car, so it divides by the mean and length drops out; a single engine's
+     * output is not per car, so it divides by the total and length is exactly what it is up
+     * against.
      */
     public double drive() {
         double drive = 0.0;
-        int engines = 0;
 
         for (AbstractMinecart car : cars) {
-            double output = car.minecarttweaks$driveAcceleration();
-            drive += output;
-
-            if (output > 0.0) {
-                engines++;
-            }
+            drive += car.minecarttweaks$driveAcceleration();
         }
 
-        return engines == 0 ? 0.0 : drive / Math.max(1, cars.size() - FREE_CARS * engines);
+        if (drive <= 0.0) {
+            return 0.0;
+        }
+
+        Level level = cars.getFirst().level();
+
+        return drive / mass(RailForces.of(level), level.getGameTime());
     }
 
     /**
@@ -349,6 +357,18 @@ public final class Train {
         massTick = tick;
 
         return total;
+    }
+
+    /**
+     * What one car of this train weighs on average under {@code forces}, in empty carts.
+     *
+     * <p>The figure a retarding force divides by, and a mean rather than the total for the reason
+     * nothing else here scales with length either: resistance is per car and so is mass, so a long
+     * train coasts like a short one. Dividing by the total instead would have ten empty cars coast
+     * five times as far as one, which is neither model.
+     */
+    public double meanCarMass(RailForces forces, long tick) {
+        return mass(forces, tick) / cars.size();
     }
 
     /**

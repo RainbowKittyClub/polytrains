@@ -22,6 +22,7 @@ import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.entity.vehicle.minecart.MinecartFurnace;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -37,7 +38,7 @@ import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
 import club.rainbowkitty.minecarttweaks.init.MTAttachments;
 import club.rainbowkitty.minecarttweaks.rail.RailBrake;
 import club.rainbowkitty.minecarttweaks.rail.RailContext;
-import club.rainbowkitty.minecarttweaks.rail.RailDrag;
+import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.train.TrainPlacer;
@@ -292,11 +293,45 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         }
     }
 
-    // The policy moved to RailDrag, which a container cart's own slowdown has to ask for directly:
-    // it overrides this method and returns without calling it, so nothing injected here reaches it.
+    @Override
+    public double minecarttweaks$ownMaxSpeed(ServerLevel level) {
+        return getMaxSpeed(level);
+    }
+
+    // A train runs no faster than its slowest car will allow, whichever end of it happens to be
+    // leading. Same shape as the friction hook below and for the same reason: asked at whichever
+    // getMaxSpeed override is the outermost for this kind of cart, since a furnace cart halves what
+    // this one returns on the way back out and the ceiling has to be the halved figure.
+    @Inject(method = "getMaxSpeed", at = @At("RETURN"), cancellable = true)
+    private void minecarttweaks$trainSpeed(
+            ServerLevel level, CallbackInfoReturnable<Double> cir) {
+        AbstractMinecart self = minecarttweaks$self();
+
+        if (self instanceof MinecartFurnace) {
+            return;
+        }
+
+        cir.setReturnValue(TrainCoupling.trainCeiling(self, level, cir.getReturnValueD()));
+    }
+
+    // Which retarding law applies is the model's to say, and both of its candidates are here: the
+    // movement the cart arrived with, and what vanilla's own body left of it.
+    //
+    // Asked at whichever override is the outermost one for this kind of cart, because that is the
+    // only one handed the movement the cart really arrived with — and the physical model works from
+    // that rather than from vanilla's figure. A container cart overrides this and returns without
+    // calling it, so it asks for itself and never reaches here. A furnace cart overrides it and
+    // does call it, having already scaled the movement on the way past, so it is skipped here and
+    // asks at its own return instead.
     @Inject(method = "applyNaturalSlowdown", at = @At("RETURN"), cancellable = true)
     private void minecarttweaks$railFriction(Vec3 movement, CallbackInfoReturnable<Vec3> cir) {
-        cir.setReturnValue(RailDrag.slowed(minecarttweaks$self(), cir.getReturnValue()));
+        AbstractMinecart self = minecarttweaks$self();
+
+        if (self instanceof MinecartFurnace) {
+            return;
+        }
+
+        cir.setReturnValue(RailForces.of(level()).retarded(self, movement, cir.getReturnValue()));
     }
 
     // This is the hook the whole resolver hangs off. Vanilla hands every pushable entity to

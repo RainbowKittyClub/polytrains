@@ -407,6 +407,55 @@ public final class TrainCoupling {
     }
 
     /**
+     * The lowest speed ceiling any car of {@code cart}'s train will accept, given {@code own} as
+     * the ceiling of the car asking. Just {@code own} for a lone cart.
+     *
+     * <p>A repair, not a departure, and it runs under both force models. Vanilla has no trains, so
+     * the ensemble is the answer: a line of carts being pushed along cannot outrun whatever is
+     * pushing it, and vanilla halves a furnace cart's ceiling. Without this the ceiling would be
+     * whichever car happened to be leading — a furnace train capped at four blocks a second one
+     * way round and at eight the other, doubling its speed when it reversed. The model does not
+     * come into it because each car's own figure is already the model's: the physical model undoes
+     * vanilla's halving, so the lowest ceiling is then the same as everyone else's and this
+     * changes nothing.
+     *
+     * <p>Asked only of the driven car, which is what keeps it from recursing. Every other car's
+     * hook stands down, so walking the train to ask each one costs one figure per car rather than
+     * one walk per car.
+     */
+    public static double trainCeiling(AbstractMinecart cart, ServerLevel level, double own) {
+        if (!cart.hasLink() || !MTGameRules.trainsEnabled(level) || driven(cart) != cart) {
+            return own;
+        }
+
+        double lowest = own;
+
+        for (AbstractMinecart car : Train.of(cart).cars()) {
+            if (car != cart) {
+                lowest = Math.min(lowest, car.minecarttweaks$ownMaxSpeed(level));
+            }
+        }
+
+        return lowest;
+    }
+
+    /**
+     * What one car of {@code cart}'s train weighs on average, in empty carts, or what {@code cart}
+     * itself weighs when it is coupled to nothing.
+     *
+     * <p>The figure a retarding force divides by, as against {@link #mass}, which is the whole
+     * train and is what a shove or an impact is shared over. Both come to one per car under the
+     * vanilla model.
+     */
+    public static double meanCarMass(AbstractMinecart cart) {
+        RailForces forces = RailForces.of(cart.level());
+
+        return cart.hasLink()
+                ? Train.of(cart).meanCarMass(forces, cart.level().getGameTime())
+                : forces.cartMass(cart);
+    }
+
+    /**
      * How hard two trains are about to meet, or zero if they are not closing on each other at all.
      *
      * <p>The rate the gap shrinks rather than either train's own speed, so a heavy train merely

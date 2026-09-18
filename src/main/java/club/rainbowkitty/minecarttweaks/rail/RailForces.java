@@ -1,7 +1,5 @@
 package club.rainbowkitty.minecarttweaks.rail;
 
-import org.jspecify.annotations.Nullable;
-
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecartContainer;
@@ -44,8 +42,8 @@ public enum RailForces {
         }
 
         @Override
-        public Vec3 retarded(AbstractMinecart cart, Vec3 movement) {
-            return RailDrag.shared(cart, movement);
+        public Vec3 retarded(AbstractMinecart cart, Vec3 movement, Vec3 applied) {
+            return RailDrag.shared(cart, applied);
         }
 
         @Override
@@ -54,8 +52,13 @@ public enum RailForces {
         }
 
         @Override
-        public @Nullable Vec3 engine(Vec3 movement, Vec3 push, double drive) {
-            return null;
+        public boolean drivesEngine() {
+            return false;
+        }
+
+        @Override
+        public double engineOutput() {
+            return VANILLA_IMPULSE;
         }
 
         @Override
@@ -77,8 +80,8 @@ public enum RailForces {
         }
 
         @Override
-        public Vec3 retarded(AbstractMinecart cart, Vec3 movement) {
-            return RailDrag.slowed(cart, movement);
+        public Vec3 retarded(AbstractMinecart cart, Vec3 movement, Vec3 applied) {
+            return RailDrag.resisted(cart, movement);
         }
 
         @Override
@@ -87,8 +90,13 @@ public enum RailForces {
         }
 
         @Override
-        public @Nullable Vec3 engine(Vec3 movement, Vec3 push, double drive) {
-            return movement.add(push.scale(drive));
+        public boolean drivesEngine() {
+            return true;
+        }
+
+        @Override
+        public double engineOutput() {
+            return ENGINE_FORCE;
         }
 
         @Override
@@ -117,6 +125,20 @@ public enum RailForces {
     // The comparator reading a full container gives.
     private static final double FULL_SIGNAL = 15.0;
 
+    // What one lit engine puts out per tick under the physical model, before the train's mass
+    // divides it down. Sized off the only fixed bar there is: a train climbs a grade when its
+    // output beats gravity's own pull, so six times that pull puts the tipping point at six cars'
+    // worth of mass — a short train climbs, loading it to nearly the same mass tips it to marginal,
+    // and a long one cannot at all.
+    private static final double ENGINE_FORCE = 6.0 * RailDrag.SLOPE_PULL;
+
+    // Vanilla's engine, as a per-tick figure something other than the engine cart can be given.
+    // Vanilla re-adds its whole impulse every tick against a 0.8 decay, so the impulse *is* the
+    // output; this mod normalises it, making that one block a tick. Vanilla's own magnitude is how
+    // far the player was standing from the cart, which is arbitrary and lands past the speed
+    // ceiling for any plausible value, so a normalised one is observably the same engine.
+    private static final double VANILLA_IMPULSE = 1.0;
+
     /**
      * Which model {@code level} runs. Vanilla wherever no rule can be read, the client included:
      * nothing in this model is the client's to apply.
@@ -136,12 +158,13 @@ public enum RailForces {
     public abstract double cartMass(AbstractMinecart cart);
 
     /**
-     * {@code movement} with this model's whole retarding law taken off it. Vanilla's is a fraction
-     * of the speed per tick, varying by kind of cart and averaged over a train; this mod's adds a
-     * flat term divided by mass, which reaches zero in finite time and runs the load dependence the
-     * other way — see {@link RailDrag}.
+     * This model's whole retarding law, given the {@code movement} the cart arrived with and what
+     * vanilla's own slowdown {@code applied} to it. Each model takes the one it is built on and
+     * discards the other, which is why both are passed rather than composed: the vanilla model
+     * rescales vanilla's figure to the train's mean, while the physical model throws that figure
+     * away and works from the raw movement — see {@link RailDrag}.
      */
-    public abstract Vec3 retarded(AbstractMinecart cart, Vec3 movement);
+    public abstract Vec3 retarded(AbstractMinecart cart, Vec3 movement, Vec3 applied);
 
     /**
      * The fraction of its speed a train loses to {@code turn} right angles of kink in its track.
@@ -149,11 +172,23 @@ public enum RailForces {
     public abstract double bendLoss(double turn);
 
     /**
-     * {@code movement} with a lit engine's impulse added, or null to leave vanilla's own engine to
-     * it. Vanilla decays the cart's speed and re-adds the impulse each tick, which is a curve that
-     * tails off; this mod pushes at a flat force divided by the train's mass.
+     * Whether this model replaces vanilla's engine with a force of its own. False leaves vanilla's
+     * powered branch to run untouched — it decays the cart's speed and re-adds the impulse each
+     * tick, a curve that tails off, and it re-aims the impulse itself on the way; true replaces
+     * that with a flat force divided by the train's mass.
      */
-    public abstract @Nullable Vec3 engine(Vec3 movement, Vec3 push, double drive);
+    public abstract boolean drivesEngine();
+
+    /**
+     * What one lit engine puts out per tick, before a train's mass divides it down.
+     *
+     * <p>Asked even under the model that does not drive the engine, because a train whose leading
+     * car is not itself an engine has to be given the drive somewhere — and vanilla, having no
+     * trains, states no figure for that. So this is the one quantity the vanilla model has to
+     * synthesise rather than read: what vanilla's own impulse amounts to per tick, handed to
+     * whichever car is carrying the train.
+     */
+    public abstract double engineOutput();
 
     /**
      * A furnace cart's speed ceiling, given the {@code halved} figure vanilla computes and the

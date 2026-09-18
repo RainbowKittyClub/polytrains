@@ -9,7 +9,7 @@ import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecartContainer;
 import net.minecraft.world.phys.Vec3;
 
-import club.rainbowkitty.minecarttweaks.rail.RailDrag;
+import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /**
@@ -34,12 +34,15 @@ public abstract class AbstractMinecartContainerMixin {
         }
     }
 
-    // The same friction the other carts take, asked for here because the override above does not
-    // reach it. Vanilla's own figure is left as it is: an emptier container cart rolls better by
-    // design, and this only decides how the last of that roll is spent.
+    // The same retarding law the other carts take, asked for here because the override above does
+    // not reach it. Which law that is belongs to the model: the vanilla one leaves vanilla's own
+    // figure alone, so an emptier container cart goes on rolling better, and the physical one
+    // replaces it with a law that answers to what the cart is carrying instead.
     @Inject(method = "applyNaturalSlowdown", at = @At("RETURN"), cancellable = true)
     private void minecarttweaks$railFriction(Vec3 movement, CallbackInfoReturnable<Vec3> cir) {
+        AbstractMinecart self = (AbstractMinecart) (Object) this;
+
         cir.setReturnValue(
-                RailDrag.slowed((AbstractMinecart) (Object) this, cir.getReturnValue()));
+                RailForces.of(self.level()).retarded(self, movement, cir.getReturnValue()));
     }
 }
