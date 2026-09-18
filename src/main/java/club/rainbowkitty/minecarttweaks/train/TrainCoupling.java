@@ -425,6 +425,37 @@ public final class TrainCoupling {
     }
 
     /**
+     * The shove {@code push} landed on {@code shoved} as the car {@code driven} should receive it:
+     * how hard it urges the train along its own rails, laid back down along the rails there.
+     *
+     * <p>A push is a vector in the world and a train is not a straight line. The car a player leans
+     * on and the car vanilla drives point the same way only while the track between them is
+     * straight — round a bend they differ by the bend, and on a U-turn they run flat opposite, so a
+     * push meant to send the train forward reaches the one car that can act on it as a push
+     * backwards. What survives the carry is the scalar: how much of the shove is along the track.
+     *
+     * <p>The component across the rails is dropped rather than carried, which costs nothing. A cart
+     * cannot move that way, and vanilla discards it a moment later at the rail itself.
+     */
+    public static Vec3 alongTrack(AbstractMinecart shoved, AbstractMinecart driven, Vec3 push) {
+        TrackRibbon ribbon = Train.of(shoved).ribbon();
+        Double at = ribbon.arcOf(shoved);
+        Double to = shoved == driven ? at : ribbon.arcOf(driven);
+        Vec3 here = at == null ? null : ribbon.tangentAt(at);
+        Vec3 there = to == null ? null : ribbon.tangentAt(to);
+
+        // A train the ribbon cannot place is one whose shape it cannot speak for either, so the
+        // shove goes on as it arrived rather than being projected onto a guess.
+        if (here == null || there == null) {
+            return push;
+        }
+
+        double along = push.horizontal().dot(here);
+
+        return new Vec3(there.x() * along, push.y(), there.z() * along);
+    }
+
+    /**
      * The car of {@code cart}'s train whose movement is an input rather than an output — the one
      * vanilla still drives along the rails, and so the only one a shove can be laid on.
      *

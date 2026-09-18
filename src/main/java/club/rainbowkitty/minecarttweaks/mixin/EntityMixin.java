@@ -9,6 +9,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.collision.CartInteraction;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
@@ -79,11 +80,14 @@ public abstract class EntityMixin {
         double share = 1.0 / TrainCoupling.mass(cart);
 
         // Onto the car vanilla drives rather than the one leaned on: a placed car's movement is
-        // written by the placer, so a shove left on it is overwritten before it moves anything.
+        // written by the placer, so a shove left on it is overwritten before it moves anything. The
+        // two cars only point the same way while the track between them is straight, so what
+        // carries over is the push along the rails rather than the push through the world.
         AbstractMinecart driven = TrainCoupling.driven(cart);
+        Vec3 push = TrainCoupling.alongTrack(cart, driven, new Vec3(xa, ya, za));
 
-        driven.setDeltaMovement(
-                driven.getDeltaMovement().add(xa * share, ya * share, za * share));
+        driven.setDeltaMovement(driven.getDeltaMovement()
+                .add(push.x() * share, push.y() * share, push.z() * share));
 
         if (driven == (Object) this) {
             needsSync = true;
