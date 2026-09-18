@@ -152,6 +152,24 @@ ending on the far leg at yaw 180, turned round in yaw without flipping. Reversed
 instead, the same train goes `0000` to `1111` to `0000` with its yaw unmoved, which is the reversal
 still working as a flip. Those are the two readings a heading comparison cannot tell apart.
 
+**The ribbon is built of chords, and `tangentAt` was handing back block axes.** Reported as carts
+rotating oddly round a bend, alongside the flip fault above. `positionAt` lerps a car between a
+block's two edge midpoints, `span` is how far apart they are, and `turnBetween` measures the joints
+between those chords — its own doc says the chord "is what a cart riding the chords actually
+follows". But `tangentAt` returned `node.forward()`, the cardinal direction the recording car left
+the block by. A corner's two edges are square to each other, so its chord runs at **45 degrees to
+either**: a car was positioned along the diagonal and aimed along the axis, once per corner, which a
+two-block U-turn does twice. Placed cars could only ever show yaws of 0, 90, 180 or 270 — the
+intermediate angles seen before this were vanilla's, from ticks the placer had bailed on.
+
+All five callers wanted the chord: the placer's `facing`, `seatAt`'s tangent, `decideLeader`'s new
+arc reading, and the ribbon's own test for which end a car is extending. `Node.forward` stays, since
+growing the ribbon needs a cardinal to offset a block by, but nothing else reads it now.
+
+**Measured**: a four-car train through the U-turn now steps every car 0, 45, 90, 135, 180 as it
+reaches the corner, each in turn, where before a placed car jumped between cardinals. Flips stay
+`0000` across traverses at 0.4 through 2.0 blocks a tick.
+
 ## How these stages get tested
 
 On this mod's own dev server, `scripts/devserver.sh rkc/mods/minecart-tweaks restart`, against a world
