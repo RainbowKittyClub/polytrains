@@ -25,6 +25,7 @@ import club.rainbowkitty.minecarttweaks.init.MTAttachments;
 import club.rainbowkitty.minecarttweaks.init.MTBlocks;
 import club.rainbowkitty.minecarttweaks.init.MTDataComponents;
 import club.rainbowkitty.minecarttweaks.init.MTItems;
+import club.rainbowkitty.minecarttweaks.init.MTTags;
 import club.rainbowkitty.minecarttweaks.init.MTTicketTypes;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
@@ -93,6 +94,15 @@ public class MinecartTweaks implements ModInitializer {
     private static InteractionResult useMinecart(
             Player player, Level level, InteractionHand hand, AbstractMinecart minecart) {
         var heldItem = player.getItemInHand(hand);
+
+        // A click the client cannot consume is offered to the off hand as well, and a link item in
+        // the main hand has already answered it: a second link item would attempt the pair again,
+        // against a selection the first has spent, and anything else would upgrade the cart that
+        // was being coupled.
+        if (hand == InteractionHand.OFF_HAND
+                && player.getMainHandItem().is(MTTags.Items.LINK_ITEMS)) {
+            return InteractionResult.PASS;
+        }
 
         if (MinecartHelper.mayAttemptLinking(player, heldItem)) {
             if (!(level instanceof ServerLevel serverLevel)) {
