@@ -37,7 +37,10 @@ public enum CartInteraction {
     /** Two trains meeting hard enough that neither survives it. */
     WRECK(false, false),
 
-    /** Two cars of one train the placer is not holding: each stops the other, neither harms it. */
+    /**
+     * Two cars of one train the placer is not holding: each stops the other and shunts it along
+     * as loose carts do, and neither harms it.
+     */
     BUFFER(true, false);
 
     // Speed at which a cart starts running things down, in blocks per tick: above it any cart at
@@ -113,13 +116,14 @@ public enum CartInteraction {
      * far harder than it moves it. Asked from both sides, because vanilla shoves from both and the
      * two arrive at different mixins.
      *
-     * <p>The {@code sameTrain} test is what still holds for a derailed car, which collides with its
-     * neighbours but must not be shoved by them while it is trying to land.
+     * <p>Two cars of one train shove each other only while the placer is not holding them apart,
+     * which is what {@link #BUFFER} means: a train that cannot be seated is loose carts, and loose
+     * carts shunt. Without that a train standing unseated could be pulled but never pushed, its
+     * leading car stopped dead against the car behind it.
      */
     public static boolean pushes(AbstractMinecart cart, Entity other) {
         return (other instanceof Player || other instanceof AbstractMinecart)
-                && of(cart, other).blocks()
-                && !TrainCoupling.sameTrain(cart, other);
+                && of(cart, other).blocks();
     }
 
     /**

@@ -60,14 +60,18 @@ public abstract class EntityMixin {
     }
 
     // Every shove in the game funnels through this one method, so a train is made heavy here rather
-    // than at each of them. Length is divided out once now: the mean of the cars' speeds that used
-    // to divide it again is gone, so this figure still wants retuning against rail friction.
+    // than at each of them: one over the mass is the share of a push the train is owed.
+    //
+    // Only a train the placer is holding. One it is not is loose carts, and a shove on one of
+    // them is that cart's own — vanilla's shunt between two of them arrives here as well, and
+    // routing it to the leading car would leave the car it was meant for standing.
     @Inject(method = "push(DDD)V", at = @At("HEAD"), cancellable = true)
     private void minecarttweaks$shoveTrain(
             double xa, double ya, double za, CallbackInfo info) {
         if (!((Object) this instanceof AbstractMinecart cart)
                 || !MTGameRules.trainsEnabled(cart.level())
-                || !cart.hasLink()) {
+                || !cart.hasLink()
+                || !Train.of(cart).placed()) {
             return;
         }
 
