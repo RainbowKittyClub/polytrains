@@ -336,7 +336,7 @@ public final class Train {
     }
 
     /**
-     * What this whole train weighs under {@code forces}, in empty carts, held for {@code tick}.
+     * What this whole train weighs under {@code forces}, in empty minecarts, held for {@code tick}.
      *
      * <p>Comes to exactly the car count under the vanilla model, where every cart weighs one — so
      * every divisor built on this reads as the count it was before mass existed, and only the
@@ -360,7 +360,7 @@ public final class Train {
     }
 
     /**
-     * What one car of this train weighs on average under {@code forces}, in empty carts.
+     * What one car of this train weighs on average under {@code forces}, in empty minecarts.
      *
      * <p>The figure a retarding force divides by, and a mean rather than the total for the reason
      * nothing else here scales with length either: resistance is per car and so is mass, so a long

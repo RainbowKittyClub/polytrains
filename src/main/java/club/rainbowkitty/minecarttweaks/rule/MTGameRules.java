@@ -55,10 +55,11 @@ public final class MTGameRules {
             registerInteger("minecart_damage", 20, 0, 1000);
 
     /**
-     * Closing momentum at which two trains meeting write each other off, in empty carts times
-     * blocks per second. The default 4 is a lone car closing at four blocks a second, which two
-     * carts running into each other near full speed clear. Zero disables wrecking, leaving them to
-     * collide and stop.
+     * Closing momentum at which two trains meeting write each other off, in empty minecarts times
+     * blocks per second — the same mass unit everything else in this mod uses. It is a reduced mass
+     * times a closing speed, so the default 4 takes two empty carts meeting at eight blocks a
+     * second between them, or two full chest carts at under three. Zero disables wrecking, leaving
+     * them to collide and stop.
      *
      * <p>Does nothing at all unless {@link #REALISTIC_PHYSICS} is on: carts destroying each other
      * is part of that model, and without it two trains meeting simply stop or shunt each other

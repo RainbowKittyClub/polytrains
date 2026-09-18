@@ -59,9 +59,10 @@ public final class TrainCoupling {
     // nothing, since a client that is never left short goes on replaying at the offset it has.
     private static final int RESYNC_HOLD = 2 * NewMinecartBehavior.POS_ROT_LERP_TICKS;
 
-    // Cars in a train nobody can shift by leaning on it, counted in cars because the length is the
-    // part a player can see before they try.
-    private static final int PUSHABLE_CARS = 8;
+    // Mass a train has to reach before nobody can shift it by leaning on it, in empty minecarts —
+    // the unit every mass in this mod is in. Eight empty cars, or three loaded chest carts: what a
+    // player can see is the length, but what resists them is the load.
+    private static final double PUSHABLE_MASS = 8.0;
 
     // Trailers each engine pulls at full output before the rest of the train divides it down.
     // Only has to exclude a dead stop, since the placer writes a car's movement along its own rail
@@ -194,7 +195,7 @@ public final class TrainCoupling {
      * Whether anyone aboard {@code cart}'s train is steering it. Vanilla's rider nudge is a
      * thousandth of a block per tick, under the floor the dead stop cuts to zero, so it does not
      * survive its own first tick unless asked about here. Bounded by {@link #shovable}: a train too
-     * long to shove from outside is too long to shuffle from inside.
+     * heavy to shove from outside is too heavy to shuffle from inside.
      */
     public static boolean riderSteering(AbstractMinecart cart) {
         if (!cart.hasLink()) {
@@ -261,11 +262,15 @@ public final class TrainCoupling {
     }
 
     /**
-     * Whether {@code cart}'s train is short enough to be shifted by leaning on it at all, which
-     * stops at {@link #PUSHABLE_CARS}. How hard it is below that is {@link #mass}'s to say.
+     * Whether {@code cart}'s train is light enough to be shifted by leaning on it at all, which
+     * stops at {@link #PUSHABLE_MASS}. How hard it is below that is {@link #mass}'s to say.
+     *
+     * <p>A mass rather than a car count, so under the physical model the same visible train answers
+     * differently loaded than empty. The vanilla model reads it as a car count regardless, every
+     * cart weighing one there.
      */
     public static boolean shovable(AbstractMinecart cart) {
-        return mass(cart) < PUSHABLE_CARS;
+        return mass(cart) < PUSHABLE_MASS;
     }
 
     /**
@@ -388,7 +393,7 @@ public final class TrainCoupling {
     }
 
     /**
-     * The mass of {@code cart}'s train, in empty carts. A cart on its own is a train of one.
+     * The mass of {@code cart}'s train, in empty minecarts. A cart on its own is a train of one.
      *
      * <p>What a cart weighs is {@link RailForces#cartMass}'s to say, and under the vanilla model
      * every cart weighs one — so this is the plain car count it has always been, and a loaded car
@@ -440,7 +445,8 @@ public final class TrainCoupling {
     }
 
     /**
-     * What one car of {@code cart}'s train weighs on average, in empty carts, or what {@code cart}
+     * What one car of {@code cart}'s train weighs on average, in empty minecarts, or what
+     * {@code cart}
      * itself weighs when it is coupled to nothing.
      *
      * <p>The figure a retarding force divides by, as against {@link #mass}, which is the whole

@@ -4,6 +4,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecartContainer;
 import net.minecraft.world.entity.vehicle.minecart.MinecartFurnace;
+import net.minecraft.world.entity.vehicle.minecart.MinecartHopper;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
@@ -110,15 +111,25 @@ public enum RailForces {
         }
     };
 
-    // What an empty cart weighs, and so the unit every other figure here is expressed in.
+    // What an empty cart weighs. Every mass in this mod is in these units — "empty minecarts" —
+    // including the ones a player sets, so a game rule's figure and a figure here compare directly.
     private static final double EMPTY_MASS = 1.0;
 
-    // A furnace cart instead, carrying its firebox. Costs it half a car's worth of its own output,
-    // which is what makes double-heading worth doing.
+    // A furnace cart instead, carrying its firebox. Costs it half an empty minecart's worth of its
+    // own output, which is what makes double-heading worth doing.
     private static final double ENGINE_MASS = 1.5;
 
-    // A full container cart's contents, and a passenger, on top of the cart itself.
-    private static final double FULL_CARGO = 1.0;
+    // A chest cart empty and full. Its box is heavy before it holds anything, and 27 slots hold a
+    // great deal, so it is both the heaviest empty cart and much the heaviest loaded one.
+    private static final double CHEST_MASS = 1.2;
+
+    private static final double CHEST_LADEN = 3.0;
+
+    // A hopper cart empty and full. A funnel, not cargo: empty it weighs what a plain cart does,
+    // and five slots cannot hold much.
+    private static final double HOPPER_MASS = 1.0;
+
+    private static final double HOPPER_LADEN = 1.5;
 
     private static final double RIDER_MASS = 1.0;
 
@@ -127,9 +138,9 @@ public enum RailForces {
 
     // What one lit engine puts out per tick under the physical model, before the train's mass
     // divides it down. Sized off the only fixed bar there is: a train climbs a grade when its
-    // output beats gravity's own pull, so six times that pull puts the tipping point at six cars'
-    // worth of mass — a short train climbs, loading it to nearly the same mass tips it to marginal,
-    // and a long one cannot at all.
+    // output beats gravity's own pull, so six times that pull puts the tipping point at mass 6.0 —
+    // six empty minecarts. A short train climbs, loading it past that tips it to marginal or
+    // stalls it, and a long one cannot at all.
     private static final double ENGINE_FORCE = 6.0 * RailDrag.SLOPE_PULL;
 
     // Vanilla's engine, as a per-tick figure something other than the engine cart can be given.
@@ -151,7 +162,7 @@ public enum RailForces {
     }
 
     /**
-     * What one cart weighs, in empty carts. A uniform 1.0 under {@link #VANILLA}, which is what
+     * What one cart weighs, in empty minecarts. A uniform 1.0 under {@link #VANILLA}, which is what
      * keeps a lone cart bit-exact: {@code TrainCoupling.mass} answers 1 for an unlinked cart today,
      * and that 1 is what makes the shove divided by mass indistinguishable from vanilla's.
      */
@@ -208,24 +219,39 @@ public enum RailForces {
     // What one cart weighs under the physical model. Read per tick rather than cached, since a
     // hopper cart's mass changes continuously and a comparator read is a short loop.
     private static double weigh(AbstractMinecart cart) {
-        double mass = cart instanceof MinecartFurnace ? ENGINE_MASS : EMPTY_MASS;
-
-        if (cart instanceof AbstractMinecartContainer container) {
-            mass += cargo(container);
-        }
-
-        return mass + cart.getPassengers().size() * RIDER_MASS;
+        return loaded(cart) + cart.getPassengers().size() * RIDER_MASS;
     }
 
-    // What a container cart's contents weigh, on the comparator's own scale — the same reading
-    // vanilla's friction is built from, so neither model has to measure a cart twice. An unopened
-    // loot cart reads as full, which is vanilla's own choice at AbstractMinecartContainer:102.
-    private static double cargo(AbstractMinecartContainer container) {
-        if (container.getContainerLootTable() != null) {
-            return FULL_CARGO;
+    // What the cart and whatever it holds come to. Each kind of container carries its own pair of
+    // endpoints rather than a shared cargo term, because what a cart weighs before it holds
+    // anything and how much it can hold both differ by kind.
+    private static double loaded(AbstractMinecart cart) {
+        if (cart instanceof MinecartFurnace) {
+            return ENGINE_MASS;
         }
 
-        return FULL_CARGO
-                * AbstractContainerMenu.getRedstoneSignalFromContainer(container) / FULL_SIGNAL;
+        if (cart instanceof MinecartHopper hopper) {
+            return between(hopper, HOPPER_MASS, HOPPER_LADEN);
+        }
+
+        // A chest cart, and anything else with an inventory: a box of goods on a cart is what that
+        // pair describes, and there is nothing else to measure a modded container cart by.
+        if (cart instanceof AbstractMinecartContainer container) {
+            return between(container, CHEST_MASS, CHEST_LADEN);
+        }
+
+        return EMPTY_MASS;
+    }
+
+    // Where between empty and full a container cart sits, on the comparator's own scale — the same
+    // reading vanilla's friction is built from, so neither model has to measure a cart twice. An
+    // unopened loot cart reads as full, which is vanilla's own choice at
+    // AbstractMinecartContainer:102.
+    private static double between(AbstractMinecartContainer container, double empty, double full) {
+        double fill = container.getContainerLootTable() != null
+                ? FULL_SIGNAL
+                : AbstractContainerMenu.getRedstoneSignalFromContainer(container);
+
+        return empty + (full - empty) * fill / FULL_SIGNAL;
     }
 }
