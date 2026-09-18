@@ -499,12 +499,13 @@ public final class Train {
         return ++flipHeld >= LEADER_FLIP_TICKS ? read : leader;
     }
 
-    // Which end the train is running towards, judged by how far the head's heading agrees with the
-    // chord out of the car behind it. A single car has no chord and is simply its own leading end.
+    // Which end the train is running towards, judged along the ribbon rather than through space. A
+    // single car has nothing to measure against and is simply its own leading end.
     private @Nullable AbstractMinecart decideLeader() {
         AbstractMinecart head = cars.getFirst();
         Vec3 heading = head.getDeltaMovement().horizontal();
         double speed = heading.length();
+        AbstractMinecart held = heldLeader();
 
         if (speed < EPSILON) {
             if (cars.size() == 1) {
@@ -517,30 +518,36 @@ public final class Train {
             // not until it collapses. A collapse is then permanent, because lieOf cannot read which
             // way round a train lies once its cars are closer together than a quarter of the pitch.
             //
-            // Either end answers, because the orientation is read off the cars themselves and not
-            // off this choice. The same hole is why driven() falls back to the anchor.
-            AbstractMinecart held = heldLeader();
-
-            return held != null ? held : cars.getFirst();
+            // Either end answers for where the cars go, since lieOf reads the lie off their arcs
+            // and not off this choice. It does not answer for which way they face, which is why the
+            // placer declines to turn a train it cannot read a heading from.
+            return held != null ? held : head;
         }
 
         if (cars.size() == 1) {
             return head;
         }
 
-        Vec3 outward = head.position().subtract(cars.get(1).position()).horizontal();
+        Double headArc = ribbon.arcOf(head);
+        Double nextArc = ribbon.arcOf(cars.get(1));
+        Vec3 tangent = headArc == null ? null : ribbon.tangentAt(headArc);
 
-        if (outward.lengthSqr() < EPSILON) {
-            return heldLeader();
+        if (headArc == null || nextArc == null || tangent == null) {
+            return held;
         }
 
-        double along = heading.dot(outward.normalize()) / speed;
+        // Which way the head end lies along the ribbon, against which way the train is running
+        // along it. Both are arc, because a chord through space says nothing about track that
+        // doubles back on itself: round a tight turn the car behind sits level with or ahead of the
+        // one in front, so a chord reads the train as running the other way and lays it backwards.
+        double outward = headArc - nextArc;
+        double along = heading.dot(tangent) / speed;
 
-        if (Math.abs(along) < LEADER_HOLD) {
-            return heldLeader();
+        if (Math.abs(outward) < EPSILON || Math.abs(along) < LEADER_HOLD) {
+            return held;
         }
 
-        return along > 0.0 ? head : cars.getLast();
+        return along * outward > 0.0 ? head : cars.getLast();
     }
 
     // The end that was leading, so long as it is still one of ours — a train rebuilt around a split
