@@ -267,6 +267,34 @@ head driven into the car behind it stopped dead. A train that cannot be seated i
 shunts as they do: `BUFFER` pairs push, and a shove is routed to the leading car only on a train the
 placer is holding.
 
+**Which end a car leads with is a fact about that car, not a reading taken off the train.** Two
+faults, one cause. A cart at rest points down the low end of its rail — `adjustToRails` faces it
+along the first of the block's two exits, which is west on an east-west rail and north on a
+north-south one — so a train setting off the other way had its leading car flipped by vanilla's own
+stepper while the cars behind it kept the end they were stood with, and every trailing car drew 180
+degrees round on any push towards +x or +z. And a train whose cars had honestly been placed facing
+different ways was forced onto one shared answer the moment it moved, turning half of them round.
+
+The cause was that a placed car's heading was *reconstructed* each tick, as the train's direction of
+travel plus one flip bit, and the flip bit was maintained by events: the placer toggled it when it
+judged the train to have reversed. Anything that could miss, double or mistime one of those events
+turned a car round permanently, and nothing could ever express two cars facing opposite ways.
+
+Orientation is now held rather than derived. Each car remembers which way along the ribbon its nose
+points, taken once per arc numbering by reading the way the car is already lying — a test that cannot
+go wrong, since a car on a rail lies along the track or against it and nothing else — and read back
+every tick after. Nothing reads it off a heading, and nothing harmonises it across the train. Vanilla's
+`isFlipped` is then derived from it fresh each tick rather than toggled, so no reading of it can be
+missed or taken a tick late. `TrackRibbon` hands out an arc-numbering id from a counter shared by
+every ribbon, because a car that changes trains must not read a nose taken against another ribbon's
+numbering; `order` and `headArc` now key off that id too, rather than the reset count.
+
+**Measured**: a three-car train from rest agrees on all four axis directions; a cart's yaw never
+changes on straight track through repeated reversals, strong and weak, standing and moving; a real
+reversal still turns nobody round and only changes the flip; four carts coupled alternately east and
+west keep their own way round through a U-turn, each tracking the curve in its own sense. The circuit,
+grade, pocket, switch, deadlock and brake rigs are unchanged.
+
 **Measured at the close of this work.** An eight-car furnace train round a forty-by-twenty circuit
 with four corners and a three-step hill, under both models: a lap and a half, spacing `worst=0.00` on
 the meter throughout, `resets=0`, no bail, no sever, the physical model cruising at 0.131 blocks a
@@ -906,6 +934,7 @@ form of smoothing, so the question is whether anything further is wanted at all.
 | No iteration cap; loop ends when the budget is spent | `NewMinecartBehavior.java:592-594` |
 | Only speed clamp, and only `applyNaturalSlowdown`, are here | `NewMinecartBehavior.java:340`, `:338` |
 | Yaw derived from the step delta | `NewMinecartBehavior.java:278` |
+| A cart at rest is faced along the first of its rail's exits, so west or north | `NewMinecartBehavior.java:161-169` |
 | `setRotation` flips rather than spins in a 175°–185° band | `NewMinecartBehavior.java:218-229` |
 | Activator rails fire inside the move | `NewMinecartBehavior.java:249-251` |
 | `applyEffectsFromBlocks` runs twice per iteration | `NewMinecartBehavior.java:297-299` |
