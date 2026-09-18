@@ -433,7 +433,7 @@ the single destroy path, not watched. Everything else was: a switch splitting a 
 directions, a train run off the end of track, corners at speed without a sever, and a train shoved
 without one.
 
-## S7 — Acceleration and deceleration on the head — **planned**
+## S7 — Acceleration and deceleration on the head — **done**
 
 **Build.** Train mass keeps governing the head; what changes is that it governs the head *only*.
 Twelve sites, all reached through `applyNaturalSlowdown` and `getMaxSpeed`.
@@ -467,6 +467,52 @@ train visibly does not; two furnace carts accelerate a train faster than one; a 
 parked three-car train moves it about as far as they do today, measured rather than eyeballed; and a
 train under no power still comes to a dead stop rather than crawling.
 
+### As built
+
+**Two of the three deletions were wrong, and for one reason: the leading car is not necessarily an
+engine.** `sharedDrive` already summed the whole train's output, so the open question was never how
+much drive there is but which car applies it — and a plain or chest cart at the front of a furnace
+train has no impulse of its own. `towedDrive` was the only thing handing that car the train's output;
+deleting it would have left every non-engine-led train unable to move at all. It survives as
+`TrainCoupling.hauled`, no longer "a towed cart is under power as much as the cart towing it" but
+"the leading car takes its train's drive when it is not itself an engine". `driveHeading` survives
+with it, for the same reason: the head only has vanilla's own impulse when the head is the furnace
+cart. Only `signedSpeed` actually died, and it died with S6.
+
+`sharedDrive`'s arithmetic moved onto `Train` as `drive()` unchanged, `FREE_CARS` with it.
+
+**The speed ceiling turned out to be raising nothing.** It walked the train for the highest
+`getMaxSpeed` among its cars, and that walk needed a static reentrancy guard. Two things had emptied
+it: trailing cars are placed and cannot outrun anything, and undoing vanilla's furnace halving
+earlier in this work left every kind of cart on `max_minecart_speed`. So the maximum over the train
+was always the car's own figure. Gone, with the guard and `maxSpeedAlone`.
+
+The brake's launch and the impact drag were both writing movement to every car. The brake now
+launches only the car vanilla drives — every car still remembers its own arrival heading, since
+whichever car leads when the signal returns is the one that needs it. Impact drag keeps its
+one-over-cars falloff and is applied once.
+
+**Gravity, the site the twelve did not count, needed the opposite of what was written here.** The
+Build text says the pull "wants scaling by the cars behind". That is wrong: gravity on N cars is N
+times the force over N times the mass, so a long train rolls downhill exactly as fast as a single
+cart, and scaling by length would have made long trains crawl down slopes. What is actually missing
+is that cars *off* the slope carry mass but contribute no force. `TrainCoupling.slopeShare` sums the
+cars' grades over their number, signed by the grade vanilla read off the leading car: one for a train
+wholly on a slope, one over N for a train whose leader alone is on it, nothing for one balanced
+across a crest.
+
+**The shove needed no retune in the end, because the friction rework removed its cause.** The case
+for retuning was that the surviving single division would "under-shove and the crawl floor will
+swallow it" — and the crawl floor is gone, along with the second proportional drag term that made
+the tail of a cart's speed so expensive. One over the mass is the physically right share of a push,
+and it is what the shove has been carrying through the testing that closed the earlier stages. What
+did change is where it lands: on `TrainCoupling.driven` rather than on whichever car was leaned on,
+whose movement the placer overwrites.
+
+**Not observed.** A chest cart leading a furnace train is reasoned, not watched — the container
+override reaches neither vanilla's base slowdown nor the drive hooked to it, so it needed the same
+second hook the friction did, and the case is narrow enough that it may never have been run.
+
 ## S8 — Bend loss re-expressed — **planned**
 
 **Build.** Bend loss is the only deceleration with nowhere to go: it scales a shared scalar velocity
@@ -485,10 +531,10 @@ Numbers recorded, since this is the one stage with no prior art to match.
 
 ## Open decisions
 
-**Whether `driveHeading` is really unnecessary.** S7 deletes it on the reasoning that only a standing
-trailing car lacked a heading to start from, and trailing cars no longer start themselves. If a train
-whose head is a non-engine car refuses to start from a standstill, that is the case it was covering
-and it comes back narrowed to the head. Settled by building S7.
+**Whether `driveHeading` is really unnecessary.** Settled by building S7: it is necessary, and the
+reasoning that said otherwise had the wrong picture of the head. "The head always has vanilla's own
+impulse" holds only where the head *is* the furnace cart, and the engine of a train is as often
+behind. A plain or chest cart leading one has nothing to read, so this is what starts it.
 
 **Which path should own the deferred switch curve.** Settled the way S6 predicted, by the sever
 becoming an acceptable outcome rather than by guarding `orient`. A car's own `steer` → `orient` still
@@ -498,11 +544,9 @@ notices the rail no longer joins the edges the ribbon recorded and cuts ahead of
 stated sever reason. `occupied` also asks `TrainCoupling.crossedByTrain` now, so a whole train lying
 across a switch reads as occupancy rather than as a run of brief absences between cars.
 
-**Part of S7 has already landed**, out of order, because S6 could not be finished without it. A shove
-now reaches `TrainCoupling.driven` — the car vanilla still drives — rather than whichever car was
-leaned on, whose velocity the placer overwrites; that was the "a shove landing on the fifth car has to
-reach the head" half of S7's shove work, and only the *retune* half is left. `furnaceSpeed` is gone
-entirely with its rule. The other ten sites are untouched.
+**Part of S7 landed early**, because S6 could not be finished without it: a shove reaches
+`TrainCoupling.driven` rather than whichever car was leaned on. `furnaceSpeed` went further than S7
+intended, removed outright with its rule rather than left alone.
 
 **`furnace_minecart_speed` is gone**, settled by removing it. It set a furnace cart's ceiling
 outright from its own rule — 20 blocks per second against the vanilla rule's 8 — and `trainSpeed`
