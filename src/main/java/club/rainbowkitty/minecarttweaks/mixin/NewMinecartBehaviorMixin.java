@@ -12,7 +12,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.collision.CartInteraction;
-import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /** Holds vanilla's pickup to the speed the resolver allows one at, and its gravity to the train. */
@@ -31,23 +30,18 @@ public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccess
     }
 
     // Vanilla pulls one cart downhill by one cart's worth of gravity, which was right while every
-    // car of a train reached this for itself. Only the leading car does now, so the pull is shared
-    // out over the cars that own it — see TrainCoupling.slopeShare. Rescaling what vanilla worked
-    // out rather than working it out again keeps the water case and the speed term for free.
+    // car of a train reached this for itself. Only the leading car does now, so the pull is worked
+    // out for the whole train instead — see TrainCoupling.slopePull, which also answers where
+    // vanilla found no slope at all because that one car had reached the level.
     @Inject(method = "calculateSlopeSpeed", at = @At("RETURN"), cancellable = true)
     private void minecarttweaks$sharedSlope(
             Vec3 movement, RailShape shape, CallbackInfoReturnable<Vec3> cir) {
-        Vec3 pull = cir.getReturnValue().subtract(movement);
-
-        if (pull.lengthSqr() == 0.0) {
-            return;
-        }
-
         AbstractMinecart cart = minecarttweaks$cart();
-        double share = TrainCoupling.slopeShare(cart, RailPath.bend(cart).grade());
+        Vec3 pull = TrainCoupling.slopePull(
+                cart, movement, cir.getReturnValue().subtract(movement));
 
-        if (share != 1.0) {
-            cir.setReturnValue(movement.add(pull.scale(share)));
+        if (pull != null) {
+            cir.setReturnValue(movement.add(pull));
         }
     }
 }

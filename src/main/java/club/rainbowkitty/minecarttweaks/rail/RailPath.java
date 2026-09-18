@@ -152,6 +152,25 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     }
 
     /**
+     * Whether the rail {@code cart} stands on climbs, drops or runs level in the direction of
+     * {@code towards}: 1, -1 or 0.
+     *
+     * <p>{@link #bend} reads that direction off the cart's own movement, so it answers nothing for
+     * a cart standing still. A train stalled on a hill is exactly when its grade has to be legible,
+     * and the direction is then the line its cars lie along rather than anything they are doing.
+     */
+    public static int grade(AbstractMinecart cart, Vec3 towards) {
+        BlockState state = cart.level().getBlockState(cart.getCurrentBlockPosOrRailBelow());
+        Vec3 along = towards.horizontal();
+
+        if (!BaseRailBlock.isRail(state) || along.lengthSqr() < EPSILON * EPSILON) {
+            return 0;
+        }
+
+        return grade(state, along);
+    }
+
+    /**
      * How the track runs across the block at {@code pos} for a cart entering it by
      * {@code movement}, or null if that block is not a rail.
      */
@@ -242,7 +261,11 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
 
         // On a slope the exit marked level is the one the rail climbs towards, and the other is
         // marked a block down; it is a label for which end is which, not an offset to travel by.
-        return towards(first.getY() == 0 ? first : second, out) > 0.0 ? 1 : -1;
+        double climb = towards(first.getY() == 0 ? first : second, out);
+
+        // A direction across the slope rather than along it climbs neither way. Cannot arise from
+        // an exit, which is always on the axis, but a chord between two carts can lie anywhere.
+        return Math.abs(climb) < EPSILON ? 0 : (climb > 0.0 ? 1 : -1);
     }
 
     // Whichever of the block's two exits the movement is heading closest to.

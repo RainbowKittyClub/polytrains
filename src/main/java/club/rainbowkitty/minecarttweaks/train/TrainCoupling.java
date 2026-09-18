@@ -18,6 +18,7 @@ import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
 import club.rainbowkitty.minecarttweaks.rail.RailBrake;
+import club.rainbowkitty.minecarttweaks.rail.RailDrag;
 import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
@@ -75,6 +76,13 @@ public final class TrainCoupling {
 
     // Below this a length is treated as zero.
     private static final double EPSILON = 1.0E-5;
+
+    // Vanilla's own two factors on the downhill pull it works out per tick: how much of the cart's
+    // own horizontal speed adds to it, and what being in water leaves of it
+    // (NewMinecartBehavior#calculateSlopeSpeed).
+    private static final double SLOPE_SPEED_GAIN = 0.02;
+
+    private static final double WATER_SLIDE = 0.2;
 
     // Static-only; blocks instantiation.
     private TrainCoupling() {}
@@ -320,33 +328,100 @@ public final class TrainCoupling {
     }
 
     /**
-     * How much of vanilla's downhill pull on {@code cart} its whole train is owed, as a multiple of
-     * the one car's worth vanilla works out.
+     * The downhill pull {@code cart}'s train is owed this tick, to add to {@code movement}, or null
+     * where vanilla's own {@code pull} already answers for it.
      *
      * <p>Gravity is the one force the placer took away without replacing. It is added inside
      * {@code moveAlongTrack}, which a seated car never reaches, so a train on a grade gets exactly
      * one car's pull however many cars are on the slope — and carries the mass of all of them.
      *
-     * <p>Force over mass, which is what the rest of this class already does with the engine. Each
-     * car on a grade pulls downhill and each car anywhere at all resists, so the share is the sum
-     * of the cars' grades over their number, signed by the grade vanilla read off the leading car.
-     * A train wholly on one slope comes to exactly one, which is right: a long train rolls downhill
-     * no faster than a single cart. A train with one car over the brow comes to a fraction of it,
-     * and one balanced across a crest comes to nothing.
+     * <p>Force over mass, which is what the rest of this class already does with the engine: each
+     * car on a grade pulls downhill by its own weight while the whole train's weight resists, so
+     * the share is the mass-weighted mean of the cars' grades. A train wholly on one slope comes to
+     * exactly one, which is right — a long train rolls downhill no faster than a single cart. A
+     * train with one car over the brow comes to a fraction of it, and one balanced across a crest
+     * to nothing.
+     *
+     * <p>Worked out rather than rescaled off vanilla's answer, because vanilla's pull for a car on
+     * the level is the zero vector and no multiple of that is anything: a train whose leading car
+     * reached flat track went weightless with its other cars still on the bank. Only the magnitude
+     * is borrowed, which is where the water case and the speed term still come from.
      */
-    public static double slopeShare(AbstractMinecart cart, int under) {
-        if (under == 0 || !cart.hasLink() || !MTGameRules.trainsEnabled(cart.level())) {
-            return 1.0;
+    public static @Nullable Vec3 slopePull(AbstractMinecart cart, Vec3 movement, Vec3 pull) {
+        if (!cart.hasLink() || !MTGameRules.trainsEnabled(cart.level())) {
+            return null;
         }
 
-        List<AbstractMinecart> cars = Train.of(cart).cars();
-        int grades = 0;
+        Train train = Train.of(cart);
+        List<AbstractMinecart> cars = train.cars();
 
-        for (AbstractMinecart car : cars) {
-            grades += RailPath.bend(car).grade();
+        // Only the car whose movement is an input owns the train's pull, since every other car's is
+        // written over by the placer; and a train closing on itself has no lower end to be pulled
+        // towards, which is also why its car order means nothing.
+        if (cars.size() < 2 || train.leader() != cart) {
+            return null;
         }
 
-        return (double) (under * grades) / cars.size();
+        boolean headLeads = cars.getFirst() == cart;
+        Vec3 chord = cart.position()
+                .subtract(cars.get(headLeads ? 1 : cars.size() - 2).position())
+                .horizontal();
+
+        if (chord.lengthSqr() <= ANY_MOVEMENT) {
+            return null;
+        }
+
+        // Laid along the rail rather than along that chord, so a pull taken through a corner stays
+        // on the track; the chord only has to say which of the block's two ends is the front.
+        RailPath.Crossing under = RailPath.crossing(
+                cart.level(), cart.getCurrentBlockPosOrRailBelow(), chord);
+
+        if (under == null) {
+            return null;
+        }
+
+        double share = downhillShare(cars, RailForces.of(cart.level()), headLeads);
+        boolean level = pull.lengthSqr() == 0.0;
+
+        if (share == 0.0) {
+            return level ? null : Vec3.ZERO;
+        }
+
+        return under.forward().scale(share * (level ? slideSpeed(cart, movement) : pull.length()));
+    }
+
+    // How much of one car's worth of downhill pull a train is owed in the direction its leading end
+    // points, from the mass-weighted mean of its cars' grades.
+    private static double downhillShare(
+            List<AbstractMinecart> cars, RailForces forces, boolean headLeads) {
+        double weighted = 0.0;
+        double total = 0.0;
+
+        for (int i = 0; i < cars.size(); i++) {
+            AbstractMinecart car = cars.get(i);
+
+            // Towards the head: the chord from the car behind this one to it, and for the head
+            // itself the chord from the car behind it, which lies along the same line.
+            Vec3 headward = cars.get(i == 0 ? 0 : i - 1).position()
+                    .subtract(cars.get(i == 0 ? 1 : i).position())
+                    .horizontal();
+
+            weighted += forces.cartMass(car) * RailPath.grade(car, headward);
+            total += forces.cartMass(car);
+        }
+
+        // Downhill rather than up, and towards the leading end rather than the head: a train
+        // climbing towards its head is pulled back towards its tail.
+        return total == 0.0 ? 0.0 : -weighted / total * (headLeads ? 1.0 : -1.0);
+    }
+
+    // Vanilla's own figure for one car's worth of downhill pull, which it works out inside
+    // calculateSlopeSpeed and only ever hands back laid along a slope it actually found.
+    private static double slideSpeed(AbstractMinecart cart, Vec3 movement) {
+        double slide = Math.max(
+                RailDrag.SLOPE_PULL, movement.horizontalDistance() * SLOPE_SPEED_GAIN);
+
+        return cart.isInWater() ? slide * WATER_SLIDE : slide;
     }
 
     /**

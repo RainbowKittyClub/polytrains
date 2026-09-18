@@ -46,8 +46,9 @@ public final class RailDrag {
 
     // Vanilla's own minimum per-tick pull on a slope (NewMinecartBehavior#calculateSlopeSpeed).
     // Shared with RailForces, which sizes the engine against it: a force that cannot beat gravity
-    // is a force that cannot climb, and that is the only fixed bar either model has.
-    static final double SLOPE_PULL = 0.0078125;
+    // is a force that cannot climb, and that is the only fixed bar either model has. Also what
+    // TrainCoupling works a train's own pull out of, since vanilla hands it none to rescale.
+    public static final double SLOPE_PULL = 0.0078125;
 
     // Of the slope pull, the most rolling resistance is ever allowed to be. Gravity has to win on a
     // slope by a clear margin or a cart barely rolls down one: at an eighth an empty cart settles
