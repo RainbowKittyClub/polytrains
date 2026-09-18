@@ -540,25 +540,21 @@ public final class Train {
         double speed = heading.length();
         AbstractMinecart held = heldLeader();
 
-        if (speed < EPSILON) {
-            if (cars.size() == 1) {
-                return null;
-            }
-
-            // A train that has never moved has no heading to read a leading end off, and without
-            // one the placer refuses outright — so every car runs on vanilla's own pipeline, and a
-            // train straddling a grade rolls the cars that are on the slope into the ones that are
-            // not until it collapses. A collapse is then permanent, because lieOf cannot read which
-            // way round a train lies once its cars are closer together than a quarter of the pitch.
-            //
-            // Either end answers for where the cars go, since lieOf reads the lie off their arcs
-            // and not off this choice. It does not answer for which way they face, which is why the
-            // placer declines to turn a train it cannot read a heading from.
-            return held != null ? held : head;
+        if (cars.size() == 1) {
+            return speed < EPSILON ? null : head;
         }
 
-        if (cars.size() == 1) {
-            return head;
+        // A train with nothing to read a leading end off — never moved, or moving with no track
+        // recorded yet — names its head rather than nothing. Without an end the placer refuses
+        // outright and every car runs on vanilla's own pipeline: a standing train straddling a
+        // grade collapses, and a moving one stretches out along the track, for good, since the
+        // ribbon only ever grows behind the car already named. Either end answers for where the
+        // cars go, because lieOf reads the lie off their arcs and not off this choice, and the
+        // ribbon it starts is what lets the next reading correct the end. It does not answer for
+        // which way the cars face, which is why the placer declines to turn a train it cannot
+        // read a heading from.
+        if (speed < EPSILON) {
+            return held != null ? held : head;
         }
 
         Double headArc = ribbon.arcOf(head);
@@ -566,7 +562,7 @@ public final class Train {
         Vec3 tangent = headArc == null ? null : ribbon.tangentAt(headArc);
 
         if (headArc == null || nextArc == null || tangent == null) {
-            return held;
+            return held != null ? held : head;
         }
 
         // Which way the head end lies along the ribbon, against which way the train is running
