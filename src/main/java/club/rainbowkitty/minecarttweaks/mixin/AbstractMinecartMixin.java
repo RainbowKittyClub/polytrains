@@ -390,9 +390,9 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
 
         // The shover is then held to whatever the train has just become, by taking back all of the
         // speed it is still closing at — which is what makes contact a wall rather than a bounce,
-        // since it can never exceed the shover's own approach. Read off the train and not this car,
-        // which holds the whole of the push above until the train next settles.
-        double closing = TrainCoupling.sharedSpeed(self, line)
+        // since it can never exceed the shover's own approach. Read off the car vanilla drives,
+        // where the push above landed; every other car's movement is a copy the placer overwrites.
+        double closing = TrainCoupling.driven(self).getDeltaMovement().dot(line)
                 - entity.getKnownMovement().dot(line);
 
         if (closing <= 0.0) {

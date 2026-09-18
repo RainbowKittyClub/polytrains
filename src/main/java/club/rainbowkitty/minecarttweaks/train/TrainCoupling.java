@@ -295,24 +295,6 @@ public final class TrainCoupling {
     }
 
     /**
-     * How fast {@code cart}'s train is travelling along {@code line}, averaged over its cars.
-     *
-     * <p>What a car is about to be doing rather than what it is doing. A shove lands whole on the
-     * one car that carries it and is not shared out at all, so a car read the instant its train is
-     * pushed reports the same speed whatever it is coupled to.
-     */
-    public static double sharedSpeed(AbstractMinecart cart, Vec3 line) {
-        List<AbstractMinecart> cars = Train.of(cart).cars();
-        double total = 0.0;
-
-        for (AbstractMinecart member : cars) {
-            total += member.getDeltaMovement().dot(line);
-        }
-
-        return total / cars.size();
-    }
-
-    /**
      * How fast {@code cart}'s train is really travelling, in blocks per tick. Read off the car that
      * leads it, which is the one vanilla still drives along the rails — every other car's movement
      * is written by the placer from this same figure, so asking one of those is reading back what
