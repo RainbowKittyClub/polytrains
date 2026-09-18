@@ -1132,14 +1132,12 @@ acceleration is gated — and by the time S1 landed that argument had already ex
 wrecking inside the model. Renaming it later resets every saved value for it, so it does not get
 revisited.
 
-**Whether a real momentum exchange should replace the cart-against-cart handoff.** Both the mod's
-line (`CartImpact.java:104`, the struck cart takes the striker's whole movement) and vanilla's own
-exchange (`AbstractMinecart.java:568-573`, both damped to `0.2` and pushed by the mean) are
-mass-blind, so a ten-car train meeting one loose cart is stopped as dead as a single cart would be.
-Once `cartMass` exists, conserving `Σmv` across the pair is a few lines and would make a heavy train
-shunt a light one aside instead of bouncing off it — which is what a player expects and neither model
-currently does. Deliberately not folded into S6, which is only about whether carts are destroyed.
-Settled by whether S6's "two trains shunt each other" leg reads acceptably without it.
+**~~Whether a real momentum exchange should replace the cart-against-cart handoff.~~ Settled: it
+should, and it has.** Not by the argument this entry made but by a bug report — the handoff was not
+merely mass-blind, it **created** momentum, because the struck cart took the striker's whole movement
+and the striker was billed nothing for it. The Findings entry above has the measurements. So the
+`Σmv` exchange this entry proposed went in as a fix rather than as a refinement, and a heavy train
+now shunts a light one aside instead of handing it its own speed.
 
 **Whether running mobs down should be gated too.** Vanilla carts deal no collision damage at all and
 do not run anything over, so on the strictest reading of this document's title they belong behind the
@@ -1149,19 +1147,20 @@ world installs this mod *for* rather than consequences of a force model, and tha
 they do not destroy anything the player built. The line drawn is "does it break the player's own
 property"; if that line is wrong, this is the entry to revisit.
 
-**Where the empty-to-full mass ratio lands.** Starting at 2:1, which is what S2 and every figure
-downstream of it are written against, and to be adjusted from there against observation rather than
-argument. It is the one number that sets how far apart the two ends of every result in S3 and S5 sit:
-at 2:1 a full chest cart coasts twice an empty one and loading a three-car train is what tips it from
-climbing a grade to marginal. 3:1 would make loading the dominant consideration in running a railway
-and 1.5:1 would make it barely worth noticing, so the range worth trying is narrow. Settled by
-running S3's coast legs and S5's grade legs at the starting ratio first.
+**~~Where the empty-to-full mass ratio lands.~~ Settled, and it is not one ratio.** Started at 2:1
+across the board, and S2's retune replaced that with a range per kind of cart: a chest cart 1.2 to
+3.0, so 2.5:1 and the heaviest cart at both ends; a hopper cart 1.0 to 1.5, a funnel rather than
+cargo. The single figure this entry looked for was the wrong shape — what a cart weighs empty is as
+much a property of the kind as what it holds is of the load, and a hopper with five slots cannot
+reach a chest's spread whatever ratio is chosen. Coast distance is exactly proportional to mass under
+the physical model, so the chest figures are also the widest spread the coast legs can show: about
+11.9 blocks of coasting per unit of mass from eight blocks a second.
 
-**Whether the default model should also drop the ribbon.** Out of scope as written: the rule gates
-forces, and the placer is geometry. But a reader will ask, because the placer is the largest
-behavioural difference of all and it is not gated by anything. The answer — that a train is this
-mod's own feature and has no vanilla behaviour to mirror — is worth stating in the README row rather
-than only here.
+**~~Whether the default model should also drop the ribbon.~~ Settled: no, and it is now said out
+loud.** Out of scope as written — the rule gates forces and the placer is geometry — but a reader
+will ask, because the placer is the largest behavioural difference of all and nothing gates it. S8
+put the answer in `realistic_physics`'s own README row rather than leaving it only here: trains are
+not gated by the rule, because vanilla has no trains to mirror.
 
 **~~Whether the vanilla model should soften its engine at a raised `max_minecart_speed`.~~ Settled:
 it should not. The physical model is the answer.** A vanilla world with `max_minecart_speed = 100`
