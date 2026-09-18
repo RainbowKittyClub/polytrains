@@ -47,6 +47,15 @@ public final class Train {
     // Trailers one engine hauls before its output starts being divided down.
     private static final int FREE_CARS = 2;
 
+    // The most of a block the seating interval closes on its target in one tick, however much room
+    // the leading car has made. A ceiling only: what usually paces the expansion is the ground that
+    // car covered, and this keeps a train released at speed from snapping out to length in one go.
+    private static final double PITCH_STEP = 0.05;
+
+    // Of the target, the tightest interval a measured spacing is believed at. Below this the cars
+    // have collapsed into each other rather than been stood close together.
+    private static final double PITCH_FLOOR = 0.25;
+
     private final List<AbstractMinecart> cars;
     private final boolean closed;
 
@@ -84,6 +93,9 @@ public final class Train {
     // rail block the leading car crosses, and working it out walks every car's inventory.
     private double rolling;
     private long rollingTick = Long.MIN_VALUE;
+
+    // The interval the cars are being seated at, or zero before there is anything to ease from.
+    private double pitch;
 
     // How the last seating attempt went, so only a change of answer is worth reporting.
     private TrainPlacer.@Nullable Bail bail;
@@ -230,6 +242,51 @@ public final class Train {
         bail = now;
 
         return changed;
+    }
+
+    /**
+     * The interval to seat this train's cars at, closing on {@code target} no faster than the
+     * leading car is making room for it.
+     *
+     * <p>A train is linked from carts a player stood wherever they liked. Five of them filling the
+     * five blocks in front of a stop sit a block apart, where the target is half again that — and a
+     * train cannot be seated at all until it has moved, because until then there is no ribbon to
+     * seat it on. So the first seating always arrives with the cars already wrong, and taking the
+     * target outright moves the last of five two blocks in one tick.
+     *
+     * <p>Which way they move is the whole of the problem. Seats are measured from the leading car,
+     * and against a stop that is the car at the *back* — the train leaves the way it is free to go.
+     * So lengthening the train walks every other car backwards, into the block it is parked
+     * against, at the number of gaps times whatever the interval grows by. A train has to already
+     * be outrunning that to escape it, and from rest it is not: five cars survive it and ten are
+     * pushed clean off the recorded track.
+     *
+     * <p>A train lengthens by pulling its front forward, never by pushing its back. So the interval
+     * grows out of the ground the leading car has actually covered, shared over the gaps that have
+     * to absorb it. A car that has not moved lengthens nothing, which is what keeps a parked train
+     * parked instead of driving its own tail into a wall.
+     *
+     * <p>Never above the target, whatever is measured. The ribbon is grown to the target's span, so
+     * a wider interval asks for track that has not been recorded; carts stood wider than the target
+     * close up on their first seating instead, which moves them inward, onto track already there.
+     *
+     * @param measured how far apart the cars actually are, used only to start from
+     * @param advance how far the leading car moved this tick, which is all the room there is
+     */
+    public double pitch(double target, double measured, double advance) {
+        int gaps = cars.size() - 1;
+
+        if (pitch <= 0.0) {
+            pitch = measured > 0.0
+                    ? Math.clamp(measured, target * PITCH_FLOOR, target)
+                    : target;
+        }
+
+        if (pitch < target && gaps > 0) {
+            pitch += Math.min(target - pitch, Math.min(advance / gaps, PITCH_STEP));
+        }
+
+        return pitch;
     }
 
     /**

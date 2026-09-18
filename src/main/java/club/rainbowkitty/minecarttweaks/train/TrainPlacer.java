@@ -85,12 +85,13 @@ public final class TrainPlacer {
     private TrainPlacer() {}
 
     /**
-     * Seats every trailing car of {@code train} at {@code pitch} intervals along its ribbon, and
-     * says whether it could, naming the car it could not place when there is one. Nothing is moved
-     * unless every car could be placed, so a refusal leaves the train exactly as it was.
+     * Seats every trailing car of {@code train} along its ribbon at intervals easing towards
+     * {@code target}, and says whether it could, naming the car it could not place when there is
+     * one. Nothing is moved unless every car could be placed, so a refusal leaves the train exactly
+     * as it was.
      */
-    public static @Nullable Refusal seat(Train train, double pitch) {
-        Refusal attempt = attempt(train, pitch);
+    public static @Nullable Refusal seat(Train train, double target) {
+        Refusal attempt = attempt(train, target);
 
         // A train handed back to the correction is driven along its rails again from this tick, so
         // it must stop reading as placed the moment that happens. The one-tick grace in seated() is
@@ -128,7 +129,7 @@ public final class TrainPlacer {
     // Seats the train if the ribbon can answer for every car of it, and names what stopped it if
     // not. One outcome out, rather than a log line per bail, so the caller decides what is worth
     // saying and this stays the description of an attempt.
-    private static @Nullable Refusal attempt(Train train, double pitch) {
+    private static @Nullable Refusal attempt(Train train, double target) {
         AbstractMinecart leader = train.leader();
 
         if (leader == null || train.size() < 2) {
@@ -152,12 +153,19 @@ public final class TrainPlacer {
                     "lead=" + lead + "/" + (cars.size() - 1));
         }
 
+        // Where the car beside the leading one sits answers both how far apart the cars are now and
+        // which way round the train lies, so it is read once and handed to both.
+        Double nextArc = ribbon.arcOf(cars.get(lead == 0 ? 1 : cars.size() - 2));
+        double speed = leader.getDeltaMovement().horizontalDistance();
+        double pitch = train.pitch(
+                target, nextArc == null ? 0.0 : Math.abs(leadArc - nextArc), speed);
+
         Vec3 tangent = ribbon.tangentAt(leadArc);
         double facing = facing(leader, tangent);
         int order = train.order();
 
         if (order == 0) {
-            Integer lie = lieOf(ribbon, cars, lead, leadArc, pitch);
+            Integer lie = lieOf(nextArc, leadArc, lead, pitch);
 
             if (lie == null) {
                 return new Refusal(Bail.ORDER_UNREADABLE, Refusal.NONE,
@@ -193,8 +201,6 @@ public final class TrainPlacer {
             }
         }
 
-        double speed = leader.getDeltaMovement().horizontalDistance();
-
         for (int i = 0; i < cars.size(); i++) {
             if (i != lead) {
                 place(train, cars.get(i), seats[i], headArc - order * i * pitch, facing, speed);
@@ -222,10 +228,8 @@ public final class TrainPlacer {
     // numbering, so one bad reading lays the train backwards for good, seating its cars off the end
     // of the track it is standing on. Two cars closer together than a quarter of the pitch are not
     // far enough apart to say, which is also what a train that has already collapsed looks like.
-    private static @Nullable Integer lieOf(TrackRibbon ribbon, List<AbstractMinecart> cars,
-            int lead, double leadArc, double pitch) {
-        Double nextArc = ribbon.arcOf(cars.get(lead == 0 ? 1 : cars.size() - 2));
-
+    private static @Nullable Integer lieOf(
+            @Nullable Double nextArc, double leadArc, int lead, double pitch) {
         if (nextArc == null) {
             return null;
         }
