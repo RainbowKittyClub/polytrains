@@ -93,6 +93,28 @@ factor left to average. And `Train.drive`'s `FREE_CARS` can go — it was an arb
 standing in for the mass effect, and once the drive is divided by real mass the curve it was faking
 comes out of the arithmetic.
 
+**Vanilla's own ordering is the opposite of the requirement, not a weaker version of it.** Worth
+stating plainly because it is easy to remember backwards: `getRedstoneSignalFromContainer` returns 0
+for an empty container and 15 for a full one (`AbstractContainerMenu.java:755-769`), so vanilla's
+`emptiness` is `15 - signal` and `keep` *rises* with it. An empty chest cart keeps 0.995 and coasts
+about 78 blocks; a full one keeps 0.98 and coasts about 19. Vanilla's empty carts coast **further**.
+The physical model inverts that, deliberately, and the vanilla model reproduces it exactly by never
+touching the factor.
+
+**What a cart weighs is the only thing the two models need to disagree about for mass, and making it
+the switch keeps a lone cart bit-exact.** `TrainCoupling.mass` returns `Train.of(cart).size()` today,
+which is 1 for an unlinked cart — and that 1 is what makes `EntityMixin`'s `1 / mass` shove
+indistinguishable from vanilla. Give mass a real value and a lone full chest cart takes half a shove,
+which is a departure nobody asked the rule for. So the switch belongs on **one cart's mass**: 1.0 for
+everything under `VANILLA`, the real figure under `PHYSICAL`.
+
+Everything that divides by mass then inherits the model for free, and two of the methods this
+document first listed collapse into it. `Train.drive`'s divisor is `mass` in both models, which is
+the car count when every car weighs one. `slopeShare`'s weighting is the same identity:
+`Σ(mᵢ × gradeᵢ) / Σmᵢ` with every `mᵢ` at 1.0 *is* the count-weighted mean it computes now. What is
+left model-dependent is only the three places where the two models run genuinely different laws —
+the retarding law, the bend charge and the engine — plus the furnace ceiling.
+
 ## How these stages get tested
 
 On this mod's dev server, `scripts/devserver.sh rkc/mods/minecart-tweaks restart`, port 25603,
@@ -127,12 +149,15 @@ inventory above:
 
 | Method | `VANILLA` | `PHYSICAL` |
 |---|---|---|
+| `cartMass(cart)` | `1.0`, always | the real figure from S2 |
 | `decelerationOf(cart, movement)` | vanilla's own factor, train-averaged | `(own + flat) / mass` |
 | `bendLoss(turn)` | `0.0` | `BEND_LOSS * turn` |
-| `driveShare(train)` | `output / cars` | `output / mass` |
 | `engineImpulse(cart, movement)` | vanilla's `0.8`-decay branch | the flat engine force |
 | `topSpeed(halved)` | `halved` — the mixin does not fire | `super.getMaxSpeed(level)` |
-| `slopeWeight(train)` | grades over car count | grades weighted by mass |
+
+Five methods, not the six an earlier draft of this document had: `cartMass` at a uniform 1.0 makes
+the drive divisor and the slope weighting count-weighted without either needing a model of its own,
+as Findings sets out.
 
 `topSpeed` is the one that was written wrongly the first time. The mixin injects at `getMaxSpeed`
 RETURN, where the value has *already* been halved by `MinecartFurnace.getMaxSpeed`
@@ -159,27 +184,35 @@ boot after the update — worth a line in the README rather than left for someon
 first. `TrainCoupling.mass(cart)` already has the right name and returns a car count; generalise it
 to a sum of per-cart mass, and add `RailDrag`-side access to one cart's own.
 
-Proposed units, one empty cart being 1.0:
+Units, one empty cart being 1.0:
 
 | Contribution | Mass |
 |---|---|
 | Any cart | 1.0 |
+| A furnace cart, instead | 1.5 |
 | A container cart's contents | `+ comparator / 15`, so a full one is 2.0 |
 | Each passenger | `+ 1.0` |
 
-The comparator reading is the same signal vanilla's own friction uses
+Two to one between empty and full is the starting ratio, to be adjusted against S3's coast legs rather
+than argued about. The comparator reading is the same signal vanilla's own friction uses
 (`AbstractContainerMenu.getRedstoneSignalFromContainer`) and `RailDrag.emptiness` already reads it, so
-nothing new has to be measured. A furnace cart is deliberately left at 1.0 base: it is already
-penalised by having to haul its own train, and giving the engine extra mass would make a lone furnace
-cart worse than a lone plain one for no reason a player would guess.
+nothing new has to be measured.
+
+The furnace cart's 1.5 costs it half a car's worth of its own output and is what makes double-heading
+worth doing: two engines and eight cars come to 11.0 against one engine and nine cars' 10.5, and the
+pair climbs a grade where the single engine cannot.
+
+**`cartMass` reports 1.0 for everything under `VANILLA`**, which is not a special case so much as the
+whole of how the mass question is gated — see Findings. So this stage's figures only ever apply under
+the rule, and the sites that divide by mass need no model check of their own.
 
 Mass is read per tick and not cached: a hopper cart filling up changes mass continuously, and a
 comparator read is a cheap loop over a small inventory. The train's total is worth holding for the
 tick the way `Train.rolling` is, since the friction path asks for it once per rail block crossed.
 
 **Done when.** A debug line reports plausible mass for a mixed train — a full chest cart, an empty
-one, a ridden cart and a plain one summing to 5.0 — and nothing about how anything moves has changed
-yet, because nothing reads it.
+one, a ridden cart and a plain one summing to 6.0 under the rule and 4.0 without it — and nothing
+about how anything moves has changed yet, because nothing reads it.
 
 ## S3 — Friction, as two separate laws — **planned**
 
@@ -226,9 +259,10 @@ four-corner circuit — and the same 2% whether the cars are full or empty.
 and how fast it may go — and splitting them would leave a stage where a furnace cart has vanilla's
 ceiling and this mod's impulse, which is neither model.
 
-`Train.drive()` divides the train's summed output by `RailForces.driveShare`: the car count under
-`VANILLA`, the train's total mass under `PHYSICAL`. **`FREE_CARS` is deleted**, not gated — it was
-standing in for the mass effect and mass now produces the curve directly.
+`Train.drive()` divides the train's summed output by `TrainCoupling.mass`, in both models — which is
+the car count under `VANILLA`, since every cart weighs 1.0 there, and the real total under
+`PHYSICAL`. **`FREE_CARS` is deleted**, not gated: it was standing in for the mass effect, and mass
+now produces the curve directly.
 
 **The engine force has to be re-derived, because dividing by mass changes what it has to beat.** At
 the current `2 × SLOPE_PULL`, a three-car empty train gets 0.67 of gravity and cannot climb a grade at
@@ -237,15 +271,18 @@ the slope pull itself, 0.0078125, so the force follows from the two ends of the 
 
 | Train | Mass | At `6 × SLOPE_PULL` | Climbs? |
 |---|---|---|---|
-| Lone furnace cart | 1.0 | 6.00 × gravity | yes, easily |
-| Furnace + 2 empty | 3.0 | 2.00 × gravity | yes |
-| Furnace + 2 full | 6.0 | 1.00 × gravity | marginal |
-| Furnace + 5 empty | 6.0 | 1.00 × gravity | marginal |
-| Furnace + 10 empty | 11.0 | 0.55 × gravity | no |
+| Lone furnace cart | 1.5 | 4.00 × gravity | yes, easily |
+| Furnace + 2 empty | 3.5 | 1.71 × gravity | yes |
+| Furnace + 2 full | 5.5 | 1.09 × gravity | marginal |
+| Furnace + 5 empty | 6.5 | 0.92 × gravity | no |
+| Furnace + 10 empty | 11.5 | 0.52 × gravity | no |
+| Two furnaces + 8 empty | 11.0 | 1.09 × gravity | marginal |
 
 `6 × SLOPE_PULL` is proposed on that basis rather than measured, and the observable target is the
-last three rows: a short train climbs, loading it to the same mass makes it marginal, and a long one
-cannot. Retune the constant against those, not against the multiplier.
+middle rows: a short train climbs, *loading* it to nearly the same mass is what tips it to marginal,
+and a long one cannot at all. The last row is the double-heading case and the reason the furnace
+cart's own 1.5 matters — eleven tonnes behind two engines climbs where ten and a half behind one does
+not. Retune the constant against those observations, not against the multiplier.
 
 `MinecartFurnaceMixin$accelerate` restores vanilla's branch under `VANILLA` —
 `deltaMovement.multiply(0.8, 0.0, 0.8).add(push)` handed to `super.applyNaturalSlowdown`, vanilla's
@@ -265,23 +302,30 @@ furnace is fed into it.
 
 ## S6 — Gravity, and the repairs reviewed — **planned**
 
-**Build.** `TrainCoupling.slopeShare` sums the cars' grades over their number, and once mass exists
-that becomes model-dependent rather than a plain repair: vanilla pulls every cart by the same
-0.0078125 whatever it holds, so the vanilla model stays count-weighted, while the physical model
-weights each car's grade by its mass. Both give the same answer for a train of alike cars, so this
-only ever moves a train loaded unevenly across a crest.
+**Build.** `TrainCoupling.slopeShare` sums the cars' grades over their number, and becomes
+`Σ(mᵢ × gradeᵢ) / Σmᵢ` — which is the same expression it computes today whenever every car weighs
+1.0, so it needs no model check and the vanilla model keeps vanilla's behaviour of pulling every cart
+alike whatever it holds. Under the rule it only ever moves a train loaded unevenly across a crest,
+where the loaded end is now the one that decides which way the train rolls.
 
 The rest is expected to be a no-op in code and a pass in comments: confirm that `hauled`, the shove's
 `1 / mass`, the impact's falloff and the brake's choice of the driven car are each the ensemble answer
-rather than a departure, and say so where each one lives. The shove and the impact both already divide
-by `TrainCoupling.mass`, so S2 changes what they mean for free — a heavy train is harder to shove,
-which is right in both models and wants checking rather than building.
+rather than a departure, and say so where each one lives. The shove already divides by
+`TrainCoupling.mass`, so S2 changes what it means for free — a loaded train is harder to shove under
+the rule and exactly as shoveable as vanilla without it, which is the clearest single check that
+`cartMass` is carrying the gate properly. `CartImpact` computes its own falloff from
+`Train.size()` and has to be repointed at `mass` to follow, which is the one line of real work here.
+
+Also worth checking rather than assuming: `wreckMomentum` builds a reduced mass `mₐ·m_b/(mₐ+m_b)`
+from car counts of its own. It belongs to the collision feature and its own rules, so it is out of
+scope — but it is the last place in the mod that says "mass" and means "cars", and leaving it that way
+should be a decision rather than an oversight.
 
 **Done when.** A player shoving a parked three-car train moves it the same distance with the rule on
 and off while it is empty, and visibly less far once the cars are loaded. A train whose leader alone
 is on a slope rolls downhill no faster than a single cart in either model. A plain cart leading a
 furnace train moves in either model. A train loaded at one end and empty at the other crests a hill
-differently under the rule than without it, which is the only thing `slopeWeight` changes.
+differently under the rule than without it, which is the only thing the mass weighting changes.
 
 ## S7 — The rule table and its drift — **planned**
 
@@ -324,19 +368,13 @@ nothing outside friction and acceleration is gated, and this would sit badly if 
 to cover collision or wrecking. Settled by picking one before S1, since renaming a rule later resets
 every saved value for it.
 
-**What a cart's mass scale should actually be.** One empty cart at 1.0, a full container at 2.0 and a
-passenger at 1.0 are proposed in S2 and are round numbers rather than derived ones. The ratio between
-empty and full is the load-bearing part, since it sets how far apart the two ends of every figure in
-S3 and S5 sit: at 2:1 a full chest cart coasts twice an empty one and a loaded three-car train is
-exactly marginal on a grade, both of which read well, but 3:1 would make loading a train the dominant
-consideration and 1.5:1 would make it barely noticeable. Settled by running S3's coast legs at two
-ratios rather than by argument.
-
-**Whether a furnace cart should weigh more than a plain one.** Left at 1.0 in S2 so that a lone
-furnace cart is not worse than a lone plain cart for a reason nothing tells the player. The case for
-more is that it visibly contains a furnace, and that an engine that is itself heavy is what makes
-double-heading worth doing. Settled by whether S5's curve reads well with one engine or wants two to
-be meaningfully better than one.
+**Where the empty-to-full mass ratio lands.** Starting at 2:1, which is what S2 and every figure
+downstream of it are written against, and to be adjusted from there against observation rather than
+argument. It is the one number that sets how far apart the two ends of every result in S3 and S5 sit:
+at 2:1 a full chest cart coasts twice an empty one and loading a three-car train is what tips it from
+climbing a grade to marginal. 3:1 would make loading the dominant consideration in running a railway
+and 1.5:1 would make it barely worth noticing, so the range worth trying is narrow. Settled by
+running S3's coast legs and S5's grade legs at the starting ratio first.
 
 **Whether the default model should also drop the ribbon.** Out of scope as written: the rule gates
 forces, and the placer is geometry. But a reader will ask, because the placer is the largest
