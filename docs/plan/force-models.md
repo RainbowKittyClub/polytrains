@@ -292,6 +292,47 @@ ways so a fast cart still catches a mob it passed clean through in one tick, but
 along one it is moving away from, and reaching backwards is what let one nudge light up a line in
 both directions at once.
 
+**A train's gravity is a rescale of the leading car's own downhill pull, so a train stops dead the
+moment that one car reaches flat track — and S7's planned fix cannot repair it.** Reported from play
+as a chest-cart train freezing on a hill when its furnace cart is broken, leaving two or three cars
+at the bottom and the rest on the bank. Two separate faults, both reproduced headless with the
+placer's own instrumentation on.
+
+*The placer has no leading end for a train that has never moved.* `Train.decideLeader` reads which
+end leads off `cars.getFirst().getDeltaMovement()`, and a train at rest has none, so it falls back to
+`heldLeader()` — which is null when nothing was ever held. `leader()` then answers null and
+`TrainPlacer` refuses outright: measured as `train of 8 not seated, NO_LEADING_END: cars=8`, every
+tick. Every car is then on vanilla's own pipeline with its own gravity, so a train straddling a grade
+rolls the cars that are on the slope into the cars that are not — measured collapsing to cars 3 and 4
+both at `342.00` and cars 5 and 6 at `342.98` and `343.00`. **The collapse is then permanent**,
+because `lieOf` refuses to read which way round a train lies once two cars are closer than a quarter
+of the pitch, which is exactly what a collapsed train looks like. `driven()` already falls back to
+`train.anchor()` for this same hole and says so in its comment; the placer never got the fallback.
+Fixed by answering with an end car, either end, since the orientation is read off the cars and not
+off that choice. With it in, the train holds rigid spacing and no car moves alone.
+
+*Gravity reaches only the leader, as a rescale, so a flat leader means a weightless train.*
+`NewMinecartBehaviorMixin$sharedSlope` takes `cir.getReturnValue().subtract(movement)` — the pull
+vanilla worked out for this one car — and scales it by `TrainCoupling.slopeShare`. Vanilla's pull for
+a cart on flat track is the zero vector, and the hook returns early on exactly that; `slopeShare`
+agrees, since its `under` argument is the *leader's own* grade and zero makes it answer `1.0`. So a
+train whose leading car stands on the flat feels **no downhill force at all**, however many of its
+cars hang on the bank. Measured with the first fault repaired: eight cars all on the grade roll down
+together at `-0.055` to `-0.077`, and the instant the downhill car reaches level track every velocity
+goes to zero with six cars still on the slope. That is the reported behaviour precisely.
+
+**This invalidates S7's approach, not just its formula.** S7 plans `slopeShare` as
+`Σ(mᵢ × gradeᵢ) / Σmᵢ`, which is the right weighting and still cannot help: a rescale of zero is
+zero, and the failing case is precisely the one where there is nothing to rescale. The pull has to be
+*computed* for the train rather than scaled off whichever car happens to be leading — one car's worth
+of gravity times the fraction of the train on a grade, laid along the track at the leader and signed
+toward whichever end of the train is lower. The ribbon already knows every car's arc and the tangent
+at it, so the direction is available; what is not available today is any pull at all to point.
+
+Worth noting what is *not* wrong: a lone cart rolls down a grade correctly in both models, measured
+accelerating to `-0.20` blocks a tick and coasting out onto the flat, and a train entirely on a grade
+rolls correctly too. Only the straddling case fails, which is why it took a report from play to find.
+
 ## How these stages get tested
 
 On this mod's dev server, `scripts/devserver.sh rkc/mods/minecart-tweaks restart`, port 25603,
