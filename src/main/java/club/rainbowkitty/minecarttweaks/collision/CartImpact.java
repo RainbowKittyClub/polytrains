@@ -102,7 +102,7 @@ public final class CartImpact {
                 // The terms of CartInteraction.pushes that the interaction in hand does not settle;
                 // asking it outright would resolve the whole pair a second time.
                 if (hit.blocks() && !TrainCoupling.sameTrain(cart, struck)) {
-                    struck.setDeltaMovement(movement);
+                    drag += shunt(cart, struck, movement);
                 }
             }
 
@@ -125,6 +125,55 @@ public final class CartImpact {
         if (drag > 0.0) {
             slowTrain(cart, drag / movement.length());
         }
+    }
+
+    // Two carts meeting along the track. The struck cart is brought up to the momentum-weighted
+    // mean of the pair rather than handed the striker's whole movement, and the striker is billed
+    // for what it gave through the same drag a struck mob costs it. Returns that bill.
+    //
+    // It used to copy the movement outright and bill nothing, which created momentum instead of
+    // passing it on: nine carts standing a block apart turned a one-block-a-second nudge into nine
+    // carts running, and rewrote each other's velocity often enough that friction never got a
+    // tick's hold on any of them. With wrecking on, the speed that built up wrote several of them
+    // off.
+    //
+    // Only what the cart is bearing down on. The sweep reaches behind as well, for a mob a fast
+    // cart passed clean through in one tick, but a cart cannot drag along one it is moving away
+    // from — and reaching backwards is what let one nudge light up a line in both directions.
+    private static double shunt(AbstractMinecart cart, AbstractMinecart struck, Vec3 movement) {
+        Vec3 heading = movement.horizontal();
+
+        if (heading.lengthSqr() <= STILL * STILL) {
+            return 0.0;
+        }
+
+        heading = heading.normalize();
+
+        if (struck.position().subtract(cart.position()).dot(heading) <= 0.0) {
+            return 0.0;
+        }
+
+        // Onto the car its train is driven by, for the reason slowTrain gives: a placed car's
+        // movement is written from that one, so a push left anywhere else is overwritten unused.
+        AbstractMinecart pushed = TrainCoupling.driven(struck);
+        Vec3 own = pushed.getDeltaMovement();
+        double ahead = own.dot(heading);
+        double mine = TrainCoupling.mass(cart);
+        double theirs = TrainCoupling.mass(struck);
+        double shared = (mine * movement.dot(heading) + theirs * ahead) / (mine + theirs);
+
+        // Already running away faster than the meeting would leave it: not caught up with at all.
+        if (ahead >= shared) {
+            return 0.0;
+        }
+
+        Vec3 gained = heading.scale(shared - ahead);
+
+        pushed.setDeltaMovement(own.x() + gained.x(), own.y(), own.z() + gained.z());
+
+        // In the units shove returns: the momentum handed over, which slowTrain then divides by
+        // what this train weighs. So what one side gains the other loses, whatever their masses.
+        return (shared - ahead) * theirs;
     }
 
     // Breaks the cart into its item, unless something else already removed it this tick.
