@@ -431,6 +431,13 @@ full, so a loot chest cart is 3.0.
 Any other container cart, a modded one included, takes the chest pair. There is nothing else to
 measure it by, and a box of goods on a cart is what that pair describes.
 
+**One item anywhere in a container cart already costs mass, because the comparator scale has no
+second zero.** `Mth.lerpDiscrete(alpha, 0, 15)` is `floor(alpha × 14) + (alpha > 0 ? 1 : 0)`, so a
+single stone in a 27-slot chest cart reads 1, not 0, and weighs 1.32 rather than 1.20. The empty
+endpoint therefore belongs to a genuinely empty cart and to nothing else, which is the right
+behaviour and worth knowing before reading a coast test: a cart that looks empty in a screenshot is
+not necessarily the 1.2 row. Both endpoints were confirmed against measured coasts — see Reference.
+
 **Three figures downstream move with this, and all three are gameplay-visible.** Coast distance is
 exactly proportional to mass under the physical model, so the spread across a chest cart's fill widens
 from 2:1 to 2.5:1 — see the retuned table in Reference. A full chest cart's wreck threshold and its
@@ -823,16 +830,26 @@ kind, which is the whole point of the change:
 
 | Mass | What it is | `PHYSICAL` after S3 | `VANILLA` |
 |---|---|---|---|
-| 1.0 | a plain cart, or an empty hopper cart | 11.8 blocks | 15.2 plain / 77.6 hopper |
-| 1.2 | an empty chest cart | 14.2 | 77.6 |
-| 1.5 | a full hopper cart, or an unlit furnace | 17.7 | 19.1 hopper / 8.4 furnace |
-| 2.0 | a plain cart with a rider | 23.6 | 129.6 |
-| 2.0 | a half-loaded chest cart | 23.6 | 29.8 |
-| 3.0 | a full chest cart | 35.4 | 19.1 |
+| 1.0 | a plain cart, or an empty hopper cart | 11.9 blocks | 15.2 plain / 77.6 hopper |
+| 1.2 | an empty chest cart | 14.3 | 77.6 |
+| 1.5 | a full hopper cart, or an unlit furnace | 18.0 | 19.1 hopper / 8.4 furnace |
+| 2.0 | a plain cart with a rider | 24.0 | 129.6 |
+| 2.2 | a half-loaded chest cart | 26.0 | 30.0 |
+| 3.0 | a full chest cart | 36.3 | 19.1 |
 
-Coast distance is exactly proportional to mass under the physical model — the closed form is
-`(m / 0.025) × (v₀ − a·ln((v₀ + a) / (v₁ + a)))` with `a` the flat term over the rate, and `m` factors
-straight out — so any mass not listed is 11.8 blocks times it.
+Every `PHYSICAL` figure above bar the rider row is **measured** on a 145-block straight at
+`realistic_physics true`, from `Motion:[0.4d,0,0]` to a dead stop. Coast distance is proportional to
+mass — the closed form is `(m / 0.025) × (v₀ − a·ln((v₀ + a) / (v₁ + a)))` with `a` the flat term over
+the rate, and `m` factors straight out — and the measurements hold that to two percent, drifting from
+11.87 blocks per unit mass at 1.0 to 12.10 at 3.0 as the last partial tick rounds up over a longer
+run. So any mass not listed is about twelve blocks times it.
+
+The same five carts at `realistic_physics false` read 70.2, 70.2, 19.6, 30.3 and 19.6 blocks at a
+46-second cutoff, still crawling — the empty pair and the full pair **bit-identical to each other**,
+which is the invariant worth keeping: under the vanilla model neither mass nor cart kind exists
+beyond vanilla's own container rule, and a hopper cart and a chest cart holding the same fraction are
+the same cart. The two models order the five almost exactly backwards: vanilla's empty carts coast
+3.6 times as far as its full ones, the physical model's full ones 2.5 times as far as its empty.
 
 The vanilla column is not monotone in mass and cannot be made so: a *ridden* cart is vanilla's
 longest coast at mass 2.0 and a *full* chest cart is nearly its shortest at 3.0, while an *empty*
