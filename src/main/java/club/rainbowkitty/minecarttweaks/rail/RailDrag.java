@@ -2,7 +2,6 @@ package club.rainbowkitty.minecarttweaks.rail;
 
 import java.util.List;
 
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecartContainer;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -52,11 +51,15 @@ public final class RailDrag {
 
     // Of the slope pull, the most rolling resistance is ever allowed to be. Gravity has to win on a
     // slope by a clear margin or a cart barely rolls down one: at an eighth an empty cart settles
-    // at about 5.3 blocks a second against the 6.1 it would reach with no resistance at all. The
-    // cap binds at every rail_drag_speed the rule can be set to, which is the point — the rule's
-    // range runs to a thousand, and taken at face value most of it would stop a cart rolling
-    // downhill at all. The cost of that is that the rule now reads as on or off.
+    // at about 5.3 blocks a second against the 6.1 it would reach with no resistance at all. It has
+    // to stay well under the slope pull whatever else changes, or gravity loses on a grade and a
+    // cart will not roll downhill at all — which is what left a rule reading against it no range to
+    // grade across, and why the figure is now fixed here rather than set per world.
     private static final double ROLL_CEILING = 0.125;
+
+    // The flat part of rolling resistance, in blocks of speed a tick, before mass. What brings a
+    // cart to a dead stop rather than forever halving what is left.
+    private static final double ROLL_TERM = SLOPE_PULL * ROLL_CEILING;
 
     // The fraction of its speed a train loses to a right angle of turn. Nothing like the physical
     // figure — a wheelset slamming into a 45-degree kink loses the whole of its sideways component,
@@ -64,8 +67,9 @@ public final class RailDrag {
     // chosen to make a four-corner circuit cost about eight percent a lap.
     private static final double BEND_LOSS = 0.02;
 
-    // The fraction of its speed vanilla takes from an empty cart each tick, which is what
-    // rail_drag_speed's own figure is read against (NewMinecartBehavior#getSlowdownFactor).
+    // The fraction of its speed vanilla takes from an empty cart each tick
+    // (NewMinecartBehavior#getSlowdownFactor). The physical model's proportional rate as well, so a
+    // lone empty cart reads the same under both but for the flat term.
     private static final double EMPTY_DRAG = 0.025;
 
     // Vanilla's own figures for a container cart, which it varies by how full the cart is: the
@@ -108,7 +112,7 @@ public final class RailDrag {
 
         double flat = TrainCoupling.underPower(cart) || TrainCoupling.riderSteering(cart)
                 ? 0.0
-                : roll(cart);
+                : ROLL_TERM;
         double lost = (rate(cart) * speed + flat) / TrainCoupling.meanCarMass(cart);
 
         // The whole of what is left, where what is left is less than one tick's worth: a flat loss
@@ -206,21 +210,6 @@ public final class RailDrag {
         return container.getContainerLootTable() != null
                 ? 0
                 : FULL_SIGNAL - AbstractContainerMenu.getRedstoneSignalFromContainer(container);
-    }
-
-    // How much speed rolling resistance takes off a cart in one tick, in blocks. rail_drag_speed
-    // names the speed at which that loss matches vanilla's proportional drag on an empty cart, so
-    // below that speed this is the larger of the two — which is what the rule has always said, by
-    // a mechanism that now stops a cart rather than slowing its approach to a stop. None of it
-    // wherever the rule does not reach, the client included.
-    private static double roll(AbstractMinecart cart) {
-        if (!(cart.level() instanceof ServerLevel serverLevel)) {
-            return 0.0;
-        }
-
-        double until = serverLevel.getGameRules().get(MTGameRules.RAIL_DRAG_SPEED) / 20.0;
-
-        return Math.min(until * EMPTY_DRAG, SLOPE_PULL * ROLL_CEILING);
     }
 
     /**

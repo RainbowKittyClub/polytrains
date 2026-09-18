@@ -93,31 +93,16 @@ public final class MTGameRules {
             registerBoolean("carts_resume_from_brakes", true);
 
     /**
-     * Speed below which rolling friction is laid on harder, in blocks per second, or zero to leave
-     * vanilla's alone. Vanilla takes a fixed fraction of the speed each tick — a fortieth of an
-     * empty cart's, but only a three-hundredth of a ridden one's — so a cart with someone aboard
-     * rolls on for the better part of a minute after it looks stopped.
-     *
-     * <p>Read as the speed at which this mod's flat rolling resistance matches that fraction on an
-     * empty cart: below it the flat term is the larger of the two, and being flat it brings a cart
-     * to a dead stop rather than forever halving what is left. {@code RailDrag} caps it at an
-     * eighth of the pull gravity gives on a slope, and that cap binds at every value above zero, so
-     * in practice this reads as on or off — zero for vanilla's friction alone, anything else for
-     * the flat stop. Without the cap most of this range would stop a cart rolling downhill at all.
-     */
-    public static final GameRule<Integer> RAIL_DRAG_SPEED =
-            registerInteger("rail_drag_speed", 3, 0, MAX_SPEED);
-
-    /**
      * Whether carts run on this mod's own force model instead of vanilla's. Off by default, so a
      * world that installs this mod for its links, chains, junctions and switches gets vanilla's
      * friction, acceleration, speed ceilings and collisions untouched.
      *
      * <p>On, friction and the engine become forces divided by what a cart weighs — a loaded train
      * accelerates and stops differently from an empty one, an empty cart no longer coasts further
-     * than a full one, corners cost speed, and two trains meeting hard enough write each other
-     * off. Trains themselves are not gated by this: vanilla has no trains to mirror, so a train is
-     * this mod's own feature under either model.
+     * than a full one, a cart comes to a dead stop rather than crawling on after it looks stopped,
+     * corners cost speed, and two trains meeting hard enough write each other off. Trains
+     * themselves are not gated by this: vanilla has no trains to mirror, so a train is this mod's
+     * own feature under either model.
      */
     public static final GameRule<Boolean> REALISTIC_PHYSICS =
             registerBoolean("realistic_physics", false);
