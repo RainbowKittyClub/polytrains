@@ -120,6 +120,38 @@ rotation and its seats indefinitely, and pushed either way all three cars toggle
 together — `1b 1b 1b` one way, `0b 0b 0b` the other — which is the reversal working as a flip rather
 than a half turn.
 
+**Aiming a car by its rail was only half of it: which end it leads with cannot be read from a heading
+at all.** Reported as carts still turning round on a U-turn, intermittently, after the two chord
+faults above were fixed. `aim` still decided `isFlipped` by comparing the car's current heading
+against the one it was pointing — `ahead.dot(along) < REVERSAL_DOT`, anything past 120 degrees — and
+**a U-turn is a 180-degree heading change that is not a reversal**. Whether it tripped depended
+entirely on how much of the turn a car covered in one tick, which is what made it intermittent: at
+the 0.4 blocks a tick `max_minecart_speed` 8 allows, a two-block turn takes about six ticks at 30
+degrees each and stays under the threshold; anything faster does not.
+
+The threshold cannot be tuned out of it. Vanilla affords a 10-degree window, 175 to 185, precisely
+because its stepper turns a cart a few degrees at a time and only a true reversal ever lands there;
+the mod widened it because a placed car crosses whole blocks between ticks, and a wide window and a
+tight turn cannot coexist. `REVERSAL_DOT`'s own comment carried the flawed assumption — "a bend cannot
+reach it: two exits of one rail are at worst square to each other" — which reasons about one rail
+block while the car is crossing several.
+
+So the two halves of a rotation are now taken from where each actually lives. **Yaw and pitch belong
+to the rail under the car**, which is `seat.tangent()`. **Which end a car leads with belongs to the
+train's direction along its ribbon**, which is the sign of `facing`, and `Train#reversed` is the
+whole of when it changes: one decision for the train, before any car is laid, flipping every trailing
+car together. The leading car keeps vanilla's own handling, which is right for it because vanilla
+steps it gradually and its narrow window then genuinely only catches reversals. A car's own bit is
+still its own — a cart coupled in pointing the other way stays pointing the other way — what became
+train-level is the event that toggles it.
+
+**Measured** on the same two-block U-turn, with `max_minecart_speed` raised to 40 so a car crosses
+the whole 2.4-block turn in about one tick — five times the speed at which the fault stayed hidden.
+Six traverses at 0.25 through 2.0 blocks a tick: `0000` flips before and `0000` after every one, each
+ending on the far leg at yaw 180, turned round in yaw without flipping. Reversed on straight track
+instead, the same train goes `0000` to `1111` to `0000` with its yaw unmoved, which is the reversal
+still working as a flip. Those are the two readings a heading comparison cannot tell apart.
+
 ## How these stages get tested
 
 On this mod's own dev server, `scripts/devserver.sh rkc/mods/minecart-tweaks restart`, against a world
