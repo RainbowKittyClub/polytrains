@@ -12,7 +12,6 @@ import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.init.MTDamageTypes;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
-import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /**
@@ -186,7 +185,10 @@ public final class CartImpact {
     // intent and survives; writing every car's movement was the pattern that had to go, since the
     // placer overwrites all but one of them from that one.
     private static void slowTrain(AbstractMinecart cart, double drag) {
-        double loss = Math.min(MAX_IMPACT_DRAG, drag / Train.of(cart).cars().size());
+        // Over what the train weighs, not how many cars it has. The two are the same figure under
+        // the vanilla model, where every cart weighs one; under the physical model a loaded train
+        // shrugs off an impact a light one of the same length would feel.
+        double loss = Math.min(MAX_IMPACT_DRAG, drag / TrainCoupling.mass(cart));
         AbstractMinecart driven = TrainCoupling.driven(cart);
         Vec3 movement = driven.getDeltaMovement();
 

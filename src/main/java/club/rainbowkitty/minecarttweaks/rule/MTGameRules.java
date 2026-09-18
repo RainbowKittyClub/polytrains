@@ -55,10 +55,14 @@ public final class MTGameRules {
             registerInteger("minecart_damage", 20, 0, 1000);
 
     /**
-     * Closing momentum at which two trains meeting write each other off, in cars times blocks per
-     * second. The default 4 is a lone car closing at four blocks a second, which two carts running
-     * into each other near full speed clear. Zero disables wrecking, leaving them to collide and
-     * stop.
+     * Closing momentum at which two trains meeting write each other off, in empty carts times
+     * blocks per second. The default 4 is a lone car closing at four blocks a second, which two
+     * carts running into each other near full speed clear. Zero disables wrecking, leaving them to
+     * collide and stop.
+     *
+     * <p>Does nothing at all unless {@link #REALISTIC_PHYSICS} is on: carts destroying each other
+     * is part of that model, and without it two trains meeting simply stop or shunt each other
+     * along, whatever this is set to.
      */
     public static final GameRule<Integer> CART_WRECK_MOMENTUM =
             registerInteger("cart_wreck_momentum", 4, 0, MAX_SPEED);

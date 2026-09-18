@@ -10,6 +10,7 @@ import net.minecraft.world.level.gamerules.GameRule;
 
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
 import club.rainbowkitty.minecarttweaks.rail.RailContext;
+import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.train.TrainPlacer;
@@ -181,7 +182,17 @@ public enum CartInteraction {
     // Two trains meeting hard enough to write each other off. Read off the closing momentum rather
     // than either train's own speed, so a heavy train overhauling a light one does not wreck it for
     // the crime of being caught up with.
+    //
+    // Nothing wrecks under the vanilla force model, and this is the whole of that gate: the caller
+    // falls through to COLLIDE, which is vanilla's own solid collision, so refusing here leaves
+    // two trains to stop or shunt each other exactly as vanilla's pushOtherMinecart has them do.
+    // Wrecking goes with the model rather than keeping a rule of its own because it is the one
+    // place this mod's forces break something the player built.
     private static boolean wrecks(AbstractMinecart cart, AbstractMinecart other) {
+        if (!RailForces.of(cart.level()).wrecks()) {
+            return false;
+        }
+
         double limit = threshold(cart, MTGameRules.CART_WRECK_MOMENTUM, 0.0);
 
         return limit > 0 && TrainCoupling.closingMomentum(cart, other) > limit;
