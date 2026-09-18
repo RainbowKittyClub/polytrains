@@ -184,10 +184,10 @@ Measured both ways on the dev server: at 100, a fuelled cart read 1.74 blocks a 
 and the capped 2.5 after two, then ran off the end of the test straight. At 8 it pinned at exactly
 0.20 and held it. So the behaviour is right and the rule value is the whole difference.
 
-This is not a fault to fix, because it is what a vanilla world with that rule set would do — but it
-is a trap for exactly the audience the default model is for, and the physical model is the one that
-copes, since its engine is a fixed force and its acceleration is gradual at any ceiling. Worth a
-README line rather than a code change; see Open decisions.
+This is not a fault to fix, because it is what a vanilla world with that rule set would do, and the
+physical model is the one that copes — its engine is a fixed force, so it accelerates gradually at
+any ceiling. Settled in Open decisions as a reason to turn the rule on rather than as something for
+the default to work around, which makes it S8's job to say so in the README.
 
 **Vanilla annihilates its own impulse at any 90-degree change of direction, and a two-block U-turn
 is one.** `calculateNewPushAlong` re-aims by
@@ -234,12 +234,21 @@ movement, which is either absent or perpendicular in exactly the two cases above
 fallback for either. Both fixes were verified together on a circuit holding two U-turns and a buffer
 stop, which both models now run indefinitely.
 
-**A lit furnace cart that comes off the rails is dead for good.** `AbstractMinecart.comeOffTrack`
-(`:377-388`) never calls `applyNaturalSlowdown`, which is where every engine in either model lives, so
-an off-track cart has no way to propel itself back on while its fuel burns down to nothing. Vanilla's
-own structure and not introduced here, but the finding above makes it reachable constantly rather
-than rarely, and it is what makes a derailment read as "the cart stopped and will not move" rather
-than as a derailment.
+**A lit furnace cart that comes off the rails is dead for good.** Both models put the engine inside
+`applyNaturalSlowdown`, and that is only ever called from `NewMinecartBehavior.calculateTrackSpeed`
+(`:338`), which sits in the on-rail branch of `moveAlongTrack`. Off the rails the loop takes its
+`else` at `:264-265` and calls `AbstractMinecart.comeOffTrack` (`:377-388`) instead, which clamps,
+halves the movement every tick on the ground, moves, and applies air drag — and asks for no impulse
+at all. So an off-track cart stops within a few ticks and then sits inert, burning fuel it cannot
+use, with a perfectly healthy `push`: measured at `|push| = 1.0` while the movement decayed to
+`6.7E-11` and the position stopped changing.
+
+Vanilla's own structure, not introduced here, and it is what made several derailments read as "the
+cart stopped and will not move" while diagnosing the two faults above. Left alone deliberately: a
+derailed cart ought to stop, and an engine that fires off the rails makes a furnace cart a ground
+vehicle that can drive itself over terrain. The only real cost is the wasted fuel. If it is ever
+worth changing, the shape is a small impulse inside `comeOffTrack` aimed at the nearest rail,
+unconditional in both models like the other two impulse fixes.
 
 ## How these stages get tested
 
@@ -701,15 +710,17 @@ behavioural difference of all and it is not gated by anything. The answer — th
 mod's own feature and has no vanilla behaviour to mirror — is worth stating in the README row rather
 than only here.
 
-**Whether the vanilla model should soften its engine at a raised `max_minecart_speed`.** As built it
-does not, and that is faithful: a vanilla world with `max_minecart_speed = 100` has furnace carts that
-reach 50 m/s from standing inside a fifth of a second. The cost is that the default model is unusable
-on exactly the worlds that raised the rule, which is most worlds that installed this mod. Three ways
-out: leave it and say so in the README; scale the synthesised impulse so the cap is reached over a
-sane interval rather than at once, which is a deliberate deviation in the model that is meant not to
-deviate; or read the raised rule as a signal and pick the physical model's engine by default. The
-first is what is in the tree. Settled by whether a raised speed rule is normal on the worlds this
-ships to.
+**~~Whether the vanilla model should soften its engine at a raised `max_minecart_speed`.~~ Settled:
+it should not. The physical model is the answer.** A vanilla world with `max_minecart_speed = 100`
+has furnace carts that reach 50 m/s from standing inside a fifth of a second, and reproducing that
+is the default model doing its job. Softening it would be a deviation in the one model that exists
+in order not to deviate, and it would leave neither model honest.
+
+So the brittleness at a raised cap is a reason to turn `realistic_physics` **on**, not a defect to
+paper over — the physical model's engine is a fixed force, so it accelerates gradually at any
+ceiling and does not care what the rule is set to. That is worth saying in the README row as a
+positive reason to enable the rule rather than as a caveat about the default, and it is the clearest
+practical answer to "why would I want this?" that this work has produced.
 
 **Whether `PHYSICAL` should stay the tested path.** Every figure in `train-ribbon.md` was observed
 with what becomes the opt-in model, and after this work the default is the one almost every world
