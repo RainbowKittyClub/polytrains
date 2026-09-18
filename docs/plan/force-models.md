@@ -73,8 +73,8 @@ standing. Terminal speed is `0.975p / 0.22 = 4.43p`, so any plausible `p` is far
 the observable behaviour is "reaches the halved cap at once and climbs any grade". That is the target
 to reproduce; reproducing `p` itself would be reproducing a quantity vanilla does not define.
 
-**The impulse projection stays unconditional in both models, and is the one deliberate deviation
-from vanilla in the default.** Vanilla projects the impulse onto the direction of travel in
+**The impulse projection stays unconditional in both models, and is one of two deliberate deviations
+from vanilla in the default — see the stall finding below for the other.** Vanilla projects the impulse onto the direction of travel in
 `calculateNewPushAlong` (`MinecartFurnace.java:103-105`) but only once the cart is already moving, so
 `push` on a *stationary* cart is unprojected — which is what rotates a cart on its rails when a
 furnace is fed into it and stretches the chains across it. Restoring vanilla here would restore that
@@ -188,6 +188,27 @@ This is not a fault to fix, because it is what a vanilla world with that rule se
 is a trap for exactly the audience the default model is for, and the physical model is the one that
 copes, since its engine is a fixed force and its acceleration is gradual at any ceiling. Worth a
 README line rather than a code change; see Open decisions.
+
+**A stall is the one state neither model can read a heading in, and a fuelled cart at a dead end
+wedges there for good.** Both models re-aim the impulse from the cart's own movement — vanilla in
+`calculateNewPushAlong`, which needs `deltaMovement.horizontalDistanceSqr() > 0.001`
+(`MinecartFurnace.java:100-106`), and this mod in `aimAlong`, which needs the same above its own
+floor. A cart against a buffer has no movement at all: `stepAlongTrack` zeroes a step that covered no
+ground, so the engine is handed its impulse straight back into the obstruction every tick, the cart
+makes no progress, and the gate that would turn it round never opens. Measured: a cart reaching a
+buffer sat at `motion=0` with `pushX=1.0` indefinitely, fuel burning, in **both** models.
+
+So it predates this work — the physical model is the old behaviour and wedges identically — and what
+changed is only how visible it is, the impulse into the buffer going from `0.015625` to `1.0` and the
+cart arriving in five seconds instead of a minute. The consequence is that a **switchback is
+impossible**, which is what surfaced it.
+
+The fix has to count the stall rather than derive it, there being no movement to derive from:
+`minecarttweaks$countStall` runs at the top of the tick, where last tick's movement is still what the
+cart has, and turns the impulse round after four ticks of no progress under power. Unconditional in
+both models, on the same grounds as the impulse projection — the trap is vanilla's, and a cart
+nothing can move is not behaviour worth mirroring. That makes two deliberate deviations in the
+default model, both of them about an impulse vanilla aims from information it does not have.
 
 **A lit furnace cart that comes off the rails is dead for good.** `AbstractMinecart.comeOffTrack`
 (`:377-388`) never calls `applyNaturalSlowdown`, which is where every engine in either model lives, so
