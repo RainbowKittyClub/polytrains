@@ -109,7 +109,8 @@ public final class RailDrag {
     }
 
     /**
-     * {@code slowed} rescaled from this car's own rolling friction to its whole train's mean.
+     * {@code slowed} rescaled from this car's own rolling friction to its whole train's mean, which
+     * is the whole of the vanilla model's retarding law — see {@link RailForces#retarded}.
      *
      * <p>Only the leading car reaches vanilla's slowdown at all now, so without this a train
      * coasts on whichever kind of car happens to be leading it — and vanilla's figures differ by
@@ -120,7 +121,7 @@ public final class RailDrag {
      * <p>A train whose cars are all alike averages to exactly what its leader was already given,
      * whatever vanilla's figures happen to be, so this only ever moves a train of mixed cars.
      */
-    private static Vec3 shared(AbstractMinecart cart, Vec3 slowed) {
+    static Vec3 shared(AbstractMinecart cart, Vec3 slowed) {
         if (!cart.hasLink() || !MTGameRules.trainsEnabled(cart.level())) {
             return slowed;
         }
@@ -218,5 +219,12 @@ public final class RailDrag {
         double left = Math.max(0.0, 1.0 - BEND_LOSS * turn);
 
         cart.setDeltaMovement(cart.getDeltaMovement().multiply(left, 1.0, left));
+    }
+
+    // What the physical model charges for turn right angles of kink, named here so RailForces can
+    // pick between it and nothing at all without the figure leaving the class that reasons about
+    // it.
+    static double bendFraction(double turn) {
+        return BEND_LOSS * turn;
     }
 }

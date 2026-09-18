@@ -12,6 +12,7 @@ import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
+import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
 
 /**
@@ -93,6 +94,11 @@ public final class Train {
     // rail block the leading car crosses, and working it out walks every car's inventory.
     private double rolling;
     private long rollingTick = Long.MIN_VALUE;
+
+    // This train's total mass, held the same way and for the same reason: the friction, drive and
+    // shove paths all ask for it, and a container car's own mass is a walk of its inventory.
+    private double mass;
+    private long massTick = Long.MIN_VALUE;
 
     // The interval the cars are being seated at, or zero before there is anything to ease from.
     private double pitch;
@@ -319,6 +325,30 @@ public final class Train {
         }
 
         return engines == 0 ? 0.0 : drive / Math.max(1, cars.size() - FREE_CARS * engines);
+    }
+
+    /**
+     * What this whole train weighs under {@code forces}, in empty carts, held for {@code tick}.
+     *
+     * <p>Comes to exactly the car count under the vanilla model, where every cart weighs one — so
+     * every divisor built on this reads as the count it was before mass existed, and only the
+     * physical model ever moves one.
+     */
+    public double mass(RailForces forces, long tick) {
+        if (massTick == tick) {
+            return mass;
+        }
+
+        double total = 0.0;
+
+        for (AbstractMinecart car : cars) {
+            total += forces.cartMass(car);
+        }
+
+        mass = total;
+        massTick = tick;
+
+        return total;
     }
 
     /**

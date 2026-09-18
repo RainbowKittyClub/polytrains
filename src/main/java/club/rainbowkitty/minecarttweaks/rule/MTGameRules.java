@@ -103,6 +103,20 @@ public final class MTGameRules {
     public static final GameRule<Integer> RAIL_DRAG_SPEED =
             registerInteger("rail_drag_speed", 3, 0, MAX_SPEED);
 
+    /**
+     * Whether carts run on this mod's own force model instead of vanilla's. Off by default, so a
+     * world that installs this mod for its links, chains, junctions and switches gets vanilla's
+     * friction, acceleration, speed ceilings and collisions untouched.
+     *
+     * <p>On, friction and the engine become forces divided by what a cart weighs — a loaded train
+     * accelerates and stops differently from an empty one, an empty cart no longer coasts further
+     * than a full one, corners cost speed, and two trains meeting hard enough write each other
+     * off. Trains themselves are not gated by this: vanilla has no trains to mirror, so a train is
+     * this mod's own feature under either model.
+     */
+    public static final GameRule<Boolean> REALISTIC_PHYSICS =
+            registerBoolean("realistic_physics", false);
+
     /** Burn time ceiling in ticks, raising vanilla's hardcoded 32000. */
     public static final GameRule<Integer> FURNACE_MAX_BURN_TIME =
             registerInteger("furnace_max_burn_time", 72000, 0, Integer.MAX_VALUE);

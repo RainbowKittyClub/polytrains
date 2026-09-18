@@ -18,6 +18,7 @@ import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
 import club.rainbowkitty.minecarttweaks.rail.RailBrake;
+import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
@@ -387,14 +388,22 @@ public final class TrainCoupling {
     }
 
     /**
-     * The mass of {@code cart}'s train, counted in cars. A cart on its own is a train of one, and a
-     * loaded car weighs what an empty one does — every threshold measured against this is expressed
-     * in these units, so the unit cannot change without retuning all of them together.
+     * The mass of {@code cart}'s train, in empty carts. A cart on its own is a train of one.
+     *
+     * <p>What a cart weighs is {@link RailForces#cartMass}'s to say, and under the vanilla model
+     * every cart weighs one — so this is the plain car count it has always been, and a loaded car
+     * still weighs what an empty one does. Only the physical model gives it a real figure, which is
+     * how a quantity read by the shove, the drive, the brake and the wreck check is gated in one
+     * place rather than at each of them.
      */
     public static double mass(AbstractMinecart cart) {
+        RailForces forces = RailForces.of(cart.level());
+
         // Short-circuited rather than walked: this is asked of every cart every tick, and most
         // carts on a server are not linked to anything.
-        return cart.hasLink() ? Train.of(cart).size() : 1;
+        return cart.hasLink()
+                ? Train.of(cart).mass(forces, cart.level().getGameTime())
+                : forces.cartMass(cart);
     }
 
     /**

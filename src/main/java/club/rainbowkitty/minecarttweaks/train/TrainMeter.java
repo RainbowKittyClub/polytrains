@@ -25,6 +25,10 @@ import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
  * today and a control loop against its own setpoint once the ribbon drives the cars — at which
  * point it reads near zero whether or not the train looks right. This one keeps meaning something.
  *
+ * <p>Mass rides along on the same line. It is not a measurement of anything — the model is asked
+ * and it answers — but it is the one number that says which force model a reading was taken under,
+ * and a coast or grade figure recorded without that is a figure nobody can place afterwards.
+ *
  * <p>It re-walks the track rather than borrowing the paths the coupling already computed, for the
  * same reason: an oracle that shares its intermediates with the thing it checks is not an oracle.
  * The cost is paid only while {@code DEBUG} is on, and then only once a second.
@@ -76,9 +80,10 @@ public final class TrainMeter {
         // Not round(0.0): a train with every car off the rails measures no pair at all, and a
         // spacing of 0.00 printed for that reads as a train holding its pitch perfectly.
         LOGGER.debug(
-                "train cars={} spacing measured={}/{} worst={} mean={} "
+                "train cars={} mass={} spacing measured={}/{} worst={} mean={} "
                         + "| speed={} rail={} turn={} | {}",
-                cars.size(), gaps, cars.size() - 1,
+                cars.size(), round(TrainCoupling.mass(cars.getFirst())),
+                gaps, cars.size() - 1,
                 gaps == 0 ? "n/a" : round(worstGap),
                 gaps == 0 ? "n/a" : round(totalGap / gaps),
                 round(TrainCoupling.drivenSpeed(cars.getFirst())), underLeader(level, train),
