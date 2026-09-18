@@ -92,12 +92,6 @@ public final class TrackRibbon {
         return last == null ? 0.0 : last.arc() + last.span();
     }
 
-    /** Drops everything recorded, so the next block crossed starts a fresh ribbon. */
-    public void clear() {
-        nodes.clear();
-        leaderArc = 0.0;
-    }
-
     /** How many times this ribbon has been thrown away and restarted from one block. */
     public int resets() {
         return resets;
@@ -473,13 +467,8 @@ public final class TrackRibbon {
         }
     }
 
-    /**
-     * Whether this ribbon covers {@code pos} anywhere along it. Since a ribbon is trimmed to the
-     * span of its own train, this answers whether that train is crossing the block — including
-     * where the gap between two of its cars falls across it, and at speeds where no tick ever
-     * samples a car standing on it.
-     */
-    public boolean holds(BlockPos pos) {
+    // Whether this ribbon records pos anywhere along it.
+    private boolean holds(BlockPos pos) {
         for (Node node : nodes) {
             if (node.block().equals(pos)) {
                 return true;

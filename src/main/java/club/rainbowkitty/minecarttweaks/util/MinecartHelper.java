@@ -173,13 +173,6 @@ public final class MinecartHelper {
         return (float) ((180.0 - Math.atan2(heading.z, heading.x) * 180.0 / Math.PI) % 360.0);
     }
 
-    /** Which way a cart at yaw {@code yaw} points its front: the inverse of {@link #yawOf}. */
-    public static Vec3 facingOf(float yaw) {
-        double radians = Math.toRadians(180.0F - yaw);
-
-        return new Vec3(Math.cos(radians), 0.0, Math.sin(radians));
-    }
-
     /** Whether {@code entity} is a cart currently sitting on no rail. */
     public static boolean isDerailed(Entity entity) {
         return entity instanceof AbstractMinecart cart

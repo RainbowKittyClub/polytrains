@@ -45,31 +45,11 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
 
     private static final Vec3 NORTH = new Vec3(0.0, 0.0, -1.0);
 
-    /**
-     * How the rail under a cart turns and climbs in the direction the cart is travelling. Both are
-     * signed, so a run of corners reversing each other can be told from a genuine bend.
-     *
-     * @param turn which way the rail turns: -1, 0 or 1
-     * @param grade which way the rail climbs: -1, 0 or 1
-     */
-    public record Bend(int turn, int grade) {
-
-        /** A cart stopped, off the rails, or on track that neither turns nor climbs. */
-        public static final Bend NONE = new Bend(0, 0);
-    }
-
-    /** How a reading of the track should take a switch it crosses. */
-    public enum Switches {
-        /**
-         * As it is set. What a cart crossing it right now is riding, and so the only honest
-         * reading of track a cart has already covered.
-         */
+    // How a reading of the track takes a switch it crosses: as it is set, which is what a cart
+    // crossing it right now is riding, or as the rails it joins whichever way it is thrown, since
+    // whether two carts share a run of track is a question about the track and not the throw.
+    private enum Switches {
         LAID,
-
-        /**
-         * As the rails it joins, whichever way it happens to be thrown. Whether two carts share a
-         * run of track is a question about the track, not about the throw.
-         */
         JOINED
     }
 
@@ -112,8 +92,7 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         }
 
         // On a circuit short enough that both ways round come in under the limit, the nearer one is
-        // the gap; taking whichever was walked first would sometimes measure the long way round and
-        // have the coupling close that instead, driving the train backwards into it.
+        // the gap; whichever was walked first would sometimes be the long way round.
         RailPath nearest = null;
 
         for (BlockPos first : neighbours(level, start, from.getDeltaMovement(), Switches.JOINED)) {
@@ -129,34 +108,11 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
 
 
     /**
-     * The turn and grade of the rail {@code cart} stands on. Answered together because both are
-     * read off the same exit, and finding that exit is the expensive part of either.
-     */
-    public static Bend bend(AbstractMinecart cart) {
-        Level level = cart.level();
-        BlockPos pos = cart.getCurrentBlockPosOrRailBelow();
-        BlockState state = level.getBlockState(pos);
-        Vec3 movement = cart.getDeltaMovement().horizontal();
-
-        if (!BaseRailBlock.isRail(state) || movement.lengthSqr() < EPSILON * EPSILON) {
-            return Bend.NONE;
-        }
-
-        BlockPos[] around = neighbours(level, pos, movement);
-        Vec3 out = direction(pos, exitTaken(around, pos, movement));
-        Vec3 in = otherExit(around, pos, out);
-        double cross = in.x * out.z - in.z * out.x;
-
-        return new Bend(
-                Math.abs(cross) < 0.5 ? 0 : (int) Math.signum(cross), grade(state, out));
-    }
-
-    /**
      * Whether the rail {@code cart} stands on climbs, drops or runs level in the direction of
      * {@code towards}: 1, -1 or 0.
      *
-     * <p>{@link #bend} reads that direction off the cart's own movement, so it answers nothing for
-     * a cart standing still. A train stalled on a hill is exactly when its grade has to be legible,
+     * <p>The direction is an argument rather than the cart's own movement, which a cart standing
+     * still has none of. A train stalled on a hill is exactly when its grade has to be legible,
      * and the direction is then the line its cars lie along rather than anything they are doing.
      */
     public static int grade(AbstractMinecart cart, Vec3 towards) {
@@ -205,7 +161,8 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     }
 
     /**
-     * The two rails the block at {@code pos} exits onto, in the order its shape lists them.
+     * The two rails the block at {@code pos} exits onto, in the order its shape lists them, taking
+     * a switch as it is set.
      *
      * <p>On a slope the Y of an exit marks which end is the low one, it is not an offset to add:
      * the rail beyond the high end stands a block up, and the one beyond the low end is level with
@@ -216,8 +173,8 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         return neighbours(level, pos, movement, Switches.LAID);
     }
 
-    /** As {@link #neighbours}, taking a switch the given way rather than as it is set. */
-    public static BlockPos[] neighbours(
+    // As the public neighbours, taking a switch the given way.
+    private static BlockPos[] neighbours(
             Level level, BlockPos pos, Vec3 movement, Switches switches) {
         BlockState state = level.getBlockState(pos);
         var exits = AbstractMinecart.exits(shape(state, movement, switches));
