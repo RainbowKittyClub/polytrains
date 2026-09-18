@@ -1358,6 +1358,14 @@ drive for the whole crossing and not merely while the engine passes. That is wha
 should do and what `hauled` already did for every train without an engine at its head, but it is a
 real change to how a furnace train reads on mixed track.
 
+**The brake outranked the boost only where vanilla would not have boosted anyway.** `boostPull`
+declined to vanilla under a brake rather than declining the boost, so the driven car standing on a
+lit rail with a block behind it took vanilla's own 0.2 launch every tick and the brake under a
+trailing car took it away again — a train that jittered against its parking brake. It now hands
+back the movement untouched. **Measured** with a four-car train, head on a lit starter rail, tail on
+a brake: held at rest under both models for 25 ticks, and away at the shared launch — 0.05 physical,
+0.2 vanilla — the tick the brake was replaced with plain rail.
+
 ## Open decisions
 
 **~~What the rule should be called.~~ Settled in S1: `realistic_physics`.** The alternative,

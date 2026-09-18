@@ -212,10 +212,70 @@ the symptom that reaches play is a train that came apart for no stated reason.
 **Reproduced from a rig rather than from play** — summoning a linked train with a `Motion` puts it
 straight into the deadlock state — but the same shape is reachable in play by any route that leaves a
 train moving with no recorded ribbon, a restart with a train under way being the obvious one, and it
-has been seen there once or twice. Not fixed here. The fix is to give `decideLeader` the same
-fallback above `EPSILON` that it has below it, or to let the ribbon grow from a moving train's own
-head before a leader is required; which of those is right depends on whether a moving train's leading
-end can be read from its velocity alone, which on a U-turn it cannot.
+has been seen there once or twice. Fixed by giving `decideLeader` the same fallback above `EPSILON`
+that it had below it: a train with nothing to read names its head, the ribbon starts from that car
+and grows both ways, and the next tick's reading corrects the end along the ribbon rather than
+through space — so nothing has to be read off a velocity alone. **Measured** with a five-car train
+summoned at 0.3 blocks a tick both ways round: seated on its first tick, a 1.5 pitch held through
+28 ticks of coasting, and the far end named within the three-tick hold where the head was at the
+back.
+
+**A ribbon starting on a corner could not grow behind it.** `TrackRibbon.grow` walked off the near
+end along the reverse of the node's exit axis, and on a corner the entry edge is square to the exit,
+so the walk found no rail and gave up. A train linked, or reset, with its leading car on a corner
+then had nothing to seat the cars behind it on: at rest it bailed `ORDER_UNREADABLE` for ever, and
+the moment it moved the leading car drove off alone. Reproduced by linking three carts with the head
+on a corner — the ribbon ran `0.00..4.71`, all of it ahead of the train. Growth now leaves a node
+through the edge the ribbon ends on, read off the edge midpoint itself, and `Node.forward` went with
+the bug. **Measured**: nine nodes over 8.71 blocks across the same corner, and the train seated.
+
+**"The ribbon has not reached this car" and "this car's rail is gone" were one bail, and it
+severed.** `CAR_OFF_RIBBON` fired for a seat off either end of the ribbon as readily as for a seat on
+rail that had been taken up, and both went into the ten-tick sever. A train linked at rest across a
+switch — growth refuses to enter one — lost the car beyond it ten ticks after linking. Split:
+`RIBBON_SHORT`, for a seat the ribbon does not reach, names a car only while the leading car is
+running away from it, so a standing train waits and one driving towards the switch records it;
+`CAR_OFF_RIBBON` is kept for rail that is gone. **Measured**: a four-car train across a switch stays
+linked at rest, closes up onto its ribbon when pulled away, and re-forms once shunted across the
+switch — 1.5 pitch, four links intact.
+
+**A train pushed against a blocked end of its track was seated into the block.** The pitch grows out
+of the leading car's advance and is spent at the far end of the train, so a head shoved towards a
+tail standing against a bumper walked that tail into it: seated inside the block, off the rail
+(`y` a tenth low), every car flipped, and two ticks later cut and wrecked. The leading car also drove
+clean through its own second car on the way, placed cars being no obstacle to it. The placer now
+asks whether the tail's end of the ribbon is blocked — `TrackRibbon.blockedBeyond`, the block past
+the end node being solid and not rail — and a tail that would sit closer than half a car to it stops
+the train as a whole: the pitch does not grow, the leading car is drawn back to where its train fits
+and seated standing, as a car driven into a wall is. The pitch is also never wider than the cars
+actually stand, so a train something else has closed up is not re-laid wider than it has room for,
+and never narrower than a car. **Measured** in a four-rail pocket: a nudged head slides the train
+until the tail touches the bumper and holds, no car inside a block, no derail, no sever; a sustained
+lean closes it to buffers touching and holds there.
+
+**Which end leads is not re-read while the placer is not holding the train, and a reversal is only
+ever a real reading.** Two faults under the same pocket. The first real movement of a never-moved
+train flipped every car, because the placer had recorded the end it *inferred* at rest as a facing;
+the inferred end now only aims the movement. And a car of an unplaced train moving towards the
+others named the far end leader three ticks later, which reset the ribbon on the far side of a
+switch and cut the head off; an unplaced train is loose carts, and its named end now holds.
+
+**An unplaced train could be pulled but never pushed.** Two cars of one train were solid to each
+other while unplaced and exchanged no momentum, and every shove on a linked cart was routed to the
+leading car — so vanilla's own shunt between two of them landed on the car doing the pushing, and a
+head driven into the car behind it stopped dead. A train that cannot be seated is loose carts and
+shunts as they do: `BUFFER` pairs push, and a shove is routed to the leading car only on a train the
+placer is holding.
+
+**Measured at the close of this work.** An eight-car furnace train round a forty-by-twenty circuit
+with four corners and a three-step hill, under both models: a lap and a half, spacing `worst=0.00` on
+the meter throughout, `resets=0`, no bail, no sever, the physical model cruising at 0.131 blocks a
+tick against the power curve's 0.134. The same eight cars plain at 2.0 blocks a tick
+(`max_minecart_speed` 40) through both corners without a sever. A four-car train shoved up the hill
+too slowly to crest stalls, flips its three trailing cars together, and rolls back at a 1.5 pitch.
+One observation rather than a fault: under the physical model the fast train came to rest astride the
+hill with one car over the crest and two still climbing, where its net grade was an eighth of a car —
+exactly the flat rolling term, which is sized at an eighth of the slope pull.
 
 ## How these stages get tested
 
