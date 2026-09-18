@@ -29,7 +29,6 @@ import net.minecraft.world.phys.Vec3;
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
 import club.rainbowkitty.minecarttweaks.init.MTTicketTypes;
-import club.rainbowkitty.minecarttweaks.rail.RailBrake;
 import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
@@ -250,8 +249,11 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
 
         var rules = serverLevel.getGameRules();
 
-        // Read before super.tick() moves the cart, so the movement path sees this tick's rail.
-        minecarttweaks$parked = RailBrake.brakes(this);
+        // Read before super.tick() moves the cart, so the movement path sees this tick's rail, and
+        // asked of the whole train: an engine run past the rail while a car behind it is still held
+        // drives against a brake that zeroes the train every tick, re-adding exactly one tick of
+        // impulse each time — a crawl that never stops and never gets anywhere.
+        minecarttweaks$parked = TrainCoupling.held(this);
 
         minecarttweaks$countStall();
 
