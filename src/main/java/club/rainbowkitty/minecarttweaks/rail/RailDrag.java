@@ -13,12 +13,15 @@ import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /**
- * The rolling resistance this mod lays on a cart, over whatever vanilla's own slowdown left of its
- * speed.
+ * The resistance this mod lays on a cart, over whatever vanilla's own slowdown left of its speed:
+ * rolling resistance for every tick it is on rails, and a bend charge for every kink in the track
+ * its train runs through. The two have opposite shapes on purpose, because they are different
+ * mechanisms — see {@link #slowed} and {@link #bend}.
  *
- * <p>A flat loss of speed per tick rather than another fraction of it. Vanilla's friction is purely
- * proportional, so it never reaches zero and a cart crawls on long after it looks stopped — worst
- * with someone aboard, where the fraction is a three-hundredth a tick. A constant loss reaches zero
+ * <p>Rolling resistance is a flat loss of speed per tick rather than another fraction of it.
+ * Vanilla's friction is purely proportional, so it never reaches zero and a cart crawls on long
+ * after it looks stopped — worst with someone aboard, where the fraction is a three-hundredth a
+ * tick. A constant loss reaches zero
  * in finite time by itself, and, being constant, cannot do what raising that fraction as the speed
  * fell used to: the product of two proportional terms has two equilibria on a slope, and a cart
  * starting from rest was caught at the slower of them, a little over one metre per second, with no
@@ -45,6 +48,12 @@ public final class RailDrag {
     // a thousand, and taken at face value most of it would stop a cart rolling downhill at all.
     private static final double ROLL_CEILING = 0.25;
 
+    // The fraction of its speed a train loses to a right angle of turn. Nothing like the physical
+    // figure — a wheelset slamming into a 45-degree kink loses the whole of its sideways component,
+    // about 29 percent, and vanilla track has no easements at all — so this is a gameplay number
+    // chosen to make a four-corner circuit cost about eight percent a lap.
+    private static final double BEND_LOSS = 0.02;
+
     // The fraction of its speed vanilla takes from an empty cart each tick, which is what
     // rail_drag_speed's own figure is read against (NewMinecartBehavior#getSlowdownFactor).
     private static final double EMPTY_DRAG = 0.025;
@@ -70,7 +79,8 @@ public final class RailDrag {
      *
      * <p>Resistance is not laid on while something is still driving the cart — an engine, or a
      * rider holding a direction, whose nudge is a thousandth of a block a tick and would be taken
-     * off again here before it could accumulate into anything to start on.
+     * off again here before it could accumulate into anything to start on. Bend loss is not behind
+     * that guard and does not come through here at all; see {@link #bend}.
      */
     public static Vec3 slowed(AbstractMinecart cart, Vec3 movement) {
         Vec3 slowed = shared(cart, movement);
@@ -179,5 +189,33 @@ public final class RailDrag {
         double until = serverLevel.getGameRules().get(MTGameRules.RAIL_DRAG_SPEED) / 20.0;
 
         return Math.min(until * EMPTY_DRAG, SLOPE_PULL * ROLL_CEILING);
+    }
+
+    /**
+     * Takes off {@code cart} the speed its train has just lost running through {@code turn} right
+     * angles of kink in its track. Charged where the turn is measured rather than through
+     * {@link #slowed}: vanilla asks for slowdown once per rail block a car crosses, which at speed
+     * is several times a tick, and an event billed per block would be billed several times over.
+     *
+     * <p>A fraction of the speed, not a flat loss, and the one place in this class where that is
+     * the right shape. Rolling resistance is a force and a flat loss is how a force reads; a kink
+     * is an impact, and what an impact costs is the sideways component of whatever speed arrived at
+     * it — so a fast train loses proportionally the same at a corner as a slow one, which is what
+     * makes the charge per corner rather than per tick spent in it. It also cannot stall anything:
+     * the loss goes to nothing as the speed does, so an engine or a rider always outruns it from
+     * rest, and bend loss needs none of the guards rolling resistance needs.
+     *
+     * <p>Not divided by the length of the train. Every car takes its own impact and every car
+     * carries its own mass, so a long train loses the same fraction to a corner as a single cart —
+     * the same reason nothing else here scales with length.
+     */
+    public static void bend(AbstractMinecart cart, double turn) {
+        if (turn <= 0.0) {
+            return;
+        }
+
+        double left = Math.max(0.0, 1.0 - BEND_LOSS * turn);
+
+        cart.setDeltaMovement(cart.getDeltaMovement().multiply(left, 1.0, left));
     }
 }

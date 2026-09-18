@@ -76,12 +76,13 @@ public final class TrainMeter {
         // Not round(0.0): a train with every car off the rails measures no pair at all, and a
         // spacing of 0.00 printed for that reads as a train holding its pitch perfectly.
         LOGGER.debug(
-                "train cars={} spacing measured={}/{} worst={} mean={} | speed={} rail={} | {}",
+                "train cars={} spacing measured={}/{} worst={} mean={} "
+                        + "| speed={} rail={} turn={} | {}",
                 cars.size(), gaps, cars.size() - 1,
                 gaps == 0 ? "n/a" : round(worstGap),
                 gaps == 0 ? "n/a" : round(totalGap / gaps),
                 round(TrainCoupling.drivenSpeed(cars.getFirst())), underLeader(level, train),
-                ribbonReport(train, pitch));
+                round(train.turn()), ribbonReport(train, pitch));
     }
 
     // What the leading car is standing on, so an acceleration reading says what was accelerating

@@ -97,6 +97,16 @@ public final class Train {
     // The interval the cars are being seated at, or zero before there is anything to ease from.
     private double pitch;
 
+    // Where this train's head was when it was last seated, and the ribbon arc frame that says what
+    // it means. A reset renumbers the arcs, so a position taken before one describes nothing after
+    // it and the turn between the two would be the whole ribbon.
+    private double headArc;
+    private int headArcAt = -1;
+
+    // How far the head turned reaching that arc, in right angles. Charged as it happens and kept
+    // only so the meter can report it.
+    private double turn;
+
     // How the last seating attempt went, so only a change of answer is worth reporting.
     private TrainPlacer.@Nullable Bail bail;
 
@@ -323,6 +333,34 @@ public final class Train {
     public void setRolling(long tick, double mean) {
         rolling = mean;
         rollingTick = tick;
+    }
+
+    /**
+     * Where this train's head sat when it was last seated, or null if that is not known against the
+     * ribbon's current arc frame — never seated, or seated before a reset renumbered the arcs.
+     */
+    public @Nullable Double headArc() {
+        return headArcAt == ribbon.resets() ? headArc : null;
+    }
+
+    /**
+     * Records where this train's head has been seated, or forgets it with null. Forgotten leaves
+     * the next seating nothing to measure a turn against, which is the right answer for a train
+     * that has been driven by vanilla in between: the ground it covered was not recorded from here.
+     */
+    public void setHeadArc(@Nullable Double arc) {
+        headArc = arc == null ? 0.0 : arc;
+        headArcAt = arc == null ? -1 : ribbon.resets();
+    }
+
+    /** How far this train's head turned on its last seating, in right angles. */
+    public double turn() {
+        return turn;
+    }
+
+    /** Records how far this train's head has just turned, in right angles. */
+    public void setTurn(double angles) {
+        turn = angles;
     }
 
     /**

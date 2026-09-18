@@ -50,6 +50,9 @@ public final class TrackRibbon {
     // rather than the same place a lap on. One node's worth of track, with slack.
     private static final double CONTINUITY = 1.5;
 
+    // The turn a right angle is worth, so that a bend is counted in right angles.
+    private static final double RIGHT_ANGLE = Math.PI / 2.0;
+
     // One rail block's worth of track, in ribbon order rather than in travel order. Arc is the
     // cumulative length at entry, so a node covers [arc, arc + span].
     private record Node(BlockPos block, Vec3 entry, Vec3 exit, Vec3 forward, double arc,
@@ -262,6 +265,41 @@ public final class TrackRibbon {
     }
 
     /**
+     * How far the track between arcs {@code from} and {@code to} changes direction, in right
+     * angles. A 90° corner is worth one, and the 45° kink onto a diagonal half of one.
+     *
+     * <p>The turn is in the joints between one block's chord and the next, not in the blocks
+     * themselves. A diagonal is built of corner rails and turns nowhere: entering one from the west
+     * and leaving north gives the same chord as entering the next from the south and leaving east,
+     * so the whole run is one straight line at 45°, which is what a cart riding the chords actually
+     * follows. Track off either recorded end counts for nothing.
+     */
+    public double turnBetween(double from, double to) {
+        double low = Math.min(from, to);
+        double high = Math.max(from, to);
+        double turn = 0.0;
+        Vec3 previous = null;
+
+        for (Node node : nodes) {
+            Vec3 chord = heading(node);
+
+            if (chord == null) {
+                continue;
+            }
+
+            // The joint sits at the node's own entry, so a node is charged for how it meets the one
+            // before it. Half-open at the low end: a joint already crossed is not crossed again.
+            if (previous != null && node.arc() > low && node.arc() <= high) {
+                turn += Math.acos(Math.clamp(previous.dot(chord), -1.0, 1.0)) / RIGHT_ANGLE;
+            }
+
+            previous = chord;
+        }
+
+        return turn;
+    }
+
+    /**
      * Where {@code car} sits along this ribbon, or null if the block it stands on is not one this
      * ribbon has recorded. Projected onto that block's chord, so it answers between nodes rather
      * than in whole blocks.
@@ -456,6 +494,14 @@ public final class TrackRibbon {
         return Math.clamp(
                 at.horizontal().subtract(node.entry().horizontal()).dot(chord) / (length * length),
                 0.0, 1.0);
+    }
+
+    // Which way a node's own chord runs, or null where its two edge midpoints coincide. Flat: a
+    // grade tilts a chord without turning it, and arc is a horizontal measure throughout.
+    private static @Nullable Vec3 heading(Node node) {
+        Vec3 chord = node.exit().subtract(node.entry()).horizontal();
+
+        return chord.lengthSqr() > EPSILON ? chord.normalize() : null;
     }
 
     // The node whose span covers arc, or null if arc is off either end.

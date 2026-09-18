@@ -17,6 +17,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
+import club.rainbowkitty.minecarttweaks.rail.RailDrag;
 import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
 import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 
@@ -207,11 +208,28 @@ public final class TrainPlacer {
             }
         }
 
+        // Charged here because this is the one place per tick that knows where the head was and
+        // where it now is. Every car crosses the same joints as the head, so billing the head once
+        // and not dividing by the length is the same total as billing each car as it passes —
+        // noticed as the train enters the corner rather than spread over the cars going through it.
+        Double was = train.headArc();
+        double turn = was == null ? 0.0 : ribbon.turnBetween(was, headArc);
+
+        train.setHeadArc(headArc);
+        train.setTurn(turn);
+        RailDrag.bend(leader, turn);
+
         return null;
     }
 
     // Drops every car's seat mark, so that none of this train reads as placed.
     private static void release(Train train) {
+        // Where the head was stops meaning anything once vanilla is driving it again: the ground it
+        // covers in between is not measured from here, and the next seating would charge the whole
+        // gap as one turn.
+        train.setHeadArc(null);
+        train.setTurn(0.0);
+
         for (AbstractMinecart car : train.cars()) {
             if (car instanceof AbstractMinecartExt ext) {
                 ext.minecarttweaks$setSeatedAt(0L);

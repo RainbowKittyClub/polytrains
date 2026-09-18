@@ -2,7 +2,6 @@ package club.rainbowkitty.minecarttweaks.mixin;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -39,8 +38,6 @@ import club.rainbowkitty.minecarttweaks.init.MTAttachments;
 import club.rainbowkitty.minecarttweaks.rail.RailBrake;
 import club.rainbowkitty.minecarttweaks.rail.RailContext;
 import club.rainbowkitty.minecarttweaks.rail.RailDrag;
-import club.rainbowkitty.minecarttweaks.rail.RailPath;
-import club.rainbowkitty.minecarttweaks.rail.RailPath.Bend;
 import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.train.TrainPlacer;
@@ -99,13 +96,6 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     private @Nullable RailContext minecarttweaks$rail;
     @Unique
     private long minecarttweaks$railTick;
-
-    // The rail last counted for bends, so a cart standing on one is only counted once, and how that
-    // rail ran — which the next one is compared against. Null before the first rail is counted.
-    @Unique
-    private @Nullable BlockPos minecarttweaks$lastRail;
-    @Unique
-    private @Nullable Bend minecarttweaks$lastBend;
 
     // Never called: present only to satisfy the compiler about the superclass this mixin extends.
     public AbstractMinecartMixin(EntityType<?> type, Level level) {
@@ -167,25 +157,6 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         // Linkable.unlink coming back round to mark the other side.
         Train.invalidate(self);
         Train.invalidate(neighbour);
-    }
-
-    @Override
-    public int minecarttweaks$bendsEntered() {
-        AbstractMinecart self = minecarttweaks$self();
-        BlockPos rail = self.getCurrentBlockPosOrRailBelow();
-
-        if (rail.equals(minecarttweaks$lastRail)) {
-            return 0;
-        }
-
-        Bend bend = RailPath.bend(self);
-        Bend last = Objects.requireNonNullElse(minecarttweaks$lastBend, Bend.NONE);
-        int bends = (bend.turn() != 0 && bend.turn() != -last.turn() ? 1 : 0)
-                + Math.abs(bend.grade() - last.grade());
-
-        minecarttweaks$lastRail = rail;
-        minecarttweaks$lastBend = bend;
-        return bends;
     }
 
     @Override

@@ -27,13 +27,6 @@ public interface AbstractMinecartExt extends Linkable {
     }
 
     /**
-     * How many bends this cart has moved onto since it was last asked: one for a corner, and one
-     * for each step the grade changes by, so a crest counts double. Consuming, so it must be called
-     * exactly once a tick. A corner that only reverses the one before it counts for nothing.
-     */
-    public int minecarttweaks$bendsEntered();
-
-    /**
      * The stretch of track this cart stands on, read once a tick and held. Collision asks this of
      * every candidate pair, so it must not walk the rails again on each call.
      */
