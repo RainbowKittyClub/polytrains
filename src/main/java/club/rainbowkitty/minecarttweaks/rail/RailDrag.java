@@ -103,7 +103,7 @@ public final class RailDrag {
      * because it cannot zero a speed and so cannot swallow a nudge. Bend loss is behind neither
      * guard and does not come through here at all; see {@link #bend}.
      */
-    static Vec3 resisted(AbstractMinecart cart, Vec3 movement) {
+    public static Vec3 resisted(AbstractMinecart cart, Vec3 movement) {
         double speed = movement.horizontalDistance();
 
         if (speed <= 0.0) {
@@ -152,7 +152,7 @@ public final class RailDrag {
      * <p>A train whose cars are all alike averages to exactly what its leader was already given,
      * whatever vanilla's figures happen to be, so this only ever moves a train of mixed cars.
      */
-    static Vec3 shared(AbstractMinecart cart, Vec3 applied) {
+    public static Vec3 shared(AbstractMinecart cart, Vec3 applied) {
         if (!cart.hasLink() || !MTGameRules.trainsEnabled(cart.level())) {
             return applied;
         }
@@ -246,10 +246,12 @@ public final class RailDrag {
         cart.setDeltaMovement(cart.getDeltaMovement().multiply(left, 1.0, left));
     }
 
-    // What the physical model charges for turn right angles of kink, named here so RailForces can
-    // pick between it and nothing at all without the figure leaving the class that reasons about
-    // it.
-    static double bendFraction(double turn) {
+    /**
+     * What the physical model charges for {@code turn} right angles of kink, as a fraction of the
+     * speed. Named here so {@link RailForces} can pick between it and nothing at all without the
+     * figure leaving the class that reasons about it.
+     */
+    public static double bendFraction(double turn) {
         return BEND_LOSS * turn;
     }
 }
