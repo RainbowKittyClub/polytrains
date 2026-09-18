@@ -384,6 +384,43 @@ halves exactly as vanilla does. The dead stop below `0.03` is not shared: a clam
 constraint, and a held car holds the train coupled to it. All-or-nothing on any car is both what the
 report asks for and what stops a train creeping off a rail it is only fractionally standing on.
 
+**Weighing both sides of a share cancels the mass out of it, and the first cut of S11 did.** The
+share of a track force a train is owed was written `Σ_matching mᵢ / Σ_all mᵢ`, which reads as a mass
+term and is not one: mass appears above and below the divide and goes away. Measured on the eight-
+block booster, one tick from 0.100 — a single empty cart gained `0.0565`, four empty cars gained
+`0.0565`, and four full chest carts, twelve units of mass, gained `0.0588`, the whole of the
+difference being drag rather than the boost. A loaded train accelerated exactly like an empty one
+under the model whose entire premise is that it should not.
+
+The correction is one character of algebra: **count on top, weigh underneath**, `count_matching /
+Σ_all mᵢ`. A rail pushes each car standing on it with the same fixed force whatever that car is
+carrying, so the numerator counts cars; the train's own mass is what that force has to move, so the
+denominator sums masses. Under `VANILLA` every car weighs exactly one, so `count/Σmᵢ` *is* `k/n` and
+the default is untouched — which is also why the fault survived the first round of measurements, all
+of which used empty carts.
+
+**The same expression then settles the brake, which is why the two are one finding.** Vanilla states
+the brake as a fraction and the boost as an addition, and a fraction spread along a train does not
+conserve what it takes: `(1−x)ⁿ > 1−nx`, so a long train sheds strictly less than a short one over
+the same rail. Measured with one brake rail, entering at `0.4`, against a no-brake control where
+every train coasted to the same stopping point to fourteen digits — the brake cost a single cart
+`8.74` blocks of coast, a four-car train `7.08`, an eight-car train `5.55`. The brake was also
+entirely mass-blind: four empty cars and four full chest carts both left `0.4` at `0.194` and
+`0.198`, a difference that is again only drag.
+
+So the brake takes the same force-over-mass shape under the physical model, and keeps vanilla's
+fraction under the default — `RailForces.halted`, the second method the models answer differently.
+Both of the properties that wants are real and both were measured: a loaded four-car train now sheds
+`0.036` a tick where an empty one sheds `0.109`, three times harder to stop; and length still tells,
+an eight-car train overrunning one brake rail by `2.78` blocks against a two-car train's `0.51`.
+
+That length dependence surviving is worth saying, because the conservation argument says it should
+not. It is second order and it is a feedback: braking drops the speed, a slower train spends longer
+over the rail, and longer over the rail is more braking still. A short train enters that loop harder.
+The same loop runs backwards under the boost, where a train that accelerates gently crosses a booster
+more slowly and collects marginally more — the three percent by which a four-car train's peak fell
+short of a single cart's.
+
 ## How these stages get tested
 
 On this mod's dev server, `scripts/devserver.sh rkc/mods/minecart-tweaks restart`, port 25603,
@@ -1179,17 +1216,27 @@ effect before the next.
 `calculateBoostTrackSpeed`, each answering for a train and declining for an unlinked cart so the lone
 case stays bit-exact.
 
-`TrainCoupling.boostPull` walks the cars, sums `cartMass` over those standing on a lit powered rail,
-and lays `Σ_lit mᵢ / Σmᵢ` of vanilla's own figure along `RailPath.crossing(...).forward()` — the
-direction `slopePull` already uses, because a stopped train has no movement to read a heading off.
-Its standing branch asks `RailForces.launch` for the magnitude instead, which is the one new method
-the model gains: `VANILLA` answers `powered > 0 ? kick : 0`, `PHYSICAL` answers
-`kick × powered / mass`.
+One share serves both, `TrainCoupling.railShare`: the count of cars standing on rails that answer a
+predicate, over what the whole train weighs. Counted on top and weighed underneath — see the finding
+above for why weighing both sides is the same as having no mass term at all.
 
-`TrainCoupling.braked` is the same walk against `RailBrake.brakes`, returning the fraction of its
-speed the train keeps. `RailBrake` gains `holds`, the train-aware sibling of `brakes`, and
-`hauled`'s parking-brake check and `release` both move onto it — so a brake under any car suppresses
-the engine and holds the train, rather than only one under the leader.
+`TrainCoupling.boostPull` takes that share against `RailBrake.boosts` and adds `share × 0.06` to the
+train's own direction of travel, which is the whole of vanilla's rolling branch: it ignores which way
+the rail points and merely speeds the cart up. Its standing branch cannot, so it reads
+`getRedstoneDirection` at each lit car and carries the answer up to the driven one through
+`alongTrack` — two cars round a bend do not agree on a direction, and the lit rail need not be
+anywhere near the car vanilla drives. The magnitude there comes from `RailForces.launch`.
+
+`TrainCoupling.braked` is the same share against `RailBrake.brakes`, handed to `RailForces.halted`.
+The dead stop under vanilla's `0.03` floor stays outside the model and all-or-nothing on any car: a
+clamped shoe is a constraint, not a force. `TrainCoupling.held` is the train-aware sibling of
+`RailBrake.brakes`, and `hauled`'s parking-brake check and `RailBrake.release` both move onto it, so
+a brake under any car suppresses the engine and holds the train rather than only one under the head.
+
+Two methods the models answer differently, and both are quantities vanilla states in units no mass
+divides: `launch(kick, share)` for the assigned standing speed, `halted(movement, share)` for the
+multiplied fraction. `PHYSICAL`'s brake is `BRAKE_FORCE = 14 × SLOPE_PULL`, sized so a lone empty
+cart at the default ceiling stops in the `0.73` blocks nearest vanilla's own `0.75`.
 
 **Done when.**
 
@@ -1202,6 +1249,11 @@ the engine and holds the train, rather than only one under the leader.
 - With `realistic_physics` off, one lit rail under a stopped four-car train launches it at 0.2; with
   it on, at 0.05, and a loaded train slower still.
 - A lone cart reads identically on all four counts under both models.
+- A four-car train of full chest carts accelerates at a third of an empty one's rate on the same
+  booster, and sheds a third as much on the same brake. **Under the rule only** — without it a
+  loaded train reads exactly as an empty one, which is what the default is for.
+- A longer train still takes longer to stop under either model, and `VANILLA` is unchanged to the
+  digit by the share being recounted, every car weighing one there.
 
 ## Open decisions
 
@@ -1257,6 +1309,19 @@ practical answer to "why would I want this?" that this work has produced.
 with what becomes the opt-in model, and after this work the default is the one almost every world
 runs and the one no stage of that document ever tested. Either the default gets its own pass over
 the standing test track, or this document ends with the better-tested half switched off.
+
+**Whether a lone cart should feel the physical model's rail forces.** `boostPull` and `braked`
+decline for an unlinked cart, so vanilla's own `+0.06` and `× 0.5` reach it untouched under both
+models. Under the default that is exactly right and is the point. Under the rule it leaves a lone
+loaded chest cart coasting three times as far as an empty one — mass reaches its drag, its engine and
+its gravity — while accelerating and braking precisely like it, which is not a model anyone would
+have designed on purpose. The discontinuity is sharp rather than gradual: one loaded chest cart gains
+`0.06` a tick on a booster, and the moment a second is coupled to it the pair gains `0.02`.
+
+The fix is small and cannot touch the default: let the share answer for a single car as `1 / cartMass`,
+which under `VANILLA` is `1 / 1` and changes nothing at all. Not taken with S11 because lone carts are
+the overwhelming majority of what runs on a real railway, which is a far wider blast radius than
+trains, and it deserves its own round rather than riding along with one aimed at coupling.
 
 ## Reference: the two models, computed
 
