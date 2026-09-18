@@ -170,6 +170,30 @@ growing the ribbon needs a cardinal to offset a block by, but nothing else reads
 reaches the corner, each in turn, where before a placed car jumped between cardinals. Flips stay
 `0000` across traverses at 0.4 through 2.0 blocks a tick.
 
+**A shove is a vector in the world, and it was being carried between two cars that need not point
+the same way.** Reported as a train being hard to push round a U-turn, and the last of the four
+faults that report turned out to hold. `EntityMixin$shoveTrain` lays the push on the car vanilla
+drives rather than the car leaned on, for the reason that comment gives — a placed car's movement is
+written over before it moves anything — but it carried the raw `(xa, ya, za)` across. Those two cars
+point the same way only while the track between them is straight. Round a bend they differ by the
+bend; on a U-turn they run flat opposite.
+
+Worked out on the rig's own seated positions, a train parked straddling the turn with car4 on the
+outbound leg and car1 leading on the return leg: car4's tangent runs west, car1's runs east. Pushing
+car4 **west**, which is the train's forward, reached car1 as `(-0.05, 0, 0)` — westward, back into
+the turn. The player was braking the train with the push meant to move it, and the harder they
+pushed the harder they braked. The tangent signs are not assumed: leg A's cars read yaw 0 and leg
+B's read 180, which is west and east.
+
+`TrainCoupling.alongTrack` converts it instead — `push · tangentHere` for how much of the shove is
+along the rails at the car touched, then that scalar laid back down along the tangent at the car
+that can act on it. The same numbers then give `(+0.05, 0, 0)` and the train goes out along the
+return leg. The component across the rails is dropped rather than carried, which costs nothing: a
+cart cannot move that way and vanilla discards it at the rail a moment later.
+
+Confirmed in play rather than headless. A mob driven into a cart never triggered
+`getPushableEntities`, so there was no rig for it; a player walking into a cart is the whole test.
+
 ## How these stages get tested
 
 On this mod's own dev server, `scripts/devserver.sh rkc/mods/minecart-tweaks restart`, against a world
