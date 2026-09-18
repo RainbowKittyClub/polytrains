@@ -513,7 +513,7 @@ whose movement the placer overwrites.
 override reaches neither vanilla's base slowdown nor the drive hooked to it, so it needed the same
 second hook the friction did, and the case is narrow enough that it may never have been run.
 
-## S8 — Bend loss re-expressed — **planned**
+## S8 — Bend loss re-expressed — **done**
 
 **Build.** Bend loss is the only deceleration with nowhere to go: it scales a shared scalar velocity
 that no longer exists and lives inside the function S6 deletes. Re-express it as drag on the head
@@ -529,7 +529,89 @@ reader honours it or the counter is replaced by a ribbon query and deleted.
 train over an equal length of straight, and a single cart's cornering is unchanged from vanilla.
 Numbers recorded, since this is the one stage with no prior art to match.
 
+### As built
+
+**The counter is gone, not honoured.** `bendsEntered()` could not be rescued as a contract because
+the contract was the fault: a consuming counter is only correct with exactly one reader calling
+exactly once a tick, and the thing that wants bend loss is friction, which vanilla asks for once per
+rail block the leading car crosses — several times a tick at speed. Its ext method, its two
+`@Unique` fields and its use of `RailPath.bend` all went; `RailPath.bend` itself survives, since
+`slopeShare` reads grades through it.
+
+**A diagonal does not turn, and the first attempt charged it a bend per block.** The test asked
+whether a rail *block* was a corner piece, comparing its chord against `forward`, the axis the track
+leaves by. Every block of a diagonal is a corner piece — and their chords are all parallel: entering
+one from the west and leaving north gives `(0.5, −0.5)`, and entering the next from the south and
+leaving east gives `(0.5, −0.5)` again. The polyline is a dead straight line at 45°, which is what a
+cart riding the chords actually follows; it is `forward` that alternates north and east, not the
+track that turns.
+
+So curvature is in the **joints between chords**, not inside a node, and `TrackRibbon.turnBetween`
+measures the angle at each joint in right angles. That reproduces the whole of the intended
+behaviour with nothing special-cased: a 90° corner is two 45° kinks and worth exactly one bend,
+entering a diagonal is one 45° kink and worth half of one, and the interior of a diagonal is worth
+nothing. `direction` returns only the four flat unit axes, so the angles are exactly 0°, 45°, 90°,
+135° or 180° and never a floating-point approximation of one.
+
+**Bend loss is a fraction of speed, and rolling resistance is not, because they are different
+mechanisms.** S7 established that rolling resistance is a constant force and so must be a flat loss
+of speed. That lesson does not transfer: a kink is not a force, it is an impact, and what an impact
+costs is the sideways component of whatever speed arrived at it — `1 − cos θ` of it, so proportional
+to the speed. Vanilla track has no easements at all, which makes the kink model the exact one rather
+than an approximation.
+
+Three things fall out of that shape, and they are why the charge is per corner rather than per tick
+spent in one. A fast train loses the same *fraction* at a corner as a slow one, so a corner costs
+what a corner costs regardless of approach speed. The loss goes to nothing as the speed does, so it
+cannot stall anything. And **it therefore needs none of the guards rolling resistance needs**: bend
+loss applies to a furnace train and to a train being pushed by a rider, because an engine's impulse
+always outruns a loss that vanishes with the speed it is charged against.
+
+**Charged in the placer, once, on the car vanilla drives.** The placer is the one thing that runs
+exactly once per tick per train and knows both where the head was and where it now is. Friction was
+the wrong home for the opposite reason to the one that killed the counter: `applyNaturalSlowdown`
+runs once per rail block crossed, so an event billed there is billed several times over at speed.
+`Train` holds the head's last arc keyed to `ribbon.resets()`, since a reset renumbers the arcs and
+the turn between two frames would be the whole ribbon; a bail forgets it, so track vanilla drove the
+train over in between is never charged as one turn.
+
+**Not divided by the length of the train.** Every car takes its own impact at a joint and every car
+carries its own mass, so a long train loses the same fraction to a corner as a single cart — the
+same arithmetic that makes gravity and rolling resistance length-independent. Which means the head
+can be billed once for what all *n* cars will cross, rather than each car billed as it passes: the
+total is identical and the train notices the corner on entering it.
+
+**A single cart is untouched with no check for it.** A train of one is never seated — `attempt`
+refuses below two cars — so nothing charges it.
+
+**Numbers.** `BEND_LOSS` is 0.02: the fraction of its speed a train loses per right angle of turn.
+Nothing like the physical figure, which is 29% per 45° kink and would halve a train at every corner;
+it is a gameplay number chosen so that a four-corner circuit costs about 8% a lap.
+
+| Track | Turn charged | Speed kept |
+|---|---|---|
+| Straight, or the interior of a diagonal | 0.00 | 100% |
+| Entering or leaving a diagonal | 0.50 | 99% |
+| One 90° corner | 1.00 | 98% |
+| Four-corner circuit, per lap | 4.00 | 92% |
+| Ten laps of that circuit | 40.00 | 45% |
+
+A single engine hauling ten cars drives at 0.00195 blocks per tick and a 90° corner at 8 m/s costs
+it 0.008, so it needs about four ticks and 1.6 blocks to make a corner back. That is the mass effect
+falling out of the model rather than being written into it: corners are free to a short train and a
+real budget to a long one, and no train can ever be held at a standstill by them.
+
 ## Open decisions
+
+**Whether corners should fight an engine.** Settled in S8: they do, and the guard that would have
+stopped them turned out to be unnecessary rather than worth arguing over. Bend loss was first built
+as a flat loss like rolling resistance, which had to sit behind `slowed`'s `underPower` guard — a
+single engine's share of ten cars is 0.00195 a tick and so was a full bend charge, so such a train
+could not have started on a corner at all. Making the loss proportional to speed, which is what a
+kink impact actually costs, removes the conflict outright: the charge vanishes with the speed it is
+charged against, so an engine or a rider always outruns it from rest and no guard is needed. The
+mechanic that looked like it needed a drive curve needed the right force law instead.
+
 
 **Whether `driveHeading` is really unnecessary.** Settled by building S7: it is necessary, and the
 reasoning that said otherwise had the wrong picture of the head. "The head always has vanilla's own
@@ -577,14 +659,22 @@ downhill no faster than a single cart.
 The rule keeps its name, default and meaning. It reads as the speed at which this flat loss matches
 vanilla's proportional drag on an empty cart, so below that speed the flat term is the larger of the
 two — which is what "the speed below which rolling friction is laid on harder" always said. It is
-capped at a quarter of the pull gravity gives on a slope, because the rule's range runs to a thousand
-and most of that, taken at face value, would exceed gravity and stop a cart rolling downhill at all.
+capped against the pull gravity gives on a slope, because the rule's range runs to a thousand and
+most of that, taken at face value, would exceed gravity and stop a cart rolling downhill at all.
 
 Measured against the old model at the same rule value of 3: downhill from rest 0.84 blocks per second
-becomes 4.53, a stop from one metre per second takes about a second either way, and a *ridden* cart's
-stop from that speed falls from most of a minute to a second and a quarter. The cap binds for every
-value above two, so a saved world keeps its 3 and needs no migration; 1 is the one gentler setting,
-worth 5.09 downhill, and 0 still means vanilla's friction alone and a cart that never quite stops.
+becomes 4.53 at a cap of a quarter of that pull, a stop from one metre per second takes about a
+second either way, and a *ridden* cart's stop from that speed falls from most of a minute to a second
+and a quarter.
+
+**Halved again afterwards, to an eighth**, on watching trains run with it: the quarter left carts
+stopping sooner than they should for the distances the test track covers. The cap is the whole of
+what changed, so the reasoning above stands and only the figures move — downhill from rest goes to
+5.31 blocks per second against the 6.09 no resistance at all would give, and a ridden train coasting
+from the 8 m/s ceiling runs 46 blocks where it ran 29. The cost is the rule's gradation: an eighth of
+the pull is below what the rule's own conversion yields at 1, so the cap binds at every value it can
+be set to and the rule now reads as on or off. Recovering the middle settings means changing what the
+rule is read against, which is a different decision from how strong the friction is.
 
 **What the car pitch should be.** Settled at 1.5, by watching a train on the test track after S5.
 The 2.0 it had was tuned as a correction target — the value a spacing error was measured against —
