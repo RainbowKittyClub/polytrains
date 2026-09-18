@@ -2,6 +2,7 @@ package club.rainbowkitty.minecarttweaks.rail;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import com.mojang.logging.LogUtils;
@@ -39,6 +40,10 @@ public final class TrackRibbon {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
+    // Hands every arc numbering, on every ribbon, a number of its own. Atomic because a ribbon
+    // is built on whichever thread a cart ticks on.
+    private static final AtomicInteger FRAMES = new AtomicInteger();
+
     // A ribbon only has to span the train plus room to grow at the leading end. A cap that a
     // correct trim never reaches, so a trim that stops being called leaks a bounded amount.
     private static final int MAX_NODES = 256;
@@ -71,6 +76,11 @@ public final class TrackRibbon {
     private int resets;
     private int revisits;
 
+    // Which arc numbering this ribbon is on. Handed out from a counter shared by every ribbon,
+    // so state a car holds against one numbering is never mistaken for state against another —
+    // which the reset count alone cannot manage, two ribbons on their first both answering it.
+    private int frame = FRAMES.incrementAndGet();
+
     /** Whether this ribbon has any track recorded yet. */
     public boolean isEmpty() {
         return nodes.isEmpty();
@@ -95,6 +105,15 @@ public final class TrackRibbon {
     /** How many times this ribbon has been thrown away and restarted from one block. */
     public int resets() {
         return resets;
+    }
+
+    /**
+     * Which arc numbering this ribbon is on, as a number no other ribbon's numbering shares.
+     * Anything remembered in terms of an arc — how far along it something sits, or which way
+     * along it something points — is only good for the numbering it was taken against.
+     */
+    public int frame() {
+        return frame;
     }
 
     /** How many times a car has reported track this ribbon already holds, away from both ends. */
@@ -146,6 +165,7 @@ public final class TrackRibbon {
             }
 
             resets++;
+            frame = FRAMES.incrementAndGet();
             LOGGER.debug("ribbon reset at {}: unknown to its {} nodes, running {} to {}",
                     pos, nodes.size(), nodes.getFirst().block(), nodes.getLast().block());
             nodes.clear();

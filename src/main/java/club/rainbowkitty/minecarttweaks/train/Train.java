@@ -89,16 +89,9 @@ public final class Train {
     // A reversal changes which end leads; it does not change which end is where.
     private int order;
 
-    // The ribbon reset count this order was settled against. A reset renumbers the arcs, so an
+    // The ribbon arc frame this order was settled against. A reset renumbers the arcs, so an
     // order taken before one says nothing about the frame that came after it.
     private int orderAt = -1;
-
-    // Which way along its ribbon this train was last laid, and the arc frame that says what that
-    // means. A reset re-records the ribbon along the leading car's travel, so the sign before one
-    // describes nothing after it.
-    private int facing;
-    // The ribbon reset count when facing was last recorded.
-    private int facingAt = -1;
 
     // This train's mean rolling friction, held for the tick that worked it out. Read once for every
     // rail block the leading car crosses, and working it out walks every car's inventory.
@@ -119,7 +112,7 @@ public final class Train {
     // it means. A reset renumbers the arcs, so a position taken before one describes nothing after
     // it and the turn between the two would be the whole ribbon.
     private double headArc;
-    // The ribbon reset count when headArc was last recorded.
+    // The ribbon arc frame headArc was last recorded against.
     private int headArcAt = -1;
 
     // How far the head turned reaching that arc, in right angles. Charged as it happens and kept
@@ -424,7 +417,7 @@ public final class Train {
      * ribbon's current arc frame — never seated, or seated before a reset renumbered the arcs.
      */
     public @Nullable Double headArc() {
-        return headArcAt == ribbon.resets() ? headArc : null;
+        return headArcAt == ribbon.frame() ? headArc : null;
     }
 
     /**
@@ -434,7 +427,7 @@ public final class Train {
      */
     public void setHeadArc(@Nullable Double arc) {
         headArc = arc == null ? 0.0 : arc;
-        headArcAt = arc == null ? -1 : ribbon.resets();
+        headArcAt = arc == null ? -1 : ribbon.frame();
     }
 
     /** How far this train's head turned on its last seating, in right angles. */
@@ -452,7 +445,7 @@ public final class Train {
      * zero if that has not been settled against the ribbon's current numbering.
      */
     public int order() {
-        return ribbon.resets() == orderAt ? order : 0;
+        return ribbon.frame() == orderAt ? order : 0;
     }
 
     /** Settles which way round this train lies, for as long as the ribbon keeps its arc frame. */
@@ -462,30 +455,7 @@ public final class Train {
         }
 
         order = sign;
-        orderAt = ribbon.resets();
-    }
-
-    /**
-     * Whether this train has turned round along its ribbon since it was last laid, recording
-     * {@code sign} as the way it runs now. False for the first laying in an arc frame, which is a
-     * train being placed rather than one reversing. Only ever handed a sign read off the leading
-     * car's own movement: an end inferred for a standing train is not a direction it ran in.
-     *
-     * <p>This is the whole of when a car flips. Which end a cart leads with is a fact about the
-     * train's direction along the track, not about where the cart points in the world: taking a
-     * U-turn swings a car's heading through 180 degrees without reversing it, and any test that
-     * compares one heading against the last cannot tell those apart. Vanilla's own test can afford
-     * to, because its stepper turns a cart a few degrees at a time and only a real reversal ever
-     * lands in its 175-to-185 window; a placed car crosses whole blocks between ticks.
-     */
-    public boolean reversed(int sign) {
-        boolean known = facingAt == ribbon.resets() && facing != 0;
-        boolean turned = known && sign != facing;
-
-        facing = sign;
-        facingAt = ribbon.resets();
-
-        return turned;
+        orderAt = ribbon.frame();
     }
 
     /** The cars of this train, head first, or in no particular order when it closes on itself. */

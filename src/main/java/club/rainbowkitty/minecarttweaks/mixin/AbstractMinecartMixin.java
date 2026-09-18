@@ -91,6 +91,13 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     @Unique
     private long minecarttweaks$seatedTick;
 
+    // Which way along its train's ribbon this cart's nose points, and the arc numbering that was
+    // taken against. A frame is never zero, so a cart never asked reads as unanswered.
+    @Unique
+    private int minecarttweaks$nose;
+    @Unique
+    private int minecarttweaks$noseFrame;
+
     // This cart's stretch of track, and the tick it was read on. The tick only matters once the
     // context is non-null, so its own zero never reads as fresh.
     @Unique
@@ -195,6 +202,17 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     @Override
     public double minecarttweaks$seatArc() {
         return minecarttweaks$seatedArc;
+    }
+
+    @Override
+    public int minecarttweaks$nose(int frame) {
+        return minecarttweaks$noseFrame == frame ? minecarttweaks$nose : 0;
+    }
+
+    @Override
+    public void minecarttweaks$setNose(int sign, int frame) {
+        minecarttweaks$nose = sign;
+        minecarttweaks$noseFrame = frame;
     }
 
     @Override

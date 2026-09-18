@@ -79,6 +79,19 @@ public interface AbstractMinecartExt extends Linkable {
     /** Records the arc this cart has just been seated at, for the next sweep to start from. */
     public void minecarttweaks$setSeatArc(double arc);
 
+    /**
+     * Which way along the arc numbering {@code frame} this cart's nose points — +1 towards the
+     * higher arc — or zero if it has not been taken against that numbering.
+     *
+     * <p>Which end a cart leads with is a fact about the cart: it cannot turn round on a rail, and
+     * two cars of one train may honestly face opposite ways. So it is remembered rather than worked
+     * out again from which way the train happens to be going.
+     */
+    public int minecarttweaks$nose(int frame);
+
+    /** Records which way along the arc numbering {@code frame} this cart's nose points. */
+    public void minecarttweaks$setNose(int sign, int frame);
+
     /** The game time this cart's tracker withholds position updates until, or zero for none. */
     public long minecarttweaks$resyncAt();
 
