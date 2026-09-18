@@ -42,11 +42,12 @@ public final class RailDrag {
     private static final double SLOPE_PULL = 0.0078125;
 
     // Of the slope pull, the most rolling resistance is ever allowed to be. Gravity has to win on a
-    // slope by a clear margin or a cart barely rolls down one: at a quarter an empty cart settles
-    // at about 4.5 blocks a second against the 6.1 it would reach with no resistance at all. The
-    // cap binds for every rail_drag_speed above two, which is the point — the rule's range runs to
-    // a thousand, and taken at face value most of it would stop a cart rolling downhill at all.
-    private static final double ROLL_CEILING = 0.25;
+    // slope by a clear margin or a cart barely rolls down one: at an eighth an empty cart settles
+    // at about 5.3 blocks a second against the 6.1 it would reach with no resistance at all. The
+    // cap binds at every rail_drag_speed the rule can be set to, which is the point — the rule's
+    // range runs to a thousand, and taken at face value most of it would stop a cart rolling
+    // downhill at all. The cost of that is that the rule now reads as on or off.
+    private static final double ROLL_CEILING = 0.125;
 
     // The fraction of its speed a train loses to a right angle of turn. Nothing like the physical
     // figure — a wheelset slamming into a 45-degree kink loses the whole of its sideways component,

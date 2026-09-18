@@ -95,11 +95,10 @@ public final class MTGameRules {
      *
      * <p>Read as the speed at which this mod's flat rolling resistance matches that fraction on an
      * empty cart: below it the flat term is the larger of the two, and being flat it brings a cart
-     * to a dead stop rather than forever halving what is left. {@code RailDrag} caps it at a
-     * quarter of the pull gravity gives on a slope, so in practice this is a three-way choice —
-     * zero for vanilla's friction alone, one for a gentler stop, and anything above two for the
-     * firmest the cap allows. Without that cap most of this range would stop a cart rolling
-     * downhill at all.
+     * to a dead stop rather than forever halving what is left. {@code RailDrag} caps it at an
+     * eighth of the pull gravity gives on a slope, and that cap binds at every value above zero, so
+     * in practice this reads as on or off — zero for vanilla's friction alone, anything else for
+     * the flat stop. Without the cap most of this range would stop a cart rolling downhill at all.
      */
     public static final GameRule<Integer> RAIL_DRAG_SPEED =
             registerInteger("rail_drag_speed", 3, 0, MAX_SPEED);
