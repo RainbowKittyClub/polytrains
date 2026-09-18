@@ -73,6 +73,53 @@ train backwards rather than producing a small error. `Train.order` is settled on
 frame and keyed to `ribbon.resets()`, since a reset renumbers the arcs and an order taken before one
 describes nothing after it.
 
+**Both ends of a train's geometry were read through space, and space stops describing a railway the
+moment the track doubles back.** Reported from play as a train being hard to push round a tight
+U-turn, with the head car ending up turned around and the chain drawn across itself. Two independent
+faults, each a chord standing in for an arc.
+
+*The leading end was read off the chord between two cars.* `Train.decideLeader` took
+`head.position() - cars.get(1).position()` and dotted the head's heading against it. On a U-turn tight
+enough that the two legs are a couple of blocks apart, the car behind sits level with or ahead of the
+one in front, so that chord is anti-parallel to the track and the sign inverts — the leader flips to
+the wrong end, and with it which end anchors the layout, which way the cars are aimed and where a
+shove lands. `LEADER_HOLD` and `LEADER_FLIP_TICKS` only delay it, which is why it read as
+intermittent. Now measured along the ribbon instead: which way the head lies is `headArc - nextArc`,
+which way the train runs is the heading dotted with the tangent at that arc, and the leading end is
+whichever way those two agree. Both are arc, so track that doubles back says nothing about either.
+
+*Rotation was read off the jump between seats.* `TrainPlacer.aim` took `car.position() - was`, which
+for a placed car is a teleport rather than a journey. Seat-to-seat displacement equals travel only
+where the track is locally straight; round a tight turn the two seats are neighbours in space while
+being a turn apart along the track, so the jump points nowhere the car is going and clears
+`REVERSAL_DOT`, toggling `isFlipped` and spinning the cart. `place` already held the right vector one
+line above — `seat.tangent().scale(facing)`, the same one the car's movement is laid along — and
+`aim` now takes it. This is not a return to `adjustToRails`, which was reverted for latching at
+transitions and picking between exactly ±45 degrees on a hill; the ribbon tangent does neither. The
+climb still comes from the ground covered, since there is no horizontal reading to take it from, and
+a car placed where it already stood keeps the angle it has.
+
+**A heading inferred from which end leads is not one to turn cars by.** `attempt` fell back to
+`facing = lead == 0 ? order : -order` whenever the train was too slow to read a heading, and used it
+for both the cars' movement and their rotation. For movement that is harmless — at that speed it
+scales the zero vector — but for rotation it lets an arbitrary choice decide which way a parked train
+faces, and after a link change the choice really is arbitrary: a link marks the train stale, so a
+relink rebuilds it with no held leader and `decideLeader` answers with whichever end the link graph
+put first. The two are now kept apart. The movement still goes along the inferred end; the rotation
+is declined, and a train that cannot be read is left pointing where it already points.
+
+That split also corrects what the grade fix claimed. Its comment said either end answers "because the
+orientation is read off the cars themselves" — true of `lieOf`, which reads arcs and is genuinely
+leader-independent, and false of `facing`, which is not.
+
+**Measured** on a U-turn with its legs two blocks apart — `south_east`, `north_south`, `north_east`
+— taking a four-car train through at the 0.4 blocks a tick `max_minecart_speed` allows. Every car's
+yaw now tracks its own place on the track, 0 → 45 → 90 → 135 → 180, with cars on both legs at once
+and no snap at any point; spacing returns to exactly 1.5 on the far leg. A parked train holds its
+rotation and its seats indefinitely, and pushed either way all three cars toggle `FlippedRotation`
+together — `1b 1b 1b` one way, `0b 0b 0b` the other — which is the reversal working as a flip rather
+than a half turn.
+
 ## How these stages get tested
 
 On this mod's own dev server, `scripts/devserver.sh rkc/mods/minecart-tweaks restart`, against a world
