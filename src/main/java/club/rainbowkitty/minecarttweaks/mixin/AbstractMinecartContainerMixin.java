@@ -23,17 +23,6 @@ import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 @Mixin(AbstractMinecartContainer.class)
 public abstract class AbstractMinecartContainerMixin {
 
-    // The train's drive, for the same reason: a chest cart at the head of a furnace train is the
-    // only car that can carry it, and the override above is the only slowdown it ever reaches.
-    @Inject(method = "applyNaturalSlowdown", at = @At("HEAD"), cancellable = true)
-    private void minecarttweaks$haulTrain(Vec3 movement, CallbackInfoReturnable<Vec3> cir) {
-        Vec3 hauled = TrainCoupling.hauled((AbstractMinecart) (Object) this, movement);
-
-        if (hauled != null) {
-            cir.setReturnValue(hauled);
-        }
-    }
-
     // The same retarding law the other carts take, asked for here because the override above does
     // not reach it. Which law that is belongs to the model: the vanilla one leaves vanilla's own
     // figure alone, so an emptier container cart goes on rolling better, and the physical one
@@ -42,7 +31,10 @@ public abstract class AbstractMinecartContainerMixin {
     private void minecarttweaks$railFriction(Vec3 movement, CallbackInfoReturnable<Vec3> cir) {
         AbstractMinecart self = (AbstractMinecart) (Object) this;
 
-        cir.setReturnValue(
-                RailForces.of(self.level()).retarded(self, movement, cir.getReturnValue()));
+        // The train's drive rides along here too, for the same reason: a chest cart at the head of
+        // a furnace train is the only car that can carry it, and this override is the only
+        // slowdown it ever reaches. Resistance first, then the drive.
+        cir.setReturnValue(TrainCoupling.hauled(self,
+                RailForces.of(self.level()).retarded(self, movement, cir.getReturnValue())));
     }
 }

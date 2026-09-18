@@ -281,18 +281,6 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         }
     }
 
-    // The leading car takes its train's drive when it is not itself an engine — which is most
-    // trains, since the engine is as often behind. Every other car is placed, so this is the only
-    // car that can carry it. A container cart asks for the same thing from its own override.
-    @Inject(method = "applyNaturalSlowdown", at = @At("HEAD"), cancellable = true)
-    private void minecarttweaks$haulTrain(Vec3 movement, CallbackInfoReturnable<Vec3> cir) {
-        Vec3 hauled = TrainCoupling.hauled(minecarttweaks$self(), movement);
-
-        if (hauled != null) {
-            cir.setReturnValue(hauled);
-        }
-    }
-
     @Override
     public double minecarttweaks$ownMaxSpeed(ServerLevel level) {
         return getMaxSpeed(level);
@@ -331,7 +319,14 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
             return;
         }
 
-        cir.setReturnValue(RailForces.of(level()).retarded(self, movement, cir.getReturnValue()));
+        // The train's drive rides along, taken by the leading car when it is not itself an engine
+        // — which is most trains, since the engine is as often behind. Every other car is placed,
+        // so this is the only car that can carry it, and a container cart asks for itself.
+        //
+        // Resistance first and the drive on top. The drive used to be applied at HEAD and cancel,
+        // which skipped every slowdown there is, so a powered train had none at all.
+        cir.setReturnValue(TrainCoupling.hauled(
+                self, RailForces.of(level()).retarded(self, movement, cir.getReturnValue())));
     }
 
     // This is the hook the whole resolver hangs off. Vanilla hands every pushable entity to

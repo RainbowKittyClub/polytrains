@@ -303,6 +303,17 @@ public final class Train {
         return pitch;
     }
 
+    /** Whether any car of this train is driving it, whatever that car is currently putting out. */
+    public boolean driving() {
+        for (AbstractMinecart car : cars) {
+            if (car.minecarttweaks$driving()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * The acceleration this train's engines give it: their summed output over what the train
      * weighs, which is force over mass and nothing else.

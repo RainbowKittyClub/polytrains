@@ -147,48 +147,60 @@ public final class TrainCoupling {
     }
 
     /**
-     * The train's drive laid on {@code movement}, or null where this car is owed none of it.
+     * The train's drive laid on {@code resisted}, or {@code resisted} unchanged where this car is
+     * owed none of it.
      *
      * <p>Only the leading car reaches vanilla's slowdown at all, and the leading car is not
      * necessarily an engine: a plain cart at the front of a train with a furnace cart behind it has
      * no impulse of its own to be driven by. So the train's whole output is applied here, to the
      * one car carrying it, and a car that is its own engine is left to the furnace's own path.
+     *
+     * <p>Takes the movement the retarding law has already been applied to, and adds to it. It used
+     * to be asked at {@code applyNaturalSlowdown} HEAD and cancel, which skipped both vanilla's own
+     * slowdown and this mod's — so a train under power had no resistance at all and ran to whatever
+     * the speed ceiling was, whatever its length. Resistance then drive, in that order, is what
+     * gives a powered train a top speed of its own.
      */
-    public static @Nullable Vec3 hauled(AbstractMinecart cart, Vec3 movement) {
+    public static Vec3 hauled(AbstractMinecart cart, Vec3 resisted) {
         if (!cart.hasLink()
                 || !MTGameRules.trainsEnabled(cart.level())
-                || cart.minecarttweaks$driveAcceleration() > 0
+                || cart.minecarttweaks$driving()
                 || RailBrake.brakes(cart)) {
-            return null;
+            return resisted;
         }
 
         double drive = Train.of(cart).drive();
 
         if (drive <= 0.0) {
-            return null;
+            return resisted;
         }
 
         // A standing train has no movement to read a heading off, so it leaves on the aim of its
         // powered carts. Without that only those carts move and the train never gets going — and
         // they are the carts the placer is not moving, so it never gets going at all.
-        Vec3 heading = movement.horizontal();
+        Vec3 heading = resisted.horizontal();
 
         if (heading.lengthSqr() <= ANY_MOVEMENT) {
             heading = driveHeading(cart);
         }
 
         return heading.lengthSqr() > ANY_MOVEMENT
-                ? movement.add(heading.normalize().scale(drive))
-                : null;
+                ? resisted.add(heading.normalize().scale(drive))
+                : resisted;
     }
 
     /**
      * Whether anything is driving {@code cart}, its own engine or one it is coupled to. Ordered so
      * an unlinked cart answers off its own field without walking a train.
+     *
+     * <p>Asks whether an engine is lit, not what it is putting out. Under the power curve a lit
+     * engine near its free-running speed outputs almost nothing, and this decides whether the flat
+     * rolling term applies — so reading the output here would reapply resistance to a train at
+     * speed, slow it, restore its effort, and oscillate.
      */
     public static boolean underPower(AbstractMinecart cart) {
-        return cart.minecarttweaks$driveAcceleration() > 0
-                || (cart.hasLink() && Train.of(cart).drive() > 0);
+        return cart.minecarttweaks$driving()
+                || (cart.hasLink() && Train.of(cart).driving());
     }
 
     /**

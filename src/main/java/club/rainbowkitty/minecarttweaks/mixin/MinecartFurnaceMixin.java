@@ -99,15 +99,23 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     }
 
     @Override
+    public boolean minecarttweaks$driving() {
+        return fuel > 0 && !minecarttweaks$parked;
+    }
+
+    // Asked at the speed of the car whose movement is an input, so every engine of a train reads
+    // the same figure and their efforts sum — which is how double-heading buys top speed and not
+    // just acceleration.
+    @Override
     public double minecarttweaks$driveAcceleration() {
-        return fuel > 0 && !minecarttweaks$parked
-                ? RailForces.of(level()).engineOutput()
+        return minecarttweaks$driving()
+                ? RailForces.of(level()).engineOutput(TrainCoupling.drivenSpeed(this))
                 : 0.0;
     }
 
     @Override
     public Vec3 minecarttweaks$driveHeading() {
-        return minecarttweaks$driveAcceleration() > 0 ? push : Vec3.ZERO;
+        return minecarttweaks$driving() ? push : Vec3.ZERO;
     }
 
     // Vanilla halves a furnace cart's ceiling, which leaves the engine slower than the carts it
@@ -179,7 +187,15 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
             return;
         }
 
-        cir.setReturnValue(deltaMovement.add(push.scale(minecarttweaks$sharedAcceleration())));
+        // Resistance on the movement the cart arrived with, then the engine's impulse on top.
+        // Applied here for the reason the parked branch gives: setting the return value at HEAD
+        // cancels the method, so neither the super call nor the return hook below is reached, and a
+        // lit cart would have no retarding force at all. With flat effort that was invisible — the
+        // free-running speed sat above the default ceiling, so the clamp did the limiting — but the
+        // curve is meant to limit an engine, and it cannot without something to balance against.
+        cir.setReturnValue(
+                RailForces.of(level()).retarded(this, deltaMovement, deltaMovement)
+                        .add(push.scale(minecarttweaks$sharedAcceleration())));
     }
 
     // A furnace cart's retarding law, asked for at its own override rather than at the one it calls
@@ -222,7 +238,7 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     private double minecarttweaks$sharedAcceleration() {
         return hasLink() && MTGameRules.trainsEnabled(level())
                 ? Train.of(this).drive()
-                : RailForces.of(level()).engineOutput() / TrainCoupling.mass(this);
+                : minecarttweaks$driveAcceleration() / TrainCoupling.mass(this);
     }
 
     // Reads the brake, holds chunks, and idles the fuel burn while parked.
@@ -261,6 +277,8 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     // So the stall is counted instead of derived, and read at the top of the tick where last
     // tick's movement is still what the cart has. Unconditional in both models: the trap is
     // vanilla's, and a cart nothing can move is not behaviour worth mirroring.
+    // Unaffected by the power curve, which a reader will want to know here: effort is at its
+    // maximum at rest, so a wedged cart is still one the engine is pushing at full force.
     @Unique
     private void minecarttweaks$countStall() {
         if (fuel <= 0 || minecarttweaks$parked

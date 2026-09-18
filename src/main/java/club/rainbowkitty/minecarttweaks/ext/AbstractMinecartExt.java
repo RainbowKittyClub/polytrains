@@ -15,8 +15,25 @@ import club.rainbowkitty.minecarttweaks.train.Train;
 public interface AbstractMinecartExt extends Linkable {
 
     /**
+     * Whether this cart is driving itself at all, whatever it is currently putting out. Only a
+     * burning, unparked furnace cart is.
+     *
+     * <p>Asked separately from {@link #minecarttweaks$driveAcceleration()} because the output falls
+     * with speed: an engine near its free-running speed puts out almost nothing, so reading the
+     * output as a yes-or-no would answer "not powered" for a cart that plainly is. Everything that
+     * wants the fact rather than the figure asks this.
+     */
+    public default boolean minecarttweaks$driving() {
+        return false;
+    }
+
+    /**
      * How hard this cart drives itself along the track in blocks per tick squared, or zero if it is
      * not under its own power. Only a burning, unparked furnace cart returns anything.
+     *
+     * <p>Falls with the cart's own speed under the physical model, so this is a reading taken now
+     * and not a property of the cart. Use {@link #minecarttweaks$driving()} to ask whether the
+     * engine is lit.
      */
     public default double minecarttweaks$driveAcceleration() {
         return 0.0;

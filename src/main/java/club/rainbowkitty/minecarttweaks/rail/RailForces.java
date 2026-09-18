@@ -58,7 +58,7 @@ public enum RailForces {
         }
 
         @Override
-        public double engineOutput() {
+        public double engineOutput(double speed) {
             return VANILLA_IMPULSE;
         }
 
@@ -96,8 +96,10 @@ public enum RailForces {
         }
 
         @Override
-        public double engineOutput() {
-            return ENGINE_FORCE;
+        public double engineOutput(double speed) {
+            return speed <= BASE_SPEED
+                    ? ENGINE_FORCE
+                    : ENGINE_FORCE * BASE_SPEED / speed;
         }
 
         @Override
@@ -142,6 +144,16 @@ public enum RailForces {
     // six empty minecarts. A short train climbs, loading it past that tips it to marginal or
     // stalls it, and a long one cannot at all.
     private static final double ENGINE_FORCE = 6.0 * RailDrag.SLOPE_PULL;
+
+    // Speed at which the engine leaves its constant-torque region, in blocks per tick — 1.54 blocks
+    // a second. Derived rather than picked, from the balance a powered train actually settles at:
+    // the flat rolling term is suppressed under power, so effort meets only the proportional loss
+    // and mass cancels out of both sides, leaving one car's top speed at the square root of
+    // ENGINE_FORCE times this over the drag rate. This is the value that puts a lone engine at 7.6
+    // blocks a second, just under the default ceiling, so the curve limits a furnace cart and the
+    // clamp is only a backstop. Train length divides it: n cars top out at one car's speed over
+    // the square root of n.
+    private static final double BASE_SPEED = 0.077;
 
     // Vanilla's engine, as a per-tick figure something other than the engine cart can be given.
     // Vanilla re-adds its whole impulse every tick against a 0.8 decay, so the impulse *is* the
@@ -191,15 +203,27 @@ public enum RailForces {
     public abstract boolean drivesEngine();
 
     /**
-     * What one lit engine puts out per tick, before a train's mass divides it down.
+     * What one lit engine puts out per tick at {@code speed}, in blocks per tick, before a train's
+     * mass divides it down.
      *
      * <p>Asked even under the model that does not drive the engine, because a train whose leading
      * car is not itself an engine has to be given the drive somewhere — and vanilla, having no
      * trains, states no figure for that. So this is the one quantity the vanilla model has to
      * synthesise rather than read: what vanilla's own impulse amounts to per tick, handed to
      * whichever car is carrying the train.
+     *
+     * <p>The vanilla model ignores {@code speed} by construction, not by omission: vanilla re-adds
+     * its whole impulse every tick whatever the cart is doing, against a decay, so its output is
+     * flat and the curve it produces comes from the decay instead. The physical model is a traction
+     * curve — flat to {@link #BASE_SPEED}, then falling as {@code 1/v} so that power stays at the
+     * rating the flat region ends on. That flat region is a guard as much as a choice: it is what
+     * starts a heavy train, what the grade figures rest on, and what stops the falling branch ever
+     * dividing by a speed near zero.
+     *
+     * <p>Because effort falls, this is a reading and not a property, and a test of it is not a test
+     * of whether the engine is lit — see {@code minecarttweaks$driving}.
      */
-    public abstract double engineOutput();
+    public abstract double engineOutput(double speed);
 
     /**
      * A furnace cart's speed ceiling, given the {@code halved} figure vanilla computes and the
