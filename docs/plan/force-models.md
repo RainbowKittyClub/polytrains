@@ -12,13 +12,20 @@ computed from those verified force laws, not measured in-world — the model beh
 the three numbers `train-ribbon.md` recorded from observation (4.53, 5.09 and 6.09 blocks per second
 downhill), which is why they are quoted, but they are arithmetic and a stage is not closed by them.
 
+A stage reads **built** when its code is in, lints, builds and boots with no mixin failure, but its
+"Done when" has not been watched in-world yet — the numbers in its "As built" are then computed from
+the force laws as written, not measured. **done** means observed. The distinction matters here more
+than usual, because every figure in this document is arithmetic until somebody rolls a cart.
+
 Stage order. **S1 names both models and adds the rule, and S2 defines cart mass** — landed
 together, for the reason S1's "As built" gives; everything after depends on both, since the physical
 model divides almost everything by mass. S3 (friction), S4 (bend
 loss), S5 (the engine) and S6 (wrecking) are independent of each other and can land in any order;
 **the feature is complete at the end of S6**, since those four cover every gated force and the one
-consequence of force this mod lets destroy a player's property. S7 reviews the repairs. S8 documents
-what landed and is last. S9 is a loose end this work exposes rather than creates.
+consequence of force this mod lets destroy a player's property. S7 reviews the repairs — reduced to
+a review, since the one line of code it held landed in S6. S8 documents what landed and is last. S9
+is a loose end this work exposes rather than creates, and S3 made it live: `rail_drag_speed` now
+reaches nothing at all under the default model.
 
 ---
 
@@ -142,6 +149,28 @@ train mean, and only for a train carrying an unopened loot cart, so the stakes a
 vanilla model's whole claim is that it returns vanilla's own figure, and this one does not. Fixed in
 S3, which owns `keepOf`, rather than folded into an otherwise inert stage.
 
+**A gated law has to be applied at whichever vanilla override is the outermost one for that kind of
+cart, and only one cart kind makes that hard.** `MinecartFurnace` is the sole override of either
+`applyNaturalSlowdown` (`:97`) or `getMaxSpeed` (`:70`) that calls `super` — checked across the whole
+vehicle package — and it scales the movement on the way past, by `0.98` coasting or `0.8` plus the
+impulse under power. So a hook on `AbstractMinecart.applyNaturalSlowdown` is handed a figure a tick
+of vanilla's friction has already come out of, and a hook on `AbstractMinecart.getMaxSpeed` is handed
+the ceiling *before* the halving. The physical model works from the movement the cart arrived with,
+so the first of those made a furnace cart read as barely different between the two models; the second
+would have applied a train's shared ceiling to the wrong figure.
+
+The shape that follows is the same for both: the generic hook stands down for a furnace cart, and
+`MinecartFurnaceMixin` asks at its own return, where the argument is still the real one. A container
+cart needs no such arrangement — its override never calls super, so it already asks for itself.
+
+**One asymmetry the gating creates, which has to be repaired rather than accepted.** Restoring
+vanilla's halved furnace ceiling makes the ceiling depend on which end of a train leads: the leading
+car is the one vanilla clamps, so a furnace train capped at 4 m/s one way round runs at 8 the other
+and doubles its speed when it reverses. The ensemble answer is 4 either way — a line of carts cannot
+outrun what is pushing it — so the leading car takes the lowest ceiling in its train. It needs no
+model check of its own, because each car's figure is already the model's: the physical model undoes
+the halving, so the lowest ceiling is then everyone's and the repair changes nothing.
+
 ## How these stages get tested
 
 On this mod's dev server, `scripts/devserver.sh rkc/mods/minecart-tweaks restart`, port 25603,
@@ -240,7 +269,7 @@ Verified on the dev server: `gamerule minecarttweaks:realistic_physics` answers 
 report `None.`, and `grep -rn REALISTIC_PHYSICS src/main/java` finds it in `MTGameRules` and
 `RailForces` only.
 
-## S2 — Cart mass, the quantity — **done**
+## S2 — Cart mass, the quantity — **built**
 
 **Build.** Mass has to exist before friction or the engine can divide by it, which is why it comes
 first. `TrainCoupling.mass(cart)` already has the right name and returns a car count; generalise it
@@ -303,7 +332,7 @@ The meter now reports `mass=` on its line. It measures nothing — the model is 
 but it is the one field that says which model a coast or grade reading was taken under, and S3's and
 S5's numbers are worthless without that recorded alongside them.
 
-## S3 — Friction, as two separate laws — **planned**
+## S3 — Friction, as two separate laws — **built**
 
 **Build.** The vanilla model keeps what is there: vanilla's per-cart factor, averaged over the train
 by `RailDrag.shared`, and no flat term at all. The physical model owns the whole retarding law
@@ -324,7 +353,40 @@ worth the same as a full load, so a ridden plain cart reads 24.0 as well.
 A mixed train must coast the same distance in both models when the rule is off, which is what proves
 `shared` stayed. It need not match under the rule, where the whole train is one mass.
 
-## S4 — Bend loss behind the model — **planned**
+### As built
+
+**The formula divides both terms by mass, not only the flat one, and that is a gameplay choice this
+document should have stated outright.** Findings argues from the load-*independent* part of the
+resistance, which is why the direction is right at all — but taken literally it licenses dividing
+only the flat term, and that was measured: over a 2:1 mass range it gives 11.9 to 13.2 blocks, an
+eleven percent spread nobody would notice. Dividing both gives 11.9 to 24.1, which is the 2:1 this
+document's own figures and its ratio decision are written against. The code comment says which half
+is physics and which is amplification.
+
+**The divisor is the mean per-car mass, not the train's total.** Dividing by the total would have ten
+empty cars coast five times as far as one, which breaks the invariant `RailDrag`'s own class comment
+promises — resistance is per car and so is mass, so a long train coasts like a short one. The mean
+keeps *load* mattering and *length* not: ten cars empty read 11.9 blocks and ten cars loaded 24.1.
+The engine divides by the total instead, and that difference is not an inconsistency — a single
+engine's output is not per car, so length is exactly what it is up against.
+
+The proportional rate is one figure for every cart, vanilla's own empty-cart `0.025`, with water
+expressed as a rate rather than a factor. That makes a lone empty cart read the same in both models
+but for the flat term, which is a useful thing for a test to be able to lean on.
+
+**The guard drops the flat term only, not the whole law.** Under power or a steering rider the
+proportional part stays, because it cannot zero a speed and so cannot swallow a nudge — which is the
+only thing the guard ever existed to prevent. That is also what the vanilla model already did by
+accident, since its guard skipped the flat roll and left vanilla's own factor in place.
+
+The `keepOf` loot-cart figure is fixed here as Findings asked: an unopened loot cart reads `0.98`,
+vanilla's own, not a plain cart's `0.975`.
+
+Computed against the model rather than measured: mass 1.0 coasts 11.9 blocks in 4.8 s, 1.5 reads 18.0
+in 7.2 s, 2.0 reads 24.1 in 9.6 s, each to a real zero. The vanilla side reproduces vanilla's figures
+exactly — 15.2 plain, 129.6 ridden, 77.6 empty chest, 19.1 full chest.
+
+## S4 — Bend loss behind the model — **built**
 
 **Build.** The simplest of the gated three: a pure departure with no repair inside it and, unlike
 everything else here, **no mass term**. `RailDrag.bend` takes its fraction from
@@ -342,7 +404,14 @@ meter keeps reporting `turn=` in both models — it is diagnostics about the tra
 while the log still shows `turn=1.00` for it. With it on, 2% per right angle, 8% a lap on the
 four-corner circuit — and the same 2% whether the cars are full or empty.
 
-## S5 — The engine — **planned**
+### As built
+
+As written, and the smallest stage here. `RailDrag.bend` asks `RailForces.bendLoss` for the fraction
+and returns without touching movement when it is zero; the placer goes on measuring the turn and the
+meter goes on reporting it under both models, since that is diagnostics about the track rather than
+about the force.
+
+## S5 — The engine — **built**
 
 **Build.** The three engine sites together, since they are one question — how hard an engine pushes
 and how fast it may go — and splitting them would leave a stage where a furnace cart has vanilla's
@@ -389,7 +458,42 @@ marginal.
 Both models must start from rest on a corner, and neither may rotate a cart on its rails when a
 furnace is fed into it.
 
-## S6 — Wrecking behind the model — **planned**
+### As built
+
+`6 × SLOPE_PULL` stands, and `Train.drive` is now the summed output over `TrainCoupling.mass` with
+`FREE_CARS` deleted. The grade table above is reproduced exactly by the code as written, so the
+figures in it are the ones to retune against.
+
+**The enum method came out as a predicate, `drivesEngine()`, not the `engineImpulse` value this
+document specified.** An enum cannot reach `super`, and the site is an `@Inject` that can simply
+decline to cancel and leave vanilla's whole powered branch to run — which is strictly less code and
+strictly less drift than reconstructing what that branch would have returned. Declining also has to
+happen *before* this mod re-aims the impulse, since vanilla's branch re-aims it itself inside
+`calculateNewPushAlong` (`MinecartFurnace.java:100-106`); so under the vanilla model the aiming is
+declined along with the force, which hands back vanilla's own fault of driving a shoved cart home
+again. That is the price of being vanilla, and the impulse fix stays where this document put it, on
+the stationary case vanilla never projects at all.
+
+**A seventh method, `engineOutput()`, and the vanilla model has to answer it.** A train whose leading
+car is not itself an engine has to be given the drive somewhere, and vanilla — having no trains —
+states no figure for that. So the vanilla model synthesises one: `1.0` a tick, which is what vanilla's
+impulse amounts to once this mod has normalised `push`. Vanilla's own magnitude is how far the player
+was standing from the cart, which is arbitrary and lands past the ceiling for any plausible value, so
+a normalised one is observably the same engine.
+
+**A lone lit furnace cart divides by its own 1.5 too.** Without that the one cart carrying a firebox
+got the only free ride, and the table's `4.00 × gravity` for a lone engine already assumed it did
+not. One formula either way: force over mass.
+
+**The ceiling is shared across the train, which S5 had not planned for.** See Findings — restoring
+the halving made the ceiling depend on which end leads, and the repair is that the driven car takes
+the lowest figure in its train. It recurses unless the walk is refused by every car that is not the
+driven one, which is what `TrainCoupling.trainCeiling` does: no reentrancy flag, no static, and the
+old `ownSpeedOnly` guard the ribbon redo deleted stays deleted. `AbstractMinecartExt` gains
+`minecarttweaks$ownMaxSpeed` so the driven car can ask its neighbours without reaching for a
+`protected` method on somebody else's instance.
+
+## S6 — Wrecking behind the model — **built**
 
 **Build.** One predicate. `CartInteraction.wrecks` returns false under `VANILLA`, and `of` already
 falls through to `COLLIDE` for a cart pair that does not wreck, which is vanilla's own solid
@@ -416,6 +520,19 @@ A train coming apart must still never destroy its own cars in either model — t
 `CartInteraction`'s existing `sameTrain`/`coupled` branch and it sits ahead of `wrecks`, so it should
 be unaffected; worth confirming rather than assuming, since it is the failure that would be worst.
 
+### As built
+
+One predicate, as planned. The reduced-mass repointing this stage was to do turned out to be already
+done: `closingMomentum` builds its `mₐ·m_b/(mₐ+m_b)` out of `TrainCoupling.mass`, which S2 gave a
+real figure, so a loaded train already wrecks a light one at a lower closing speed with nothing
+further changed here. `cart_wreck_momentum`'s javadoc now says the rule does nothing unless the
+model is on.
+
+S7's one line of real work came along with it, being the same question: `CartImpact.slowTrain`
+divided its falloff by `Train.of(cart).cars().size()` and now divides by `TrainCoupling.mass`, which
+is the same figure under the vanilla model and lets a loaded train shrug off an impact a light train
+of the same length would feel.
+
 ## S7 — Gravity, and the repairs reviewed — **planned**
 
 **Build.** `TrainCoupling.slopeShare` sums the cars' grades over their number, and becomes
@@ -432,7 +549,8 @@ the rule and exactly as shoveable as vanilla without it, which is the clearest s
 `cartMass` is carrying the gate properly. `CartImpact` computes its own falloff from
 `Train.size()` and has to be repointed at `mass` to follow, which is the one line of real work here.
 
-`wreckMomentum`'s own car counts are S6's, not this stage's.
+`wreckMomentum`'s own car counts are S6's, not this stage's, and `CartImpact`'s falloff landed there
+too — both were the same question and S6 answered it.
 
 **Done when.** A player shoving a parked three-car train moves it the same distance with the rule on
 and off while it is empty, and visibly less far once the cars are loaded. A train whose leader alone
