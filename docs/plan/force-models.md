@@ -171,6 +171,31 @@ outrun what is pushing it — so the leading car takes the lowest ceiling in its
 model check of its own, because each car's figure is already the model's: the physical model undoes
 the halving, so the lowest ceiling is then everyone's and the repair changes nothing.
 
+**Every vanilla figure in this document assumes `max_minecart_speed` is at its default 8, and the
+vanilla engine stops being usable well before that rule's ceiling of 1000.** Vanilla's engine
+saturates whatever cap it is given, almost immediately: the impulse is re-added whole each tick
+against a `0.8` decay, so terminal speed is `4.43 × |push|` — roughly 4.4 blocks a tick, or 88 m/s —
+and any cap below that is reached in about three ticks. At the default 8 the furnace cap is 4 m/s and
+that instant saturation is exactly the sedate engine vanilla is known for. At
+`max_minecart_speed = 100` the same code puts a standing cart at 50 m/s inside a fifth of a second,
+which leaves the track at the first corner.
+
+Measured both ways on the dev server: at 100, a fuelled cart read 1.74 blocks a tick after one second
+and the capped 2.5 after two, then ran off the end of the test straight. At 8 it pinned at exactly
+0.20 and held it. So the behaviour is right and the rule value is the whole difference.
+
+This is not a fault to fix, because it is what a vanilla world with that rule set would do — but it
+is a trap for exactly the audience the default model is for, and the physical model is the one that
+copes, since its engine is a fixed force and its acceleration is gradual at any ceiling. Worth a
+README line rather than a code change; see Open decisions.
+
+**A lit furnace cart that comes off the rails is dead for good.** `AbstractMinecart.comeOffTrack`
+(`:377-388`) never calls `applyNaturalSlowdown`, which is where every engine in either model lives, so
+an off-track cart has no way to propel itself back on while its fuel burns down to nothing. Vanilla's
+own structure and not introduced here, but the finding above makes it reachable constantly rather
+than rarely, and it is what makes a derailment read as "the cart stopped and will not move" rather
+than as a derailment.
+
 ## How these stages get tested
 
 On this mod's dev server, `scripts/devserver.sh rkc/mods/minecart-tweaks restart`, port 25603,
@@ -630,6 +655,16 @@ forces, and the placer is geometry. But a reader will ask, because the placer is
 behavioural difference of all and it is not gated by anything. The answer — that a train is this
 mod's own feature and has no vanilla behaviour to mirror — is worth stating in the README row rather
 than only here.
+
+**Whether the vanilla model should soften its engine at a raised `max_minecart_speed`.** As built it
+does not, and that is faithful: a vanilla world with `max_minecart_speed = 100` has furnace carts that
+reach 50 m/s from standing inside a fifth of a second. The cost is that the default model is unusable
+on exactly the worlds that raised the rule, which is most worlds that installed this mod. Three ways
+out: leave it and say so in the README; scale the synthesised impulse so the cap is reached over a
+sane interval rather than at once, which is a deliberate deviation in the model that is meant not to
+deviate; or read the raised rule as a signal and pick the physical model's engine by default. The
+first is what is in the tree. Settled by whether a raised speed rule is normal on the worlds this
+ships to.
 
 **Whether `PHYSICAL` should stay the tested path.** Every figure in `train-ribbon.md` was observed
 with what becomes the opt-in model, and after this work the default is the one almost every world
