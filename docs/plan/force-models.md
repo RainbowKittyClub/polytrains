@@ -22,10 +22,11 @@ together, for the reason S1's "As built" gives; everything after depends on both
 model divides almost everything by mass. S3 (friction), S4 (bend
 loss), S5 (the engine) and S6 (wrecking) are independent of each other and can land in any order;
 **the feature is complete at the end of S6**, since those four cover every gated force and the one
-consequence of force this mod lets destroy a player's property. S7 reviews the repairs — reduced to
-a review, since the one line of code it held landed in S6. S8 documents what landed and is last. S9
-is a loose end this work exposes rather than creates, and S3 made it live: `rail_drag_speed` now
-reaches nothing at all under the default model.
+consequence of force this mod lets destroy a player's property. S7 was written as a review, since the one line of
+code it held landed in S6, and turned out to be the largest stage here — the Findings entry on a
+train freezing on a grade is why. S8 documents what landed and is last. S9 is a loose end this work
+exposes rather than creates, and S3 made it live: `rail_drag_speed` now reaches nothing at all under
+the default model.
 
 ---
 
@@ -862,7 +863,7 @@ stage fixes was the second of them returning zero.
 Not observed here: a player shoving a parked train, loaded against empty, which is the one leg of the
 "Done when" that needs a player rather than a rig.
 
-## S8 — The rule table and its drift — **planned**
+## S8 — The rule table and its drift — **built**
 
 **Build.** `README.md`'s Configuration table is wrong in two ways already and will be wrong in a
 third: `furnace_minecart_speed [20]` at `README.md:41` no longer exists, `rail_drag_speed` was never
@@ -877,7 +878,24 @@ stage is to propose the diff and apply it on approval, not to apply it.
 **Done when.** The table lists every rule `MTGameRules` registers and no rule it does not, checked by
 reading the two against each other rather than by memory.
 
-## S9 — `rail_drag_speed` settled — **planned**
+### As built
+
+Approved and applied. The two were read against each other rather than from memory, and the table was
+wrong in four ways, not the three this stage predicted:
+
+- `furnace_minecart_speed [20]` was listed and **does not exist** — it went in the 26.2 port.
+- `realistic_physics`, `carts_resume_from_brakes` and `rail_drag_speed` were all missing. The last of
+  them was then removed by S9 instead of documented, so the table gained two rows.
+- `cart_wreck_momentum`'s stated unit was **wrong**, not merely thin: "cars times blocks per second"
+  where S2 made it empty minecarts times blocks per second. A row that names the wrong unit is worse
+  than a missing row, because a player can act on it.
+- The same row said nothing about needing `realistic_physics`, so the rule read as live on a default
+  world where it does nothing whatever it is set to.
+
+`trains_enabled`'s existing row already said it exists only under `minecart_improvements`, which is
+the one thing in the table that was more careful than it had to be.
+
+## S9 — `rail_drag_speed` settled — **built**
 
 **Build.** The rule is in a poor state and this work makes it worse before it makes it better. It
 converts a speed into the flat roll term, and the cap `RailDrag` puts on that term now binds at every
@@ -895,6 +913,46 @@ change to what it *means* rather than to how strong the friction is.
 **Done when.** Whichever is chosen, `gamerule minecarttweaks:rail_drag_speed` at three different
 values produces three different measured coasting distances, or the rule no longer takes three
 values.
+
+### As built
+
+Removed, and the flat term folded into the physical model as `ROLL_TERM`. The rule's own arithmetic
+decided it: `roll` was `min(rule × 0.00125, SLOPE_PULL × ROLL_CEILING)`, and the cap binds from
+`rule ≥ 0.78125` — so every legal value except zero gave the identical figure. Measured on a lone
+chest cart released at 0.35 blocks a tick along flat track:
+
+| `rail_drag_speed` | Comes to rest | Coast |
+|---|---|---|
+| 0 | **never** — still rolling after 200 polls | 15.53+ |
+| 1 | yes | 12.185 |
+| 3 | yes | **12.185** |
+| 500 | yes | **12.185** |
+
+1, 3 and 500 rest at `326.31472026926554`, equal to the last digit. So this stage's "Done when" —
+three values, three distances — was **not achievable**, and could not have been by re-deriving the
+cap either: the flat term has to stay well under `SLOPE_PULL` or gravity loses on a grade and a cart
+will not roll downhill at all, while the rule's natural range of 1 to 8 blocks a second maps to 16%
+to 128% of it. There is no band there for an integer to grade across. Recovering the middle settings
+would have meant reading the rule as a fraction of the ceiling rather than as a speed, which is a
+different rule wearing the same name.
+
+What settled it against merely demoting it to a boolean is the **off** row above. Zero leaves
+vanilla's purely proportional drag, which forever halves what is left and never reaches zero — a cart
+that never stops, inside the one model whose defining feature is that carts stop. That is not a
+setting a world would choose; it is the behaviour `realistic_physics` exists to replace. The rule was
+also already inert under the default model, since `VANILLA.retarded` goes to `RailDrag.shared` and
+never reaches `roll` at all, so it was a knob that only existed inside `realistic_physics` and had one
+sensible position.
+
+`roll` went with it rather than becoming a constant function: `RailForces.of` already answers
+`VANILLA` for any level that is not a `ServerLevel`, so the client guard inside it was unreachable
+once the rule read was gone.
+
+**A removed rule leaves its value behind.** The key stays in `data/world/data/minecraft/game_rules.dat`
+and logs `Failed to parse saved data for 'SavedDataType[minecraft:game_rules]'` at ERROR every boot
+until it is dropped with `scripts/nbt.py`, server stopped first or the next save undoes the edit. The
+live world already carries a stale `minecarttweaks:furnace_minecart_speed` from the 26.2 port, so
+both should be dropped in the same pass whenever this deploys.
 
 ## S10 — The engine put on a power curve — **built**
 

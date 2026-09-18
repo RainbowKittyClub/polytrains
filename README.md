@@ -35,10 +35,11 @@ Everything is done with `minecarttweaks.` gamerules:
 | `max_train_length [128]` | Maximum number of carts that can be linked together. |
 | `minecart_damage [20]` | Scales the damage a moving cart deals, or 0 to turn it off. |
 | `cart_impact_speed [4]` | Mobs/players take damage from a cart above this speed, in blocks per second. |
-| `cart_wreck_momentum [4]`| Carts break if they collide above this closing momentum, in cars times blocks per second. 0 never wrecks. |
+| `cart_wreck_momentum [4]`| Carts break if they collide above this closing momentum, in empty minecarts times blocks per second. 0 never wrecks. Needs `realistic_physics`. |
 | `cart_pickup_speed [4]` | The fastest a cart can be moving and safely pick up a mob, in blocks per second. |
+| `carts_resume_from_brakes [true]` | Whether a cart stopped by an unpowered powered rail leaves again when the signal returns. |
+| `realistic_physics [false]` | Whether carts use this mod's own force model instead of vanilla's. Off by default, so an existing world is unchanged. Trains are not gated by it — vanilla has no trains to mirror. |
 | `furnaces_can_use_all_fuels [true]` | Whether furnace carts accept all furnace fuels. |
-| `furnace_minecart_speed [20]` | Furnace cart top speed, in blocks per second. |
 | `furnace_max_burn_time [72000]` | Furnace burn time ceiling, in ticks. |
 | `furnace_minecarts_load_chunks [false]` | Whether moving furnace carts act as chunkloaders. |
 
