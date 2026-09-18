@@ -39,7 +39,7 @@ by a player pushing the cars along in formation.
 
 **So the divergences split in two, and only half of them can be gated.** The placer leaves one car
 running vanilla's pipeline and places the rest, which means several of this mod's scalings exist to
-*reconstruct* the ensemble rather than to depart from it. `TrainCoupling.slopeShare` is the clearest:
+*reconstruct* the ensemble rather than to depart from it. `TrainCoupling.slopePull` is the clearest:
 vanilla pulls each of ten cars on a slope by 0.0078125, so the ensemble accelerates at 0.0078125,
 while the mod's leading car would take the whole of it and hand the train ten times too much. Turning
 that off yields neither vanilla nor physics. The same holds for the train-mean friction, the drive
@@ -52,7 +52,7 @@ hand-off to a non-engine leader, the shove divided by mass, and the impact drag 
 | `CartImpact:193` — impact drag applied once to the driven car | repair |
 | `RailBrake:115` — the brake launching the driven car | repair |
 | `RailDrag.shared` — friction averaged over the train | repair, **vanilla model only** |
-| `TrainCoupling.slopeShare` — gravity from the cars on the grade | repair, **weighted per model** |
+| `TrainCoupling.slopePull` — gravity from the cars on the grade | repair, **weighted per model** |
 | `RailDrag.slowed`'s retarding law | **departure** |
 | `RailDrag.bend` — the per-kink charge | **departure** |
 | `Train.drive`'s divisor | **departure** |
@@ -62,7 +62,7 @@ hand-off to a non-engine leader, the shove divided by mass, and the impact drag 
 **Some sites are a repair and a departure in the same expression**, which is why this is not a
 mechanical job of wrapping hooks in an `if`. `Train.drive()` divides the train's output by
 `cars.size() - FREE_CARS * engines`; the ensemble-vanilla divisor is `cars.size()`, so the *divisor*
-is what the model picks, not whether the method runs. `TrainCoupling.slopeShare` is the same shape,
+is what the model picks, not whether the method runs. `TrainCoupling.slopePull` is the same shape,
 weighting the cars' grades by count or by mass. And `RailDrag.slowed` holds the train mean and the
 mod's own retarding term in one call, which the next finding splits apart entirely.
 
@@ -136,7 +136,7 @@ everything under `VANILLA`, the real figure under `PHYSICAL`.
 
 Everything that divides by mass then inherits the model for free, and two of the methods this
 document first listed collapse into it. `Train.drive`'s divisor is `mass` in both models, which is
-the car count when every car weighs one. `slopeShare`'s weighting is the same identity:
+the car count when every car weighs one. `slopePull`'s weighting is the same identity:
 `Σ(mᵢ × gradeᵢ) / Σmᵢ` with every `mᵢ` at 1.0 *is* the count-weighted mean it computes now. What is
 left model-dependent is only the three places where the two models run genuinely different laws —
 the retarding law, the bend charge and the engine — plus the furnace ceiling.
@@ -327,7 +327,8 @@ zero, and the failing case is precisely the one where there is nothing to rescal
 *computed* for the train rather than scaled off whichever car happens to be leading — one car's worth
 of gravity times the fraction of the train on a grade, laid along the track at the leader and signed
 toward whichever end of the train is lower. The ribbon already knows every car's arc and the tangent
-at it, so the direction is available; what is not available today is any pull at all to point.
+at it, so the direction is available; what is not available today is any pull at all to point. Built
+that way in S7, which records what the computed pull is made of and what it measures.
 
 Worth noting what is *not* wrong: a lone cart rolls down a grade correctly in both models, measured
 accelerating to `-0.20` blocks a tick and coasting out onto the flat, and a train entirely on a grade
@@ -767,7 +768,7 @@ divided its falloff by `Train.of(cart).cars().size()` and now divides by `TrainC
 is the same figure under the vanilla model and lets a loaded train shrug off an impact a light train
 of the same length would feel.
 
-## S7 — Gravity, and the repairs reviewed — **planned**
+## S7 — Gravity, and the repairs reviewed — **built**
 
 **Build.** `TrainCoupling.slopeShare` sums the cars' grades over their number, and becomes
 `Σ(mᵢ × gradeᵢ) / Σmᵢ` — which is the same expression it computes today whenever every car weighs
@@ -797,6 +798,69 @@ and off while it is empty, and visibly less far once the cars are loaded. A trai
 is on a slope rolls downhill no faster than a single cart in either model. A plain cart leading a
 furnace train moves in either model. A train loaded at one end and empty at the other crests a hill
 differently under the rule than without it, which is the only thing the mass weighting changes.
+
+### As built
+
+`slopeShare` did not gain a weighting; it was replaced. `TrainCoupling.slopePull` **computes** the
+train's pull instead of rescaling vanilla's, because a rescale of zero is zero and a leading car on
+the level is exactly where vanilla hands back zero — the Findings entry above has the measurement.
+The weighting this stage planned is in it unchanged, `Σ(mᵢ × gradeᵢ) / Σmᵢ`, and is still the whole
+of what the model gate touches here: under `VANILLA` every car weighs one, so the sum is the plain
+count mean it was before mass existed.
+
+Three parts, and the sign convention is what holds them together. The **magnitude** is still
+vanilla's wherever vanilla found a slope — `pull.length()`, which keeps the water factor and the
+speed term for free — and is worked out from `RailDrag.SLOPE_PULL` only where vanilla found none,
+which is the case that was broken. The **direction** is `RailPath.crossing(...).forward()` at the
+leading car, which is an exact unit axis vector, so a pull laid along it stays on the rail through a
+corner; the chord to the car behind only has to say which of the block's two ends is the front. The
+**share** is summed towards the head and flipped once if the tail is the end that leads, so a
+reversal costs nothing — either end may lead and the arithmetic does not change. Checked against
+vanilla by hand for a train wholly on one slope: `EAST × −1 × slideSpeed` is literally vanilla's
+`ASCENDING_EAST -> add(-slideSpeed, 0.0, 0.0)`.
+
+**A grade has to be legible to a train that is not moving**, which is the second half of the fix and
+was not foreseen. `RailPath.bend` reads its direction off the cart's own movement and answers
+`Bend.NONE` below `EPSILON`, so a train stalled on a hill could not report the grade it was stalled
+on — the exact state the report came from. `RailPath.grade(cart, towards)` takes the direction as an
+argument instead, and it comes from the chord between neighbouring cars: geometry a stopped train
+still has. The private `grade(state, out)` it shares also had to start answering **0** for a
+direction across the slope rather than ±1; an exit is always on the axis so it could never trigger,
+but a chord between two carts can lie anywhere.
+
+`RailPath.bend` now has no callers. `Bend.turn` is the primitive S8 of the ribbon plan wants for bend
+loss and the exit-finding in it is verified, so it stays for now rather than being deleted and
+written again.
+
+The review half came out as a pass: `slowTrain` already divides by `TrainCoupling.mass` — S6 did
+that, as this stage's Build text anticipated — and `hauled`, the shove's `1 / mass` and the brake's
+choice of the driven car needed no change.
+
+**Measured**, on a rebuilt rig at z=346: flat x=300–339 at y=64, `ascending_east` x=340–347, flat
+x=348–366 at y=72. Chest carts, `max_minecart_speed` 8.
+
+| Leg | Result |
+|---|---|
+| 8 cars, 2 on the flat + 6 on the bank | Rolls down; spacing `worst` 0.33 → 0.05 → **0.00**, no sever |
+| Same, to rest | All 8 reach the flat at a 1.5 pitch and coast ~10 blocks out |
+| Leader uphill, shoved east at 0.35 | Climbs, decays 0.319 → 0.110 monotonically, stalls, **reverses**, returns to the flat |
+| 4 cars wholly on the grade vs one cart, same release | Train coasts **1.45 blocks further** (10.12 vs 8.66) |
+| Leader alone over the brow, 4 cars | `-0.0154` against a lone cart's `-0.0786` — about a fifth |
+| Load on the grade end vs the flat end, 4 cars, both 8.40 | `-0.0512` against `-0.0173` |
+| The same two under `VANILLA` | mass reads `4.00`; `-0.0212` against `-0.0188` |
+
+The last two rows are this stage's own claim and its control. Two trains of the same length, the same
+total mass and the same geometry roll at three times the difference under the rule depending only on
+which end carries the load, and are the same train without it — the vanilla pair differs by 13%,
+which is the sampling jitter of reading over rcon rather than a split.
+
+The fourth row is not a contradiction of the fifth. Entering a grade a train is *slower* than a lone
+cart, because fewer of its cars have weight on the slope; leaving one it is *faster*, because more of
+them still do. Both are the same share read at the two ends of the traverse, and the freeze this
+stage fixes was the second of them returning zero.
+
+Not observed here: a player shoving a parked train, loaded against empty, which is the one leg of the
+"Done when" that needs a player rather than a rig.
 
 ## S8 — The rule table and its drift — **planned**
 
@@ -1144,7 +1208,7 @@ weakness, divided by mass, is the whole of what makes a train's length and load 
 | `mixin/AbstractMinecartMixin.java` | 286 | `applyNaturalSlowdown` HEAD → `TrainCoupling.hauled` |
 | `mixin/AbstractMinecartMixin.java` | 297 | RETURN → `RailDrag.slowed` |
 | `mixin/AbstractMinecartContainerMixin.java` | 28, 40 | the same two, for carts whose override skips super |
-| `mixin/NewMinecartBehaviorMixin.java` | 37 | `calculateSlopeSpeed` RETURN → `TrainCoupling.slopeShare` |
+| `mixin/NewMinecartBehaviorMixin.java` | 36 | `calculateSlopeSpeed` RETURN → `TrainCoupling.slopePull` |
 | `mixin/MinecartFurnaceMixin.java` | 113 | `getMaxSpeed` RETURN, cancelling vanilla's halving |
 | `mixin/MinecartFurnaceMixin.java` | 122 | `applyNaturalSlowdown` HEAD, replacing vanilla's engine |
 | `rail/RailDrag.java` | 220 | the per-kink charge, called from `TrainPlacer` |
