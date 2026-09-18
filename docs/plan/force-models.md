@@ -2,7 +2,9 @@
 
 Two models for friction and acceleration, chosen by a game rule. The default reproduces vanilla, so
 a world that installs this mod for its links, chains, junctions and switches gets vanilla's own
-motion; `realistic_physics` opts into the force model this mod has grown instead.
+motion; `realistic_physics` opts into the force model this mod has grown instead. Wrecking goes with
+that model rather than staying on a rule of its own: it is the one place where this mod's forces
+destroy a player's property, and a world that asked for vanilla motion has not asked for that.
 
 Claims about vanilla are checked against `libs/decompiledjava/minecraft-26.2/` and cited by line;
 claims about this mod are checked against the tree at `5f6aa3b`. The figures in Reference are
@@ -12,10 +14,10 @@ downhill), which is why they are quoted, but they are arithmetic and a stage is 
 
 Stage order. **S1 names both models and adds the rule, and S2 defines cart mass**; everything after
 depends on both, since the physical model divides almost everything by mass. S3 (friction), S4 (bend
-loss) and S5 (the engine) are independent of each other and can land in any order; **the feature is
-complete at the end of S5**, since those three cover every gated force. S6 reviews the repairs and
-settles the one of them that turns out to be model-dependent. S7 documents what landed and is last.
-S8 is a loose end this work exposes rather than creates.
+loss), S5 (the engine) and S6 (wrecking) are independent of each other and can land in any order;
+**the feature is complete at the end of S6**, since those four cover every gated force and the one
+consequence of force this mod lets destroy a player's property. S7 reviews the repairs. S8 documents
+what landed and is last. S9 is a loose end this work exposes rather than creates.
 
 ---
 
@@ -92,6 +94,22 @@ repair **only the vanilla model needs**: a law that divides by the train's total
 factor left to average. And `Train.drive`'s `FREE_CARS` can go — it was an arbitrary generosity
 standing in for the mass effect, and once the drive is divided by real mass the curve it was faking
 comes out of the arithmetic.
+
+**Vanilla's cart-against-cart collision is already untouched, so "stop or bounce" needs nothing
+built — only the wreck taken off it.** `AbstractMinecartMixin`'s `push` hook returns early for
+another minecart on purpose (`:333`), leaving vanilla's `pushOtherMinecart`
+(`AbstractMinecart.java:543-576`), which is a real exchange: both carts damped to `× 0.2` of their
+own movement and each pushed by the *mean* of the two, with a furnace cart privileged to keep `0.95`
+and shunt whatever it met. `CartInteraction.of` already falls through to `COLLIDE` — "vanilla's solid
+collision", by its own javadoc — for every cart pair that does not wreck. So the gate is one
+predicate, `wrecks`, and what is on the other side of it is vanilla's behaviour by construction
+rather than by reimplementation.
+
+What this mod adds on top is one line: a struck cart is put onto the striker's whole movement
+(`CartImpact.java:104`). That is mass-blind, as is vanilla's own exchange — vanilla damps the striker
+to `0.2` whatever it weighs, so a ten-car train's leader meeting one loose cart is stopped as dead as
+a single cart would be. Neither is right once mass exists, which is an opportunity this work opens
+rather than a fault it has to close; see Open decisions.
 
 **Vanilla's own ordering is the opposite of the requirement, not a weaker version of it.** Worth
 stating plainly because it is easy to remember backwards: `getRedstoneSignalFromContainer` returns 0
@@ -300,7 +318,34 @@ marginal.
 Both models must start from rest on a corner, and neither may rotate a cart on its rails when a
 furnace is fed into it.
 
-## S6 — Gravity, and the repairs reviewed — **planned**
+## S6 — Wrecking behind the model — **planned**
+
+**Build.** One predicate. `CartInteraction.wrecks` returns false under `VANILLA`, and `of` already
+falls through to `COLLIDE` for a cart pair that does not wreck, which is vanilla's own solid
+collision — vanilla's `pushOtherMinecart` is left alone by this mod already, so nothing has to be
+rebuilt to get the bounce back. `CartImpact.strikeNearby`'s `WRECK` branch then becomes unreachable
+under the default rather than needing a check of its own.
+
+`cart_wreck_momentum` becomes a rule that does nothing unless `realistic_physics` is on. Say so in
+its javadoc and in the README row, since a rule that silently does nothing is worse than a rule that
+is missing.
+
+Under the rule, wrecking is also the last place in the mod that says "mass" and means "cars":
+`CartInteraction.wrecks` builds a reduced mass `mₐ·m_b/(mₐ+m_b)` from car counts. Repoint it at
+`TrainCoupling.mass` so a loaded train writes off a light one at a lower closing speed than an empty
+train of the same length does, which is the whole point of having mass at all. `CartImpact`'s own
+impact falloff needs the same repointing and is listed in S7.
+
+**Done when.** With the rule off: two trains driven into each other head-on at full speed come to a
+stop or shunt each other along, with no cart destroyed and nothing dropped, at any closing speed the
+track can produce. With it on: the same collision writes both off as it does today, and a train of
+loaded cars wrecks at a lower closing speed than the same train empty.
+
+A train coming apart must still never destroy its own cars in either model — that is
+`CartInteraction`'s existing `sameTrain`/`coupled` branch and it sits ahead of `wrecks`, so it should
+be unaffected; worth confirming rather than assuming, since it is the failure that would be worst.
+
+## S7 — Gravity, and the repairs reviewed — **planned**
 
 **Build.** `TrainCoupling.slopeShare` sums the cars' grades over their number, and becomes
 `Σ(mᵢ × gradeᵢ) / Σmᵢ` — which is the same expression it computes today whenever every car weighs
@@ -316,10 +361,7 @@ the rule and exactly as shoveable as vanilla without it, which is the clearest s
 `cartMass` is carrying the gate properly. `CartImpact` computes its own falloff from
 `Train.size()` and has to be repointed at `mass` to follow, which is the one line of real work here.
 
-Also worth checking rather than assuming: `wreckMomentum` builds a reduced mass `mₐ·m_b/(mₐ+m_b)`
-from car counts of its own. It belongs to the collision feature and its own rules, so it is out of
-scope — but it is the last place in the mod that says "mass" and means "cars", and leaving it that way
-should be a decision rather than an oversight.
+`wreckMomentum`'s own car counts are S6's, not this stage's.
 
 **Done when.** A player shoving a parked three-car train moves it the same distance with the rule on
 and off while it is empty, and visibly less far once the cars are loaded. A train whose leader alone
@@ -327,13 +369,14 @@ is on a slope rolls downhill no faster than a single cart in either model. A pla
 furnace train moves in either model. A train loaded at one end and empty at the other crests a hill
 differently under the rule than without it, which is the only thing the mass weighting changes.
 
-## S7 — The rule table and its drift — **planned**
+## S8 — The rule table and its drift — **planned**
 
 **Build.** `README.md`'s Configuration table is wrong in two ways already and will be wrong in a
 third: `furnace_minecart_speed [20]` at `README.md:41` no longer exists, `rail_drag_speed` was never
 added, and `realistic_physics` will need a row saying plainly that the default is vanilla motion, that
 this is a change for existing worlds, and that trains themselves are not gated by it because vanilla
-has no trains to mirror.
+has no trains to mirror. `cart_wreck_momentum`'s existing row needs the same treatment from the other
+direction: it has to say that the rule does nothing at all unless `realistic_physics` is on.
 
 **This is the one stage that needs asking first.** README edits are not made unprompted here, so the
 stage is to propose the diff and apply it on approval, not to apply it.
@@ -341,7 +384,7 @@ stage is to propose the diff and apply it on approval, not to apply it.
 **Done when.** The table lists every rule `MTGameRules` registers and no rule it does not, checked by
 reading the two against each other rather than by memory.
 
-## S8 — `rail_drag_speed` settled — **planned**
+## S9 — `rail_drag_speed` settled — **planned**
 
 **Build.** The rule is in a poor state and this work makes it worse before it makes it better. It
 converts a speed into the flat roll term, and the cap `RailDrag` puts on that term now binds at every
@@ -367,6 +410,23 @@ mod's existing descriptive naming. `physical_forces` is the narrower and more ac
 nothing outside friction and acceleration is gated, and this would sit badly if the rule later grew
 to cover collision or wrecking. Settled by picking one before S1, since renaming a rule later resets
 every saved value for it.
+
+**Whether a real momentum exchange should replace the cart-against-cart handoff.** Both the mod's
+line (`CartImpact.java:104`, the struck cart takes the striker's whole movement) and vanilla's own
+exchange (`AbstractMinecart.java:568-573`, both damped to `0.2` and pushed by the mean) are
+mass-blind, so a ten-car train meeting one loose cart is stopped as dead as a single cart would be.
+Once `cartMass` exists, conserving `Σmv` across the pair is a few lines and would make a heavy train
+shunt a light one aside instead of bouncing off it — which is what a player expects and neither model
+currently does. Deliberately not folded into S6, which is only about whether carts are destroyed.
+Settled by whether S6's "two trains shunt each other" leg reads acceptably without it.
+
+**Whether running mobs down should be gated too.** Vanilla carts deal no collision damage at all and
+do not run anything over, so on the strictest reading of this document's title they belong behind the
+rule with wrecking. They are left on their own rules — `minecart_damage`, `cart_impact_speed`,
+`cart_pickup_speed` — on the grounds that each already has an off switch, that they are features a
+world installs this mod *for* rather than consequences of a force model, and that unlike wrecking
+they do not destroy anything the player built. The line drawn is "does it break the player's own
+property"; if that line is wrong, this is the entry to revisit.
 
 **Where the empty-to-full mass ratio lands.** Starting at 2:1, which is what S2 and every figure
 downstream of it are written against, and to be adjusted from there against observation rather than
@@ -462,8 +522,11 @@ weakness, divided by mass, is the whole of what makes a train's length and load 
 | `mixin/EntityMixin.java` | 85 | a shove divided by the train's mass |
 | `collision/CartImpact.java` | 193 | impact drag applied once |
 | `rail/RailBrake.java` | 115 | the brake launching the driven car |
+| `collision/CartInteraction.java` | 184 | whether a cart pair wrecks or merely collides |
+| `collision/CartImpact.java` | 97 | the wreck itself, unreachable once the predicate is false |
 
 Not in scope, though each touches movement: the junction and switch steering, which is geometry; the
-brake's own rule `carts_resume_from_brakes`; and the collision rules `minecart_damage`,
-`cart_impact_speed`, `cart_wreck_momentum` and `cart_pickup_speed`, which gate a feature vanilla has
-no counterpart for at all.
+brake's own rule `carts_resume_from_brakes`; and the mob-collision rules `minecart_damage`,
+`cart_impact_speed` and `cart_pickup_speed`, which gate features vanilla has no counterpart for and
+which keep their own switches — see Open decisions for where that line is drawn.
+`cart_wreck_momentum` is the one collision rule that moves inside the model, in S6.
