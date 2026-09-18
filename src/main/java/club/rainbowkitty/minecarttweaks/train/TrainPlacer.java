@@ -43,21 +43,24 @@ public final class TrainPlacer {
     // Below this an arc step is treated as no direction at all.
     private static final double EPSILON = 1.0E-5;
 
-    // A reversal, and how far short of one still reads as one. Vanilla's own figures, from
-    // NewMinecartBehavior.setRotation, where the band is 175 to 185 — one-sided here because a
-    // wrapped difference never exceeds 180 in the first place.
+    // What a flipped car's yaw is turned by, so it points the way vanilla draws a flipped cart.
     private static final float HALF_TURN = 180.0F;
 
     /**
      * Why a train could not be seated. The tag is the finite part, so an intermittent fault is read
      * by what kind it is rather than by a detail line that differs every tick; the detail carries
      * the arcs and blocks that say which instance of it this was.
+     *
+     * <p>Only {@link #CAR_OFF_RIBBON} names track that is gone. {@link #RIBBON_SHORT} names track
+     * the leading car has not recorded yet, which a train can wait for unless it is running the
+     * other way.
      */
     public enum Bail {
         NO_LEADING_END,
         LEADER_OFF_RIBBON,
         LEADER_MID_TRAIN,
         ORDER_UNREADABLE,
+        RIBBON_SHORT,
         CAR_OFF_RIBBON
     }
 
@@ -152,12 +155,9 @@ public final class TrainPlacer {
         // Where the car beside the leading one sits answers both how far apart the cars are now and
         // which way round the train lies, so it is read once and handed to both.
         Double nextArc = ribbon.arcOf(cars.get(lead == 0 ? 1 : cars.size() - 2));
+        double measured = nextArc == null ? 0.0 : Math.abs(leadArc - nextArc);
         double speed = leader.getDeltaMovement().horizontalDistance();
-        double pitch = train.pitch(
-                target, nextArc == null ? 0.0 : Math.abs(leadArc - nextArc), speed);
-
-        Vec3 tangent = ribbon.tangentAt(leadArc);
-        double read = facing(leader, tangent);
+        double pitch = train.nextPitch(target, measured, speed);
         int order = train.order();
 
         if (order == 0) {
@@ -174,15 +174,75 @@ public final class TrainPlacer {
             order = lie;
         }
 
+        int tail = lead == 0 ? cars.size() - 1 : 0;
+        double clearance = cars.get(tail).getBbWidth() * 0.5;
+        double headArc = leadArc + order * lead * pitch;
+        double tailArc = headArc - order * tail * pitch;
+        boolean farEnd = tailArc > leadArc;
+        double room = farEnd ? ribbon.to() - tailArc : tailArc - ribbon.from();
+        boolean blocked = room + EPSILON < clearance
+                && ribbon.blockedBeyond(leader.level(), farEnd);
+        double read = facing(leader, ribbon.tangentAt(leadArc));
+
+        // A car cannot be put inside a block, and vanilla stops a moving cart half its own length
+        // short of one — so a train whose tail would sit closer than that to a blocked end of its
+        // track has met that end with its tail, and stops as a whole. It lengthens nothing, the
+        // ground its leading car covered being into the cars it is pushing rather than away from
+        // them; and that car is drawn back to where its train fits and seated standing with the
+        // rest, as a car driven into a wall is. Left to vanilla it would go on through the cars it
+        // is pushing, which the placer holds out of its way.
+        if (blocked) {
+            pitch = train.nextPitch(target, measured, 0.0);
+            headArc = leadArc + order * lead * pitch;
+            tailArc = headArc - order * tail * pitch;
+            room = farEnd ? ribbon.to() - tailArc : tailArc - ribbon.from();
+
+            double back = Math.max(0.0, clearance - room) * (farEnd ? -1.0 : 1.0);
+
+            leadArc += back;
+            headArc += back;
+            speed = 0.0;
+        }
+
+        Seat[] seats = new Seat[cars.size()];
+
+        for (int i = 0; i < cars.size(); i++) {
+            if (i == lead && !blocked) {
+                continue;
+            }
+
+            double arc = headArc - order * i * pitch;
+
+            // Track the leading car has not recorded yet. Named as lost only while that car is
+            // running the other way, since a standing train can wait for it and one driving
+            // towards it will record it; one driving away is leaving the car behind for good.
+            if (!ribbon.reaches(arc)) {
+                boolean leaving = read != 0.0 && Math.signum(arc - leadArc) != read;
+
+                return new Refusal(Bail.RIBBON_SHORT, leaving ? i : Refusal.NONE, "car " + i
+                        + "/" + (cars.size() - 1) + " wants arc " + round(arc) + " of "
+                        + span(ribbon));
+            }
+
+            seats[i] = seatAt(ribbon, cars.get(i), arc);
+
+            if (seats[i] == null) {
+                return new Refusal(Bail.CAR_OFF_RIBBON, i, "car " + i + "/" + (cars.size() - 1)
+                        + " at arc " + round(arc) + " has no rail under it");
+            }
+        }
+
         // A train too slow to read a heading off has not stopped lying the way it lies, so its
         // movement is still laid along the end that leads — at this speed the zero vector either
         // way. What that does not license is turning the cars: which end nominally leads is a held
-        // answer, and on a train rebuilt around a link change it is whichever end came first.
+        // answer, and on a train rebuilt around a link change it is whichever end came first. Nor
+        // is the inferred end a facing to remember, or the first real movement of a train that
+        // has never moved reads as a reversal of it.
         double facing = read != 0.0 ? read : (lead == 0 ? order : -order);
 
         // Decided for the train, before any car is laid: the cars all run the same way along the
         // track, so they all lead with the same end and they all change it at the same moment.
-        if (train.reversed((int) Math.signum(facing))) {
+        if (read != 0.0 && train.reversed((int) read)) {
             for (AbstractMinecart car : cars) {
                 if (car != leader) {
                     car.setFlipped(!car.isFlipped());
@@ -193,30 +253,14 @@ public final class TrainPlacer {
             }
         }
 
-        double headArc = leadArc + order * lead * pitch;
-        Seat[] seats = new Seat[cars.size()];
-
         for (int i = 0; i < cars.size(); i++) {
-            if (i == lead) {
-                continue;
-            }
-
-            double arc = headArc - order * i * pitch;
-
-            seats[i] = seatAt(ribbon, cars.get(i), arc);
-
-            if (seats[i] == null) {
-                return new Refusal(Bail.CAR_OFF_RIBBON, i, "car " + i + "/" + (cars.size() - 1)
-                        + " wants arc " + round(arc) + " of " + span(ribbon));
-            }
-        }
-
-        for (int i = 0; i < cars.size(); i++) {
-            if (i != lead) {
+            if (i != lead || blocked) {
                 place(train, cars.get(i), seats[i], headArc - order * i * pitch,
-                        facing, speed, read != 0.0);
+                        facing, speed, read != 0.0 && i != lead);
             }
         }
+
+        train.setPitch(pitch);
 
         // Charged here because this is the one place per tick that knows where the head was and
         // where it now is. Every car crosses the same joints as the head, so billing the head once
@@ -280,8 +324,8 @@ public final class TrainPlacer {
         return Math.abs(along) < EPSILON ? 0.0 : Math.signum(along);
     }
 
-    // Where one car would go, or null if the ribbon does not reach that far or the track it
-    // recorded there has since been taken up.
+    // Where one car would go on track the ribbon reaches, or null if the track it recorded there
+    // has since been taken up.
     private static @Nullable Seat seatAt(TrackRibbon ribbon, AbstractMinecart car, double arc) {
         Vec3 at = ribbon.positionAt(arc);
         BlockPos rail = ribbon.blockAt(arc);

@@ -265,48 +265,56 @@ public final class Train {
     }
 
     /**
-     * The interval to seat this train's cars at, closing on {@code target} no faster than the
-     * leading car is making room for it.
+     * Whether the placer is holding this train — its last seating attempt placed it — so that its
+     * cars move as one and a shove on any of them belongs to the car vanilla drives. A train not
+     * yet attempted answers yes, its first attempt being a tick away.
+     */
+    public boolean placed() {
+        return bail == null;
+    }
+
+    /**
+     * The interval to seat this train's cars at this tick, closing on {@code target} no faster
+     * than the leading car is making room for it. Not recorded here: {@link #setPitch} records it
+     * once every car has been seated at it, so an interval a refused seating never used does not
+     * stand for the next attempt.
      *
-     * <p>A train is linked from carts a player stood wherever they liked. Five of them filling the
-     * five blocks in front of a stop sit a block apart, where the target is half again that — and a
-     * train cannot be seated at all until it has moved, because until then there is no ribbon to
-     * seat it on. So the first seating always arrives with the cars already wrong, and taking the
-     * target outright moves the last of five two blocks in one tick.
-     *
-     * <p>Which way they move is the whole of the problem. Seats are measured from the leading car,
-     * and against a stop that is the car at the *back* — the train leaves the way it is free to go.
-     * So lengthening the train walks every other car backwards, into the block it is parked
-     * against, at the number of gaps times whatever the interval grows by. A train has to already
-     * be outrunning that to escape it, and from rest it is not: five cars survive it and ten are
-     * pushed clean off the recorded track.
-     *
-     * <p>A train lengthens by pulling its front forward, never by pushing its back. So the interval
-     * grows out of the ground the leading car has actually covered, shared over the gaps that have
-     * to absorb it. A car that has not moved lengthens nothing, which is what keeps a parked train
-     * parked instead of driving its own tail into a wall.
-     *
-     * <p>Never above the target, whatever is measured. The ribbon is grown to the target's span, so
-     * a wider interval asks for track that has not been recorded; carts stood wider than the target
-     * close up on their first seating instead, which moves them inward, onto track already there.
+     * <p>A train is linked from carts a player stood wherever they liked, and seats are measured
+     * from the leading car, so taking the target outright would walk every other car backwards at
+     * once — into whatever the train is parked against. A train lengthens by pulling its front
+     * forward, never by pushing its back: the interval grows out of the ground the leading car has
+     * actually covered, shared over the gaps that have to absorb it, and a car that has not moved
+     * lengthens nothing. Never above the target, since carts stood wider than that close up onto
+     * track already recorded.
      *
      * @param measured how far apart the cars actually are, used only to start from
      * @param advance how far the leading car moved this tick, which is all the room there is
      */
-    public double pitch(double target, double measured, double advance) {
+    public double nextPitch(double target, double measured, double advance) {
         int gaps = cars.size() - 1;
+        double next = pitch > 0.0 ? pitch : target;
 
-        if (pitch <= 0.0) {
-            pitch = measured > 0.0
-                    ? Math.clamp(measured, target * PITCH_FLOOR, target)
-                    : target;
+        // Never wider than the cars actually stand. A seated train stands exactly at its interval,
+        // so a narrower reading is a train something else has closed up — shunted against the end
+        // of its track while it could not be seated — and the interval follows it in rather than
+        // asking for room the train no longer has. Never narrower than a car, either: closer than
+        // that is two cars inside each other, which vanilla's own shove is left to separate.
+        if (measured > 0.0) {
+            double floor = Math.max(target * PITCH_FLOOR, cars.getFirst().getBbWidth());
+
+            next = Math.clamp(Math.min(next, measured), floor, target);
         }
 
-        if (pitch < target && gaps > 0) {
-            pitch += Math.min(target - pitch, Math.min(advance / gaps, PITCH_STEP));
+        if (next < target && gaps > 0) {
+            next += Math.min(target - next, Math.min(advance / gaps, PITCH_STEP));
         }
 
-        return pitch;
+        return next;
+    }
+
+    /** Records the interval this train's cars have just been seated at. */
+    public void setPitch(double interval) {
+        pitch = interval;
     }
 
     /** Whether any car of this train is driving it, whatever that car is currently putting out. */
@@ -451,7 +459,8 @@ public final class Train {
     /**
      * Whether this train has turned round along its ribbon since it was last laid, recording
      * {@code sign} as the way it runs now. False for the first laying in an arc frame, which is a
-     * train being placed rather than one reversing, and for a sign too weak to read.
+     * train being placed rather than one reversing. Only ever handed a sign read off the leading
+     * car's own movement: an end inferred for a standing train is not a direction it ran in.
      *
      * <p>This is the whole of when a car flips. Which end a cart leads with is a fact about the
      * train's direction along the track, not about where the cart points in the world: taking a
@@ -462,11 +471,6 @@ public final class Train {
      */
     public boolean reversed(int sign) {
         boolean known = facingAt == ribbon.resets() && facing != 0;
-
-        if (sign == 0) {
-            return false;
-        }
-
         boolean turned = known && sign != facing;
 
         facing = sign;

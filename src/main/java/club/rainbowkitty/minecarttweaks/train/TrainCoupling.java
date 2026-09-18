@@ -834,10 +834,12 @@ public final class TrainCoupling {
     }
 
     // What to do about a train the ribbon could not seat. Most refusals are a train waiting rather
-    // than a train in trouble: one with no leading end is standing still, and one that cannot yet
-    // read which way round it lies has not moved far enough to say. Neither names a car, and so
-    // neither is a reason to break anything. A refusal that does name one names a car the recorded
-    // track no longer reaches, and once that has held it is a sever.
+    // than a train in trouble: one with no leading end is standing still, one that cannot yet
+    // read which way round it lies has not moved far enough to say, one with no room for its tail
+    // is up against the end of its track, and one whose track has not reached a car may yet
+    // record it. None of those names a car, and so none is a reason to break anything. A refusal
+    // that does name one names a car the track cannot answer for, or one the train is running
+    // away from, and once that has held it is a sever.
     private static void cutIfLost(ServerLevel level, Train train, TrainPlacer.Refusal refusal) {
         if (refusal.car() == TrainPlacer.Refusal.NONE) {
             train.faultHeld(TrainPlacer.Refusal.NONE, SEVER_TICKS);

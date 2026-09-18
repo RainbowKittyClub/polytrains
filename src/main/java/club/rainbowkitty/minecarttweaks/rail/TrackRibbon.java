@@ -388,6 +388,34 @@ public final class TrackRibbon {
         return exit.getX() == edge.getStepX() && exit.getZ() == edge.getStepZ();
     }
 
+    /** Whether arc length {@code arc} lies on the recorded track rather than off either end. */
+    public boolean reaches(double arc) {
+        return !nodes.isEmpty() && arc >= from() - EPSILON && arc <= to() + EPSILON;
+    }
+
+    /**
+     * Whether the track ends at this ribbon's far or near end against something solid: the block
+     * past the end node is not rail and has a collision shape. A car seated closer than half its
+     * length to that end would be put inside it, which is where vanilla stops a moving cart.
+     */
+    public boolean blockedBeyond(Level level, boolean farEnd) {
+        if (nodes.isEmpty()) {
+            return false;
+        }
+
+        Node end = farEnd ? nodes.getLast() : nodes.getFirst();
+        Vec3 out = outward(end, !farEnd);
+        BlockPos beyond = out == null ? null : onward(level, end.block(), out);
+
+        if (beyond == null) {
+            return false;
+        }
+
+        BlockState past = level.getBlockState(beyond);
+
+        return !BaseRailBlock.isRail(past) && !past.getCollisionShape(level, beyond).isEmpty();
+    }
+
     /**
      * Whether this ribbon records {@code pos} anywhere between arcs {@code from} and {@code to}.
      * Asking within a window rather than of the whole ribbon is the difference between a train
