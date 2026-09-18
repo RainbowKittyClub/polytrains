@@ -19,7 +19,6 @@ import net.minecraft.world.phys.Vec3;
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
 import club.rainbowkitty.minecarttweaks.rail.RailDrag;
 import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
-import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 
 /**
  * Seats a train's trailing cars on the track its leading car recorded, instead of correcting the
@@ -48,10 +47,6 @@ public final class TrainPlacer {
     // NewMinecartBehavior.setRotation, where the band is 175 to 185 — one-sided here because a
     // wrapped difference never exceeds 180 in the first place.
     private static final float HALF_TURN = 180.0F;
-
-    // Below this the ground just covered runs against the end the car is pointing, so the car has
-    // reversed. A bend cannot reach it: two exits of one rail are at worst square to each other.
-    private static final double REVERSAL_DOT = -0.5;
 
     /**
      * Why a train could not be seated. The tag is the finite part, so an intermittent fault is read
@@ -184,6 +179,19 @@ public final class TrainPlacer {
         // way. What that does not license is turning the cars: which end nominally leads is a held
         // answer, and on a train rebuilt around a link change it is whichever end came first.
         double facing = read != 0.0 ? read : (lead == 0 ? order : -order);
+
+        // Decided for the train, before any car is laid: the cars all run the same way along the
+        // track, so they all lead with the same end and they all change it at the same moment.
+        if (train.reversed((int) Math.signum(facing))) {
+            for (AbstractMinecart car : cars) {
+                if (car != leader) {
+                    car.setFlipped(!car.isFlipped());
+
+                    // The angle it holds was written against the end it was leading with before.
+                    car.setXRot(-car.getXRot());
+                }
+            }
+        }
 
         double headArc = leadArc + order * lead * pitch;
         Seat[] seats = new Seat[cars.size()];
@@ -359,10 +367,10 @@ public final class TrainPlacer {
     // cart it moves. Grade comes out of the step rather than off the rail, so a car crossing onto a
     // slope pitches by what it climbed instead of snapping to a fixed angle.
     //
-    // Reversal is a flip, not a half turn. A car that starts travelling the other way keeps the end
-    // it was already pointing and runs backwards, which is what vanilla records in isFlipped rather
-    // than by turning the cart through 180 degrees. Turning it instead sweeps everything drawn
-    // against the cart — the chain to the car behind — straight through its body.
+    // Lays one car along the rail under it. Reversal is a flip, not a half turn: a car that starts
+    // travelling the other way keeps the end it was already pointing and runs backwards, which is
+    // what vanilla records in isFlipped rather than by turning the cart through 180 degrees.
+    // Turning it instead sweeps the chain drawn to the car behind straight through its body.
     private static void aim(AbstractMinecart car, Vec3 heading, Vec3 moved) {
         if (heading.horizontalDistanceSqr() < EPSILON * EPSILON) {
             return;
@@ -371,36 +379,19 @@ public final class TrainPlacer {
         // The rail the car is now on, not the jump that put it there. A placed car is teleported
         // between seats, and seat-to-seat displacement only equals travel where the track is
         // straight: round a tight turn the two seats are neighbours in space while being a turn
-        // apart along the track, so the jump points nowhere the car is going and reads as a
-        // reversal. It is the same vector this car's movement is laid along.
+        // apart along the track. It is the same vector this car's movement is laid along.
         Vec3 along = heading.horizontal().normalize();
-
-        // Which end leads is decided against the heading this car was last laid along — its front,
-        // turned back round if it was already running backwards — rather than against the yaw it
-        // would otherwise take. Vanilla's own test is a window 175 to 185 degrees wide, which a
-        // placed car covering several blocks of track in one tick steps straight over.
-        Vec3 ahead = MinecartHelper.facingOf(car.getYRot()).scale(car.isFlipped() ? -1.0 : 1.0);
-        boolean was = car.isFlipped();
-
-        if (ahead.dot(along) < REVERSAL_DOT) {
-            car.setFlipped(!was);
-        }
-
         boolean flipped = car.isFlipped();
         float yaw = (float) (180.0 - Math.atan2(along.z, along.x) * 180.0 / Math.PI);
 
-        // A flipped car is pointing its other end, so both angles describe the end it is no longer
-        // leading with — left alone, a flipped car climbing renders as one descending.
+        // Which end the car leads with is settled for the whole train before any of it is laid —
+        // see Train#reversed. Nothing here reads it off a heading, because a heading cannot tell a
+        // reversal from a turn that happens to come back on itself.
         car.setYRot((flipped ? yaw + HALF_TURN : yaw) % 360.0F);
 
-        // The climb has only the ground covered to read from, so a car that was placed where it
-        // already stood keeps the angle it has — turned round with it if it flipped this tick,
-        // since the angle it holds was written under the other one.
+        // The climb has only the ground covered to read from, so a car placed where it already
+        // stood keeps the angle it has.
         if (moved.horizontalDistanceSqr() < EPSILON * EPSILON) {
-            if (flipped != was) {
-                car.setXRot(-car.getXRot());
-            }
-
             return;
         }
 

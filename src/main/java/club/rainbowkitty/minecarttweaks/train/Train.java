@@ -88,6 +88,12 @@ public final class Train {
     // order taken before one says nothing about the frame that came after it.
     private int orderAt = -1;
 
+    // Which way along its ribbon this train was last laid, and the arc frame that says what that
+    // means. A reset re-records the ribbon along the leading car's travel, so the sign before one
+    // describes nothing after it.
+    private int facing;
+    private int facingAt = -1;
+
     // This train's mean rolling friction, held for the tick that worked it out. Read once for every
     // rail block the leading car crosses, and working it out walks every car's inventory.
     private double rolling;
@@ -440,6 +446,33 @@ public final class Train {
 
         order = sign;
         orderAt = ribbon.resets();
+    }
+
+    /**
+     * Whether this train has turned round along its ribbon since it was last laid, recording
+     * {@code sign} as the way it runs now. False for the first laying in an arc frame, which is a
+     * train being placed rather than one reversing, and for a sign too weak to read.
+     *
+     * <p>This is the whole of when a car flips. Which end a cart leads with is a fact about the
+     * train's direction along the track, not about where the cart points in the world: taking a
+     * U-turn swings a car's heading through 180 degrees without reversing it, and any test that
+     * compares one heading against the last cannot tell those apart. Vanilla's own test can afford
+     * to, because its stepper turns a cart a few degrees at a time and only a real reversal ever
+     * lands in its 175-to-185 window; a placed car crosses whole blocks between ticks.
+     */
+    public boolean reversed(int sign) {
+        boolean known = facingAt == ribbon.resets() && facing != 0;
+
+        if (sign == 0) {
+            return false;
+        }
+
+        boolean turned = known && sign != facing;
+
+        facing = sign;
+        facingAt = ribbon.resets();
+
+        return turned;
     }
 
     /** The cars of this train, head first, or in no particular order when it closes on itself. */
