@@ -71,13 +71,29 @@ public final class TrainPlacer {
      * other way.
      */
     public enum Bail {
-        NO_LEADING_END,
-        LEADER_OFF_RIBBON,
-        LEADER_MID_TRAIN,
-        ORDER_UNREADABLE,
-        RIBBON_SHORT,
-        CAR_OFF_RIBBON,
-        SEAT_FOULED
+        NO_LEADING_END(true),
+        LEADER_OFF_RIBBON(true),
+        LEADER_MID_TRAIN(true),
+        ORDER_UNREADABLE(true),
+        RIBBON_SHORT(false),
+        CAR_OFF_RIBBON(false),
+        SEAT_FOULED(false);
+
+        private final boolean whole;
+
+        Bail(boolean whole) {
+            this.whole = whole;
+        }
+
+        /**
+         * Whether this leaves the placer with no frame of reference and so takes the whole train
+         * back. The four that do are all about the leading car or the train's lie along its track,
+         * which every other car's seat is measured from; the three that do not are one car's own
+         * problem, and the cars around it are still placed exactly where they belong.
+         */
+        public boolean whole() {
+            return whole;
+        }
     }
 
     /**
@@ -113,23 +129,53 @@ public final class TrainPlacer {
         // there for cars that tick before their leader, and without this it also covers the tick a
         // train falls back on — leaving those cars steering no junction while vanilla moves them
         // over one, which is the shape of a train that stops going straight through.
-        if (attempt != null) {
+        if (attempt != null && attempt.why().whole()) {
             release(train);
         }
 
         if (train.seatingChanged(attempt == null ? null : attempt.why())
                 && LOGGER.isDebugEnabled()) {
             LOGGER.debug("train of {} {}", train.size(), attempt == null
-                    ? "seated" : "not seated, " + attempt.why() + ": " + attempt.detail());
+                    ? "seated"
+                    : "not seated, " + attempt.why() + ", " + loose(train) + " loose: "
+                    + attempt.detail());
         }
 
         return attempt;
     }
 
+    // How many of a train's cars the placer is not holding. The leading car aside: it is driven
+    // rather than placed whether or not the seating succeeded, so counting it would report every
+    // train in the world as having one car loose.
+    //
+    // Read after the attempt, so it is what the seating actually left behind rather than what the
+    // refusal was about. A refusal naming one car and leaving one car loose is the placer holding
+    // the rest; the same refusal leaving every car loose is not.
+    private static int loose(Train train) {
+        AbstractMinecart leader = train.leader();
+        int loose = 0;
+
+        for (AbstractMinecart car : train.cars()) {
+            if (car != leader && !seated(car)) {
+                loose++;
+            }
+        }
+
+        return loose;
+    }
+
     /**
-     * Whether {@code car} is being placed on its track rather than driven along it. Takes the tick
-     * before as well: a train is seated once, on its leader's tick, and the rest of its cars may
-     * have ticked already this one.
+     * Whether {@code car} is being placed on its track rather than driven along it — so vanilla's
+     * own movement is cancelled for it, and everything vanilla would have done on the way is owed
+     * by the placer instead.
+     *
+     * <p>Per car, and not the same question as {@link Train#placed()}. The leading car of a train
+     * the placer is holding answers no here: it is the one car vanilla drives, and the only one
+     * that records track. Asking this to find out whether a train is under control reads that car
+     * as loose when it is not.
+     *
+     * <p>Takes the tick before as well: a train is seated once, on its leader's tick, and the rest
+     * of its cars may have ticked already this one.
      */
     public static boolean seated(AbstractMinecart car) {
         if (!(car instanceof AbstractMinecartExt ext)) {
@@ -304,7 +350,13 @@ public final class TrainPlacer {
             headArc += back;
         }
 
+        // A car the ribbon cannot answer for leaves its own seat empty and the rest of the train
+        // standing where it belongs. Every seat is measured from the leading car's arc and that
+        // car's own offset, so one car being unplaceable says nothing about any other — the old
+        // all-or-nothing answer handed ten cars to vanilla over one, and each of those ten then
+        // moved itself, aimed itself and drew the whole train's power on its own account.
         Seat[] seats = new Seat[cars.size()];
+        Refusal refusal = null;
 
         for (int i = 0; i < cars.size(); i++) {
             if (i == lead && !blocked) {
@@ -319,16 +371,19 @@ public final class TrainPlacer {
             if (!ribbon.reaches(arc)) {
                 boolean leaving = read != 0.0 && Math.signum(arc - leadArc) != read;
 
-                return new Refusal(Bail.RIBBON_SHORT, leaving ? i : Refusal.NONE, "car " + i
+                refusal = refusal != null ? refusal
+                        : new Refusal(Bail.RIBBON_SHORT, leaving ? i : Refusal.NONE, "car " + i
                         + "/" + (cars.size() - 1) + " wants arc " + round(arc) + " of "
                         + span(ribbon));
+                continue;
             }
 
             seats[i] = seatAt(ribbon, cars.get(i), arc);
 
             if (seats[i] == null) {
-                return new Refusal(Bail.CAR_OFF_RIBBON, i, "car " + i + "/" + (cars.size() - 1)
-                        + " at arc " + round(arc) + " has no rail under it");
+                refusal = refusal != null ? refusal
+                        : new Refusal(Bail.CAR_OFF_RIBBON, i, "car " + i + "/"
+                        + (cars.size() - 1) + " at arc " + round(arc) + " has no rail under it");
             }
         }
 
@@ -343,11 +398,15 @@ public final class TrainPlacer {
         // another once one did is not a smaller failure than leaving it loose: a seat is applied
         // outright, so the two trains end up inside each other, and neither of them moves again
         // under its own power to work its way out.
-        AbstractMinecart fouling = fouled(train, cars, seats);
+        Foul foul = fouled(train, cars, seats);
 
-        if (fouling != null) {
-            return new Refusal(Bail.SEAT_FOULED, Refusal.NONE, "a cart of another train lies at "
-                    + fouling.getCurrentBlockPosOrRailBelow() + ", across this train's seats");
+        // Still named against no car. Which car is fouled is wanted for its own seat and nothing
+        // else: a fouled train is waiting on another to move, which is not a fault to be counted
+        // towards cutting it, and Refusal.car() is read by nothing but the sever.
+        if (foul != null && refusal == null) {
+            refusal = new Refusal(Bail.SEAT_FOULED, Refusal.NONE, "a cart of another train lies at "
+                    + foul.by().getCurrentBlockPosOrRailBelow() + ", across the seat of car "
+                    + foul.car() + "/" + (cars.size() - 1));
         }
 
         // A train too slow to read a heading off has not stopped lying the way it lies, so its
@@ -359,10 +418,17 @@ public final class TrainPlacer {
         double facing = read != 0.0 ? read : (lead == 0 ? order : -order);
 
         for (int i = 0; i < cars.size(); i++) {
-            if (i != lead || blocked) {
-                place(train, cars.get(i), seats[i], headArc - order * offsets[i],
-                        facing, speed, i != lead);
+            if (i == lead && !blocked) {
+                continue;
             }
+
+            if (seats[i] == null) {
+                loosen(cars.get(i));
+                continue;
+            }
+
+            place(train, cars.get(i), seats[i], headArc - order * offsets[i],
+                    facing, speed, i != lead);
         }
 
         train.setGaps(gaps);
@@ -385,6 +451,10 @@ public final class TrainPlacer {
         train.setTurn(turn);
         RailDrag.bend(leader, turn);
 
+        if (refusal != null) {
+            return refusal;
+        }
+
         return null;
     }
 
@@ -392,7 +462,9 @@ public final class TrainPlacer {
     // the ground that car would cover getting there, or null for a clear run. One entity query for
     // the whole train rather than one per car: the query is the expensive half, and a cart close
     // enough to foul any seat is inside the span of all of them.
-    private static @Nullable AbstractMinecart fouled(
+    private record Foul(int car, AbstractMinecart by) {}
+
+    private static @Nullable Foul fouled(
             Train train, List<AbstractMinecart> cars, Seat[] seats) {
         AABB span = null;
 
@@ -411,6 +483,8 @@ public final class TrainPlacer {
         List<AbstractMinecart> others = cars.getFirst().level().getEntitiesOfClass(
                 AbstractMinecart.class, span, car -> !train.contains(car));
 
+        Foul first = null;
+
         for (int i = 0; i < seats.length; i++) {
             if (seats[i] == null) {
                 continue;
@@ -420,12 +494,18 @@ public final class TrainPlacer {
 
             for (AbstractMinecart other : others) {
                 if (swept.intersects(other.getBoundingBox())) {
-                    return other;
+                    first = first != null ? first : new Foul(i, other);
+
+                    // Emptied so the car is left loose rather than laid into what is standing
+                    // there. The span above was taken before any of this, so one fouled seat does
+                    // not shrink the volume the rest are asked about.
+                    seats[i] = null;
+                    break;
                 }
             }
         }
 
-        return null;
+        return first;
     }
 
     // The ground one car covers reaching its seat: the box it stands in now joined to the box it
@@ -537,6 +617,13 @@ public final class TrainPlacer {
     }
 
     // Drops every car's seat mark, so that none of this train reads as placed.
+    // Hands one car back to vanilla without disturbing the rest of its train.
+    private static void loosen(AbstractMinecart car) {
+        if (car instanceof AbstractMinecartExt ext) {
+            ext.minecarttweaks$setSeatedAt(0L);
+        }
+    }
+
     private static void release(Train train) {
         // Where the head was stops meaning anything once vanilla is driving it again: the ground it
         // covers in between is not measured from here, and the next seating would charge the whole
@@ -545,9 +632,7 @@ public final class TrainPlacer {
         train.setTurn(0.0);
 
         for (AbstractMinecart car : train.cars()) {
-            if (car instanceof AbstractMinecartExt ext) {
-                ext.minecarttweaks$setSeatedAt(0L);
-            }
+            loosen(car);
         }
     }
 
