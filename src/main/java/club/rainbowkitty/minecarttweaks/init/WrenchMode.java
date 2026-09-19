@@ -10,7 +10,7 @@ public enum WrenchMode implements StringRepresentable {
     /** Couples two carts, spending a chain out of the player's pack. */
     LINK("link"),
 
-    /** Breaks every coupling on the cart, handing its chains back. */
+    /** Breaks the one coupling between two carts, handing the chain that held it back. */
     UNLINK("unlink");
 
     /** Persistence codec for this mode. */
