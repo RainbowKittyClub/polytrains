@@ -36,9 +36,11 @@ import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
  * <p>Only the leading car is left to vanilla. It is what defines the curve, so driving it from the
  * curve would be reading back what it wrote.
  *
- * <p>All of the train or none of it. A train half seated and half corrected would have the two
- * holding the same car to different places, so a ribbon that cannot answer for one car hands back
- * the whole train and nothing is moved.
+ * <p>As much of the train as the ribbon can answer for. Every seat is measured from the leading
+ * car's arc and that car's own offset, so one car being unplaceable says nothing about any other
+ * and the rest are still put where they belong. Only a refusal that leaves no frame of reference
+ * at all — one about the leading car, or about which way round the train lies — hands the whole
+ * train back.
  */
 public final class TrainPlacer {
 
@@ -117,8 +119,8 @@ public final class TrainPlacer {
     /**
      * Seats every trailing car of {@code train} along its ribbon at intervals easing towards
      * {@code target}, and says whether it could, naming the car it could not place when there is
-     * one. Nothing is moved unless every car could be placed, so a refusal leaves the train exactly
-     * as it was.
+     * one. A car that cannot be placed is left to vanilla and the rest are seated around it; a
+     * refusal that names no frame of reference leaves the whole train as it was.
      */
     public static @Nullable Refusal seat(Train train, double target) {
         Refusal attempt = attempt(train, target);
@@ -168,7 +170,7 @@ public final class TrainPlacer {
      * own movement is cancelled for it, and everything vanilla would have done on the way is owed
      * by the placer instead.
      *
-     * <p>Per car, and not the same question as {@link Train#placed()}. The leading car of a train
+     * <p>Per car, and not the same question as {@link Train#holding()}. The leading car of a train
      * the placer is holding answers no here: it is the one car vanilla drives, and the only one
      * that records track. Asking this to find out whether a train is under control reads that car
      * as loose when it is not.

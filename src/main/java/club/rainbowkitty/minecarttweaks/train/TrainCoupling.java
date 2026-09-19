@@ -319,6 +319,29 @@ public final class TrainCoupling {
     }
 
     /**
+     * Whether the placer is holding {@code cart} where it wants it, so that a shove on it is the
+     * train's to answer rather than the cart's own.
+     *
+     * <p>Asked of the car and not of its train, because the two can differ within one train and a
+     * single answer for all of it gets one of them wrong whichever way it is given. A car the
+     * placer holds has its movement written for it, so a shove left on it is overwritten before it
+     * moves anything and has to be handed to the car vanilla drives; a car the placer has let go
+     * of is an ordinary cart, and handing its shove to the leading car leaves the car that was
+     * actually pushed standing.
+     */
+    public static boolean carried(AbstractMinecart cart) {
+        if (!MTGameRules.trainsEnabled(cart.level()) || !cart.hasLink()) {
+            return false;
+        }
+
+        Train train = Train.of(cart);
+
+        // The leading car is never seated — it is the one car vanilla drives — so it is carried
+        // for exactly as long as the placer has not handed its whole train back.
+        return TrainPlacer.seated(cart) || (cart == train.leader() && train.holding());
+    }
+
+    /**
      * How fast {@code cart}'s train is really travelling, in blocks per tick. Read off the car that
      * leads it, which is the one vanilla still drives along the rails — every other car's movement
      * is written by the placer from this same figure, so asking one of those is reading back what

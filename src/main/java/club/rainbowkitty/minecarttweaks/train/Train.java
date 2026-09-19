@@ -286,9 +286,23 @@ public final class Train {
      *
      * <p>A train never attempted answers no. It used to answer yes on the grounds that its first
      * attempt was a tick away, which made a third answer out of a question that already had two.
+     *
+     * <p>Read off the cars rather than off the last verdict, because the verdict cannot say how
+     * much of the train it left held: the refusal that leaves one car loose on a train of five
+     * leaves nothing at all held on a train of two, and they are the same refusal. The seat marks
+     * say it exactly. They also survive a rebuild, which the verdict does not — a train reassembled
+     * around a link change has been neither placed nor refused, while its cars are still standing
+     * where the placer put them — and {@link TrainPlacer#seated} zeroes them the moment a train is
+     * handed back, so a release reads here without having to be reported here.
      */
-    public boolean placed() {
-        return attempted && bail == null;
+    public boolean holding() {
+        for (AbstractMinecart car : cars) {
+            if (TrainPlacer.seated(car)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -646,7 +660,11 @@ public final class Train {
         // it moving towards the others is shunting them rather than leading a reversal. The end
         // already named keeps recording: a change of mind starts the ribbon over from a car whose
         // track may not reach the rest, which is what left them unplaced in the first place.
-        if (!placed()) {
+        //
+        // A train held bar one car is still held, and still free to reverse. Asked the other way
+        // round, a train with one seat fouled could not change the end it led with — so it could
+        // not decide to back off whatever was fouling it, which is half of why it stayed there.
+        if (!holding()) {
             flipHeld = 0;
             return leader;
         }
