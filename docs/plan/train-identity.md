@@ -11,7 +11,7 @@ during the 2026-09-18 session; line numbers are from `09f3a8e` plus the uncommit
 it is deliberately placed after the cheap wins so the rest is not blocked on it.
 
 Status as of 2026-09-19: S1, S2, S4, S5, S6, S7 and S8 are built and verified in world; S3 was
-built, measured and backed out; S9 is built but not yet confirmed in world. S10–S14 come out of the unseating audit
+built, measured and backed out; S9 is built but not yet confirmed in world. S10–S15 come out of the unseating audit
 in the Findings below and are not started.
 
 Stage order. S6, S7 and S8 narrow the ways a train can be released and are the highest-value work
@@ -401,9 +401,12 @@ earlier, from the placer, rather than waiting for the leader to cross a block bo
 `ribbon.isEmpty() || ribbon.arcOfLeader(leader) == null`.
 
 The residual the Build text did not account for: the seed is gated on the leading car **standing on
-a rail**, so it does nothing for a car knocked off its rail block by a collision — which is the
-common case, not the rare one. `LEADER_OFF_RIBBON` survives there, and the audit below names it as
-the largest remaining source of whole-train releases. S11 closes it.
+a rail**, so it does nothing for a car knocked off its rail block by a collision.
+`LEADER_OFF_RIBBON` survives there, and S11 closes it — but keep the denominator in view. Counted
+over five rotated `debug.log`s plus the current one: `SEAT_FOULED` 898, `RIBBON_SHORT` 65,
+`LEADER_OFF_RIBBON` 32, `CAR_OFF_RIBBON` 6, `ORDER_UNREADABLE` 1. So `LEADER_OFF_RIBBON` is 32 of
+the 33 observed *whole-train* releases and worth closing, and 3% of all bails. Nine in ten are
+`SEAT_FOULED`, which S15 is about.
 
 ## S7 — Keep the leading end readable — **done**
 
@@ -593,6 +596,84 @@ than lost. Recover it.
 `debug.log`.
 
 Narrow, and worth doing only after S11 — which removes most of the resets that would reach it.
+
+## S15 — Ask whether the placer holds *this car*, not whether it holds every car — **in progress**
+
+**Build.** `Train.placed()` is `attempted && bail == null`, and it has exactly one reader:
+`EntityMixin.shoveTrain:74`, the gate that cancels vanilla's mutual shove, divides it by train mass
+and routes it to the leading car. S8 made the three per-car bails cost one car; it did not change
+`placed()`. So one fouled seat still flips the whole train to *unplaced*, and for that tick the
+shove is not cancelled, not divided by mass and not routed — it lands full force on whichever car
+was leaned on.
+
+Replace the train-wide gate with the per-car fact the placer already records: route the shove when
+the shoved car is one the placer is holding — seated, or the leading car — and leave it to vanilla
+otherwise. That also fixes the converse, which the current gate gets wrong in the other direction:
+a genuinely loose car has its shove routed to the leading car today, when it is an ordinary vanilla
+cart and should take its own.
+
+**Done when.** A single unlinked cart cannot hold a standing train of three. Today it can, and the
+signature is `SEAT_FOULED` and `seated` alternating at sub-second period in `debug.log` while
+neither the cart nor the train goes anywhere:
+
+```
+12:23:46 train of 3 not seated, SEAT_FOULED, 1 loose
+12:23:46 train of 3 seated
+12:23:47 train of 3 not seated, SEAT_FOULED, 1 loose
+12:23:47 train of 3 seated
+```
+
+The loop is self-sustaining, which is what makes it a deadlock rather than a stall. A cart fouling
+one seat makes the train read unplaced; unplaced, the train has no mass advantage, so the cart
+shoves the leading car; the leading car moving moves every seat with it, so the foul clears; seated,
+the train recovers its mass and creeps back into the cart; foul again.
+
+This is the largest single bail class by an order of magnitude — nine in ten — and neither S10 nor
+S11 touches it. Do it before either of the remaining planned stages.
+
+### As built
+
+Written early: the code is built and the in-world confirmation is outstanding.
+
+The Build text said `placed()` had exactly one reader. **It had two.** The second is
+`Train.settledLeader` (`Train.java:649`), which freezes the leading end whenever the train is not
+placed — so a train with one seat fouled could not change which end it led with, and therefore
+could not decide to back off the thing fouling it. That is the other half of the deadlock, and it
+was found only by grepping for the unqualified call.
+
+`Train.placed()` is gone, replaced by `Train.holding()`:
+
+```java
+public boolean holding() {
+    return attempted && (bail == null || !bail.whole());
+}
+```
+
+Both former readers take it. The per-car question became `TrainCoupling.carried(cart)`, which is
+what the shove gate now asks:
+
+```java
+return TrainPlacer.seated(cart) || (cart == train.leader() && train.holding());
+```
+
+The leading car is never seated, so it needs the train-level clause; every other car answers from
+its own stamp. The gamerule and `hasLink()` tests moved into `carried` with it, which left
+`EntityMixin` with the bare pair of conditions the injection actually cares about.
+
+Two stale javadocs went with it — `TrainPlacer`'s class comment and `seat()`'s both still said
+nothing is moved unless every car can be placed, which S8 stopped being true and neither was
+updated at the time.
+
+Residual, deliberately not built: `share` is still `1.0 / mass(cart)` over the *whole* train,
+including cars the placer has let go of. A train of three with one car loose therefore resists a
+shove as though all three were held. The error is bounded by how many cars are loose, 79% of bails
+leave exactly one, and making mass follow seating means recomputing it per tick rather than per
+train. Revisit only if a train with several loose cars reads as implausibly heavy.
+
+Not to be confused with widening `SEAT_FOULED` itself. Refusing to seat a car into an occupied
+space is correct and must stay unconditional; a `FOUL_TICKS` give-up was tried in S8 and removed
+because it seated trains permanently into each other. What is wrong is not the refusal but what the
+refusal is taken to mean about the other cars.
 
 ---
 
