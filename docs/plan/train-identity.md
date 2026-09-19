@@ -10,7 +10,8 @@ during the 2026-09-18 session; line numbers are from `09f3a8e` plus the uncommit
 (leader-as-head) are reasoned, not measured — that stage is the one most likely to be wrong, and
 it is deliberately placed after the cheap wins so the rest is not blocked on it.
 
-Status as of 2026-09-19: every stage is done bar S3, which was built, measured and backed out.
+Status as of 2026-09-19: S1–S15 are done bar S3, which was built, measured and backed out. S16 is
+built and under test; S17 is not started.
 S1–S8 were the original plan; S9–S15 came out of the unseating audit in the Findings below and
 landed the same day, measured in "Measured after S9–S15" near the end. What is left is the two
 Open decisions, which want evidence rather than code.
@@ -824,6 +825,108 @@ Not to be confused with widening `SEAT_FOULED` itself. Refusing to seat a car in
 space is correct and must stay unconditional; a `FOUL_TICKS` give-up was tried in S8 and removed
 because it seated trains permanently into each other. What is wrong is not the refusal but what the
 refusal is taken to mean about the other cars.
+
+## S16 — Take a car's facing from its train, not from the car — **in progress**
+
+**Build.** Delete the per-cart nose entirely — the `Vec3` field, both ext methods, and `noseOf` —
+and take a car's facing from the one thing that already describes where its head lies: the train's
+own `order`.
+
+```java
+boolean flipped = order * facing < 0.0;
+car.setYRot(MinecartHelper.yawOf(along.scale(order)));
+```
+
+`holdNose` keeps its job of covering the cars the placer does not aim — the leading car, and every
+car of a train that could not be seated — but becomes a correction against the **track** rather
+than against the heading the car had last tick.
+
+**Done when.** No chain is ever drawn across a car, in a session that includes head-on collisions
+at speed; `holdNose` reports few or no corrections; and the new order detector never fires.
+
+The invariant that makes it work is that both halves of `along.scale(order)` are read against the
+ribbon's numbering, and a re-recording reverses both — so the direction that comes out is the same
+in the world either way round. That is the property the per-cart heading was invented to get, and
+it turns out the train already had it.
+
+What it gives up is a car deliberately coupled facing backwards, which this straightens. That is
+the one state it can no longer represent, and it is the state that draws a chain across a car.
+
+The risk it takes is the mirror of the bug it fixes: `order` is shared, so a wrong `order` turns a
+whole train at once rather than one car. That is the better failure — visible immediately,
+self-consistent, and it never crosses a chain — and `order` now has exactly two derivation points
+(S14 at a reset, `lieOf` otherwise) rather than a geometric comparison per car per tick.
+
+### As built
+
+Built as specified; net **39 lines deleted**, and one piece of per-cart state gone.
+
+The argument that stood against this was a conflation, written into `aim`'s own comment: *"a U-turn
+swings a car through 180 degrees without reversing it, and two cars of one train may honestly face
+opposite ways, so there is no train-wide answer to hold either."* Opposite ways **in the world** —
+which `along.scale(order)` gives, because the tangent differs along the turn. What it refuses is
+two cars disagreeing about which way along their own train they face, and no U-turn does that. The
+per-cart heading existed to solve a problem that was never there.
+
+Three defects died together rather than one at a time, because all three came of asking *"has this
+car turned since last tick?"* — a question about two headings, which has no answer at ninety
+degrees and needs per-car memory to ask at all. The new question is *"is this car pointing along
+its own track right now?"*: two antipodal candidates against the tangent where the car actually is,
+unambiguous at every angle. So the ninety-degree tie-break, the bias it produced and the ratchet
+that followed have nowhere left to live.
+
+Measured over the first session: `holdNose` corrected **zero** times, and the order detector fired
+**zero** times.
+
+Two pieces of instrumentation landed with it, both debug-only.
+
+`TrainMeter.reportDisorder` says when the cars do not lie along the track in the order their links
+run in. Nothing was measuring that: the spacing walk reports how far apart list-adjacent cars are,
+which reads identically whether a car is ahead of its neighbour or behind it, so a swapped pair
+printed as a perfectly held train.
+
+Every train now logs as `train <head entity id> of <n>`. Before this every line said only how many
+cars a train had, and on a busy track that is several trains answering to one name — which
+silently corrupted earlier readings in this document's own session, where a fault passing between
+trains at one bad piece of track read as a single train frozen there.
+
+## S17 — Treat a fouling cart as the end of the track, not as a refusal — **planned**
+
+**Build.** `SEAT_FOULED` leaves the fouled car unseated, and an unseated car is driven by vanilla
+straight back into whatever fouled it. When the thing fouling it is another *train*, both sides do
+this at once and neither moves: each refuses to seat, each leaves a car loose, each loose car is
+driven into the other train.
+
+Stop treating a foreign cart as a refusal and treat it as the end of usable track. The placer
+already has that machinery — `blockedBeyond`, `pressing`, `packing` and the `blocked` draw-back
+are exactly "this train has run out of room and packs up short of it". Resolve the fouling cart to
+an arc on this train's ribbon, take the nearest one ahead of the leading car as a limit, and feed
+that limit into the same path. Every car then gets a seat, the train packs short of the
+obstruction, keeps its mass, and shoves through the ordinary collision path.
+
+**Done when.** Two trains driven head-on come to a stop with **every car still seated**, no
+`SEAT_FOULED` and no loose car on either side, and both resume when one is driven away. Observable
+as the absence of the alternating seated/`SEAT_FOULED` lines in `debug.log` for the pair, now that
+each train logs under its own name.
+
+This does not relax the rule that a car is never seated into occupied space, which is correct and
+which an earlier `FOUL_TICKS` give-up already proved cannot be relaxed. It changes what the refusal
+*means*: today it means "give this car to vanilla", and vanilla drives it back into the problem.
+
+Three things to resolve by building it.
+
+A fouling cart may have no arc on this ribbon at all — a cart on a crossing track, or on a parallel
+line the ribbon never recorded. There is no limit to derive from that, so `SEAT_FOULED` has to
+survive for it. It should become the rare case rather than the common one.
+
+Two trains each drawing back from the other could oscillate, each backing off until the foul clears
+and then advancing again. The packing path already carries damping for exactly this shape —
+`carried` holds the speed a train arrived with, and `packedTick` records that give was taken — so
+the question is whether that damping is enough here or whether a standoff needs a rule of its own.
+
+The swept-volume half of `fouled` is a different question from the static one: it asks what a car
+would pass *through* on the way to its seat, which is about the path and not about an obstruction
+sitting somewhere. It may want to keep refusing.
 
 ---
 
