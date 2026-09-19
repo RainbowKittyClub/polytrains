@@ -184,7 +184,19 @@ public final class TrainCoupling {
             return resisted;
         }
 
-        double drive = Train.of(cart).drive();
+        Train train = Train.of(cart);
+
+        // Only the car at the head of a train carries its drive. That was already true of a train
+        // the placer is holding — every other car is placed, and a placed car never reaches this —
+        // but it was true by arrangement rather than by asking, and the arrangement is exactly what
+        // fails when the placer cannot hold the train. Every car then drew the whole train's force
+        // on its own account, with nothing coupling them but a chain that is a record and not a
+        // rope, and a train already in trouble tore itself apart under its own power.
+        if (train.leader() != cart) {
+            return resisted;
+        }
+
+        double drive = train.drive();
 
         if (drive <= 0.0) {
             return resisted;

@@ -257,9 +257,17 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     // it heads, rather than giving the one cart that carries a firebox the only free ride.
     @Unique
     private double minecarttweaks$sharedAcceleration() {
-        return hasLink() && MTGameRules.trainsEnabled(level())
-                ? Train.of(this).drive()
-                : minecarttweaks$driveAcceleration() / TrainCoupling.mass(this);
+        if (!hasLink() || !MTGameRules.trainsEnabled(level())) {
+            return minecarttweaks$driveAcceleration() / TrainCoupling.mass(this);
+        }
+
+        Train train = Train.of(this);
+
+        // The same one car spends it here as in TrainCoupling.hauled, and for the same reason: the
+        // train's figure already counts every firebox in it, so a second engine spending it again
+        // on its own account spends it twice. Nothing while the placer holds the train, where only
+        // this car's movement survives anyway; everything while it does not.
+        return train.leader() == this ? train.drive() : 0.0;
     }
 
     // Reads the brake, holds chunks, and idles the fuel burn while parked.
