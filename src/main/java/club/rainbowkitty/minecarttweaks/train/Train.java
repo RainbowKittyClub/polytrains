@@ -46,9 +46,9 @@ public final class Train {
     // it. A reversal names it for every tick after it; a blip names it once.
     private static final int LEADER_FLIP_TICKS = 3;
 
-    // The most of a block the seating interval closes on its target in one tick, however much room
-    // the leading car has made. A ceiling only: what usually paces the expansion is the ground that
-    // car covered, and this keeps a train released at speed from snapping out to length in one go.
+    // The most a gap coupled wider than the target closes in one tick. A flat rate, unlike the
+    // packing and the widening: those spend ground the train has covered, and a train stood still
+    // after a coupling still has to draw itself in off nothing at all.
     private static final double PITCH_STEP = 0.05;
 
     // Of the target, the tightest interval a measured spacing is believed at. Below this the cars
@@ -105,8 +105,20 @@ public final class Train {
     // The tick when mass was last calculated.
     private long massTick = Long.MIN_VALUE;
 
-    // The interval the cars are being seated at, or zero before there is anything to ease from.
-    private double pitch;
+    // The tick this train last had give taken out of its gaps by something it has run into.
+    private long packedTick = Long.MIN_VALUE;
+
+    // How fast this train was running on the last tick it had somewhere to run to.
+    private double carried;
+
+    // Consecutive seatings refused for another train lying across this one's seats.
+    private int fouls;
+
+    // The interval each pair of cars is being seated at, one per gap and head first, or null
+    // before this train has been seated. One per gap and not one for the train: a coupling leaves
+    // exactly one gap unlike all the rest, and a single interval cannot hold that without moving
+    // every other car to match it.
+    private double @Nullable [] gaps;
 
     // Where this train's head was when it was last seated, and the ribbon arc frame that says what
     // it means. A reset renumbers the arcs, so a position taken before one describes nothing after
@@ -276,47 +288,199 @@ public final class Train {
     }
 
     /**
-     * The interval to seat this train's cars at this tick, closing on {@code target} no faster
-     * than the leading car is making room for it. Not recorded here: {@link #setPitch} records it
-     * once every car has been seated at it, so an interval a refused seating never used does not
-     * stand for the next attempt.
+     * The intervals to seat this train's cars at this tick, one for each gap between two cars and
+     * head first, each closing on {@code target} by a bounded step from where that pair of cars
+     * actually stands. Not recorded here: {@link #setGaps} records them once every car has been
+     * seated at them, so intervals a refused seating never used do not stand for the next attempt.
      *
-     * <p>A train is linked from carts a player stood wherever they liked, and seats are measured
-     * from the leading car, so taking the target outright would walk every other car backwards at
-     * once — into whatever the train is parked against. A train lengthens by pulling its front
-     * forward, never by pushing its back: the interval grows out of the ground the leading car has
-     * actually covered, shared over the gaps that have to absorb it, and a car that has not moved
-     * lengthens nothing. Never above the target, since carts stood wider than that close up onto
-     * track already recorded.
+     * <p>A train is linked from carts a player stood wherever they liked, and every coupling
+     * builds the train afresh, so one with nothing recorded starts at the gaps its cars already
+     * stand at — the seating that follows moves no car at all. Each gap then closes on the target
+     * on its own, which leaves the pair a coupling just made the only cars that move for it.
      *
-     * @param measured how far apart the cars actually are, used only to start from
+     * <p>The two directions are not paid for alike. A train lengthens by pulling its front forward
+     * and never by pushing its back, so widening is spent out of the ground the leading car has
+     * covered, shared over the gaps that have to absorb it; a car that has not moved lengthens
+     * nothing. Narrowing draws a pair together, which needs no room made for it and so is not
+     * gated on that car having moved at all.
+     *
+     * @param widest the most two coupled cars can stand apart; a wider reading is a car that has
+     *     drifted off this ribbon rather than a gap, and is not started from
      * @param advance how far the leading car moved this tick, which is all the room there is
      */
-    public double nextPitch(double target, double measured, double advance) {
-        int gaps = cars.size() - 1;
-        double next = pitch > 0.0 ? pitch : target;
+    public double[] nextGaps(double target, double widest, double advance) {
+        int count = cars.size() - 1;
+        double[] next = new double[count];
+        double floor = floor(target);
+        double[] arcs = arcs();
+        double[] held = gaps != null && gaps.length == count ? gaps : null;
 
-        // Never wider than the cars actually stand. A seated train stands exactly at its interval,
-        // so a narrower reading is a train something else has closed up — shunted against the end
-        // of its track while it could not be seated — and the interval follows it in rather than
-        // asking for room the train no longer has. Never narrower than a car, either: closer than
-        // that is two cars inside each other, which vanilla's own shove is left to separate.
-        if (measured > 0.0) {
-            double floor = Math.max(target * PITCH_FLOOR, cars.getFirst().getBbWidth());
+        for (int i = 0; i < count; i++) {
+            double stood = Math.min(Math.abs(arcs[i + 1] - arcs[i]), widest);
+            double at = held != null ? held[i] : target;
 
-            next = Math.clamp(Math.min(next, measured), floor, target);
-        }
+            if (held == null && stood > 0.0) {
+                at = stood;
+            }
 
-        if (next < target && gaps > 0) {
-            next += Math.min(target - next, Math.min(advance / gaps, PITCH_STEP));
+            // Never wider than the pair actually stands. A seated pair stands exactly at its
+            // interval, so a narrower reading is two cars something else has closed up — shunted
+            // against the end of the track while the train could not be seated — and the interval
+            // follows them in rather than asking for room they no longer have. Never narrower than
+            // a car either: closer than that is two cars inside each other, which vanilla's own
+            // shove is left to separate.
+            if (stood > 0.0) {
+                at = Math.max(Math.min(at, stood), floor);
+            }
+
+            next[i] = at > target
+                    ? at - Math.min(at - target, PITCH_STEP)
+                    : at + Math.min(target - at, advance / count);
         }
 
         return next;
     }
 
-    /** Records the interval this train's cars have just been seated at. */
-    public void setPitch(double interval) {
-        pitch = interval;
+    /**
+     * Takes up to {@code amount} of track out of this train's gaps, so that a train with nowhere
+     * left to put its tail packs into itself rather than being held rigid against what it has met.
+     * Closes the gap nearest that end first, the way cars driven into a buffer meet one at a time.
+     *
+     * @param intervals the gaps to narrow, changed in place
+     * @param target the interval the train is seated towards, which sets how tight a gap may go
+     * @param amount how much track has to come out of them altogether
+     * @param fromLast whether the end that is blocked is the one the last gap sits at
+     * @param reach how many gaps back from that end may be closed, the rest being out of the
+     *     push's way and so not in compression at all
+     * @return how much of {@code amount} the gaps had no give left to absorb
+     */
+    public double compress(
+            double[] intervals, double target, double amount, boolean fromLast, int reach) {
+        double floor = floor(target);
+        double left = amount;
+        int last = Math.min(reach, intervals.length);
+
+        for (int step = 0; step < last && left > 0.0; step++) {
+            int i = fromLast ? intervals.length - 1 - step : step;
+            double give = Math.min(intervals[i] - floor, left);
+
+            if (give > 0.0) {
+                intervals[i] -= give;
+                left -= give;
+            }
+        }
+
+        return left;
+    }
+
+    /**
+     * Closes this train's gaps tighter, for a train standing against something it cannot move. It
+     * shortens by the ground it would have covered this tick, so one that runs into something
+     * shuts as fast as it hit it.
+     *
+     * <p>Never slower than the flat rate, though. A train leaning on a block has no speed to take
+     * this from, and an engine's own output is an acceleration rather than a closing speed — six
+     * hundredths of a block a tick over the whole train's mass, which takes a coupling most of
+     * two seconds to shut and reads as nothing happening at all.
+     *
+     * @param intervals the gaps to narrow, changed in place
+     * @param target the interval the train is seated towards, which sets how tight a gap may go
+     * @param fromLast whether the car that met the block is the one the last gap sits at
+     * @param reach how many gaps back from it an engine's push actually reaches
+     * @return whether there was any give left to take, false once those gaps are shut tight
+     */
+    public boolean pack(double[] intervals, double target, boolean fromLast, int reach) {
+        double step = Math.max(carried, PITCH_STEP);
+
+        return compress(intervals, target, step, fromLast, reach) < step;
+    }
+
+    /**
+     * Records how fast this train is running, for the ticks it still has room to run in.
+     *
+     * <p>Held because a train pressing on something reads zero off its leading car — vanilla takes
+     * that car's movement away the moment the block does — and a train closing at the speed it
+     * reads there would never close anything at all.
+     */
+    public void setCarried(double speed) {
+        carried = speed;
+    }
+
+    /**
+     * Counts a seating refused for fouled seats, and says whether to go on refusing them.
+     *
+     * <p>Answers no once {@code ticks} have been spent on it. A train refused for that long is one
+     * that cannot get out of the way of whatever is refusing it — usually because being refused is
+     * what left it loose in the first place — and a guard that cannot be satisfied is worse than
+     * the crossing it was put there to stop. Reset by {@link #clearFouls()} on the first seating
+     * that is not fouled, so the allowance is per run and not per train.
+     */
+    public boolean foulHeld(int ticks) {
+        fouls = Math.min(fouls + 1, ticks + 1);
+
+        return fouls <= ticks;
+    }
+
+    /** Forgets any run of refused seatings. */
+    public void clearFouls() {
+        fouls = 0;
+    }
+
+    /** Records that this train closed up on this tick. */
+    public void setPacked(long tick) {
+        packedTick = tick;
+    }
+
+    /**
+     * Whether this train is still closing up on something it has met, rather than standing shut
+     * against it. An engine pressing on a train that still has give is moving something, however
+     * little the train as a whole is going anywhere.
+     */
+    public boolean packing(long tick) {
+        return packedTick + 1 >= tick;
+    }
+
+    // The tightest a pair may be seated: two cars closer than this are inside each other, which
+    // vanilla's own shove is left to separate.
+    private double floor(double target) {
+        return Math.max(target * PITCH_FLOOR, cars.getFirst().getBbWidth());
+    }
+
+    /**
+     * How much track this train's cars are spread over, counting every gap at least {@code floor}
+     * wide.
+     *
+     * @param floor the least a gap counts for, so that a train with nothing recorded yet is still
+     *     given room for cars standing as far apart as a coupling leaves them
+     */
+    public double length(double floor) {
+        double total = 0.0;
+
+        for (int i = 0; i < cars.size() - 1; i++) {
+            total += Math.max(gaps == null || gaps.length != cars.size() - 1 ? 0.0 : gaps[i],
+                    floor);
+        }
+
+        return total;
+    }
+
+    /** Records the intervals this train's cars have just been seated at, one per gap. */
+    public void setGaps(double[] intervals) {
+        gaps = intervals;
+    }
+
+    // Where each car sits along the ribbon, NaN for one the ribbon cannot place. Read in one pass
+    // because every gap wants both of its cars and each lookup is a walk of the recorded track.
+    private double[] arcs() {
+        double[] at = new double[cars.size()];
+
+        for (int i = 0; i < cars.size(); i++) {
+            Double arc = ribbon.arcOf(cars.get(i));
+
+            at[i] = arc == null ? Double.NaN : arc;
+        }
+
+        return at;
     }
 
     /** Whether any car of this train is driving it, whatever that car is currently putting out. */

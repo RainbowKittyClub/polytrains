@@ -8,12 +8,14 @@ import org.slf4j.Logger;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.PoweredRailBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
@@ -25,10 +27,11 @@ import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
  * Seats a train's trailing cars on the track its leading car recorded, instead of correcting the
  * distance between each pair of them.
  *
- * <p>Spacing is built rather than achieved: car <i>i</i> is placed at the leader's arc length less
- * <i>i</i> pitches, so there is no gap to measure and nothing to converge on. A link stretching
- * because two cars disagreed about their speed cannot arise here, since a seated car has no speed
- * of its own to disagree with.
+ * <p>Spacing is built rather than achieved: car <i>i</i> is placed at the head's arc length less
+ * every gap ahead of it, so there is no distance to measure and nothing to converge on. A link
+ * stretching because two cars disagreed about their speed cannot arise here, since a seated car
+ * has no speed of its own to disagree with. The gaps are held one per pair, so a train carries
+ * whatever spacing it was coupled at and closes each one on the target separately.
  *
  * <p>Only the leading car is left to vanilla. It is what defines the curve, so driving it from the
  * curve would be reading back what it wrote.
@@ -43,6 +46,24 @@ public final class TrainPlacer {
 
     // Below this an arc step is treated as no direction at all.
     private static final double EPSILON = 1.0E-5;
+
+    // Of a car's own nose, how much further than flush against a block still counts as standing
+    // against it. Vanilla clamps a stopped cart exactly its nose short, so without slack the test
+    // turns on two figures being the same number — and they stop being the same the moment the
+    // ribbon's chord across a node differs from the line the cart was really stopped along.
+    private static final double CONTACT_SLACK = 0.2;
+
+    // How far past a car's own box a player still counts as leaning on it.
+    private static final double SHOVE_SHELL = 0.1;
+
+    // How squarely behind a car a player has to stand to be pushing it along the track rather than
+    // standing beside it — a cosine, so about sixty degrees either side of the rail.
+    private static final double SHOVE_ARC = 0.5;
+
+    // Consecutive seatings a train may be refused for another lying across its seats. Long enough
+    // to cover a collision being resolved, short enough that a pair which has settled into each
+    // other is not left loose over it.
+    private static final int FOUL_TICKS = 5;
 
     /**
      * Why a train could not be seated. The tag is the finite part, so an intermittent fault is read
@@ -59,7 +80,8 @@ public final class TrainPlacer {
         LEADER_MID_TRAIN,
         ORDER_UNREADABLE,
         RIBBON_SHORT,
-        CAR_OFF_RIBBON
+        CAR_OFF_RIBBON,
+        SEAT_FOULED
     }
 
     /**
@@ -138,7 +160,13 @@ public final class TrainPlacer {
         Double leadArc = ribbon.arcOfLeader(leader);
 
         if (leadArc == null) {
-            return new Refusal(Bail.LEADER_OFF_RIBBON, cars.indexOf(leader), "leader on "
+            // A ribbon with nothing in it has not lost the leading car, it has never met one, and
+            // a train waiting on track to be recorded is not a train in trouble. Naming a car for
+            // that takes the leading car off every standing train ten ticks after a restart, and
+            // then off what is left of it ten ticks later again. One that does hold track and
+            // still cannot place that car has lost it, which is a car worth naming.
+            return new Refusal(Bail.LEADER_OFF_RIBBON,
+                    ribbon.isEmpty() ? Refusal.NONE : cars.indexOf(leader), "leader on "
                     + leader.getCurrentBlockPosOrRailBelow() + ", ribbon of " + ribbon.size()
                     + " nodes running " + span(ribbon));
         }
@@ -150,16 +178,17 @@ public final class TrainPlacer {
                     "lead=" + lead + "/" + (cars.size() - 1));
         }
 
-        // Where the car beside the leading one sits answers both how far apart the cars are now and
-        // which way round the train lies, so it is read once and handed to both.
+        // Where the car beside the leading one sits says which way round the train lies.
         Double nextArc = ribbon.arcOf(cars.get(lead == 0 ? 1 : cars.size() - 2));
-        double measured = nextArc == null ? 0.0 : Math.abs(leadArc - nextArc);
         double speed = leader.getDeltaMovement().horizontalDistance();
-        double pitch = train.nextPitch(target, measured, speed);
+        double widest = TrainCoupling.maxLinkDistance();
+        double level = ribbon.levelAt(leadArc);
+        double[] gaps = train.nextGaps(target, widest, speed);
+        double[] offsets = offsets(gaps, level);
         int order = train.order();
 
         if (order == 0) {
-            Integer lie = lieOf(nextArc, leadArc, lead, pitch);
+            Integer lie = lieOf(nextArc, leadArc, lead, gaps[lead == 0 ? 0 : gaps.length - 1]);
 
             if (lie == null) {
                 return new Refusal(Bail.ORDER_UNREADABLE, Refusal.NONE,
@@ -174,32 +203,101 @@ public final class TrainPlacer {
 
         int tail = lead == 0 ? cars.size() - 1 : 0;
         double clearance = cars.get(tail).getBbWidth() * 0.5;
-        double headArc = leadArc + order * lead * pitch;
-        double tailArc = headArc - order * tail * pitch;
+        double nose = leader.getBbWidth() * 0.5;
+        double headArc = leadArc + order * offsets[lead];
+        double tailArc = headArc - order * offsets[tail];
         boolean farEnd = tailArc > leadArc;
         double room = farEnd ? ribbon.to() - tailArc : tailArc - ribbon.from();
         boolean blocked = room + EPSILON < clearance
                 && ribbon.blockedBeyond(leader.level(), farEnd);
         double read = facing(leader, ribbon.tangentAt(leadArc));
 
+        // Whether the train is driving its tail further into that end rather than away from it. A
+        // train too slow to read a heading off counts as pressing: it has nowhere to lengthen to
+        // either way, and holding it still is what a train standing against a wall should do.
+        boolean pressing = blocked && (read == 0.0 || read == (farEnd ? 1.0 : -1.0));
+
+        // The other end of the same question. blocked answers for the end behind the train, which
+        // it can only be backed off; this answers for the end ahead of its leading car, which is
+        // the one a train is driven into. Vanilla stops a cart half its own length short of a
+        // block, so a leading car already that close is standing against one rather than coming
+        // up on it — which makes this test inclusive where the other is not.
+        double ahead = farEnd ? leadArc - ribbon.from() : ribbon.to() - leadArc;
+        boolean jammed = ahead <= nose * (1.0 + CONTACT_SLACK)
+                && ribbon.blockedBeyond(leader.level(), !farEnd);
+
+        // Only a train something is pressing packs, and only as far back as that pressing
+        // reaches. Touching a block is not being pushed into it, and a train that closed up for
+        // merely standing against a buffer would shut itself behind anyone who leaned on it.
+        int reach = jammed
+                ? pressedGaps(train, ribbon, headArc, offsets, order, lead, farEnd ? -1.0 : 1.0)
+                : 0;
+        boolean packing = reach > 0;
+
+        // Recorded for the ticks it has somewhere to go, so that when it has not, what it closes
+        // its couplings at is the speed it arrived with rather than the nothing it reads now.
+        if (!packing) {
+            train.setCarried(speed);
+        }
+
+        // A train with nowhere to put the ground its leading car covers is refused its widening,
+        // at whichever end it has run out of track: paid into the gaps it would only drive a car
+        // into whatever stopped the train. One merely leaving a blocked end widens as usual, its
+        // head making the room its tail is following out — taking that away would pin a train to
+        // a wall it is driving off, which a train that still has widening to do meets every tick.
+        if (pressing || packing) {
+            gaps = train.nextGaps(target, widest, 0.0);
+            offsets = offsets(gaps, level);
+        }
+
+        // What it cannot put behind it, a train packs into itself; one driven up against a block
+        // packs onto the car that met it, a step a tick. Either way the pair nearest the block
+        // closes first, the way cars driven into a buffer meet.
+        if (pressing) {
+            tailArc = leadArc + order * (offsets[lead] - offsets[tail]);
+            room = farEnd ? ribbon.to() - tailArc : tailArc - ribbon.from();
+
+            // Only once there is no give left does the train stop. Until then its leading car
+            // still has somewhere to go, and stopping it would be stopping it short.
+            if (train.compress(gaps, target, clearance - room, tail > lead, gaps.length)
+                    > EPSILON) {
+                speed = 0.0;
+            }
+        }
+
+        boolean closed = false;
+
+        if (packing) {
+            closed = train.pack(gaps, target, lead == cars.size() - 1, reach);
+
+            // A train standing against a block is given no speed either. A seated car is handed
+            // the train's own movement every tick, and a furnace car re-aims its push along
+            // whatever movement it is holding, so a velocity pointing back off the block is all
+            // it takes to turn the whole train around. One reading as leaving keeps its speed, or
+            // it could never drive off the block at all.
+            if (read == 0.0 || read == (farEnd ? -1.0 : 1.0)) {
+                speed = 0.0;
+            }
+        }
+
+        if (pressing || packing) {
+            offsets = offsets(gaps, level);
+            headArc = leadArc + order * offsets[lead];
+            tailArc = headArc - order * offsets[tail];
+        }
+
         // A car cannot be put inside a block, and vanilla stops a moving cart half its own length
-        // short of one — so a train whose tail would sit closer than that to a blocked end of its
-        // track has met that end with its tail, and stops as a whole. It lengthens nothing, the
-        // ground its leading car covered being into the cars it is pushing rather than away from
-        // them; and that car is drawn back to where its train fits and seated standing with the
-        // rest, as a car driven into a wall is. Left to vanilla it would go on through the cars it
-        // is pushing, which the placer holds out of its way.
+        // short of one — so a train whose tail would still sit closer than that to a blocked end
+        // of its track is drawn back to where it fits, its leading car seated standing with the
+        // rest rather than going on through the cars it is pushing, which the placer holds out of
+        // its way.
         if (blocked) {
-            pitch = train.nextPitch(target, measured, 0.0);
-            headArc = leadArc + order * lead * pitch;
-            tailArc = headArc - order * tail * pitch;
             room = farEnd ? ribbon.to() - tailArc : tailArc - ribbon.from();
 
             double back = Math.max(0.0, clearance - room) * (farEnd ? -1.0 : 1.0);
 
             leadArc += back;
             headArc += back;
-            speed = 0.0;
         }
 
         Seat[] seats = new Seat[cars.size()];
@@ -209,7 +307,7 @@ public final class TrainPlacer {
                 continue;
             }
 
-            double arc = headArc - order * i * pitch;
+            double arc = headArc - order * offsets[i];
 
             // Track the leading car has not recorded yet. Named as lost only while that car is
             // running the other way, since a standing train can wait for it and one driving
@@ -230,6 +328,22 @@ public final class TrainPlacer {
             }
         }
 
+        // Nothing is laid where another train already lies. A seat is applied outright rather than
+        // moved into, so the ground between a car and its seat is crossed without anything standing
+        // in it being touched — and at the speeds this allows that ground is a whole train, passed
+        // through cleanly and noticed by neither. Refused as a train waiting rather than a train in
+        // trouble: it names no car, so it costs nothing towards a sever, and vanilla drives the
+        // cars until the way is clear, which is the one state in which they are solid to each
+        // other.
+        AbstractMinecart fouling = fouled(train, cars, seats);
+
+        if (fouling == null) {
+            train.clearFouls();
+        } else if (train.foulHeld(FOUL_TICKS)) {
+            return new Refusal(Bail.SEAT_FOULED, Refusal.NONE, "a cart of another train lies at "
+                    + fouling.getCurrentBlockPosOrRailBelow() + ", across this train's seats");
+        }
+
         // A train too slow to read a heading off has not stopped lying the way it lies, so its
         // movement is still laid along the end that leads — at this speed the zero vector either
         // way. What that does not license is turning the cars: which end nominally leads is a held
@@ -240,12 +354,19 @@ public final class TrainPlacer {
 
         for (int i = 0; i < cars.size(); i++) {
             if (i != lead || blocked) {
-                place(train, cars.get(i), seats[i], headArc - order * i * pitch,
+                place(train, cars.get(i), seats[i], headArc - order * offsets[i],
                         facing, speed, i != lead);
             }
         }
 
-        train.setPitch(pitch);
+        train.setGaps(gaps);
+
+        // Stamped here and not where the gaps were closed: a refusal between the two throws the
+        // closing away, and a train marked as closing when nothing did holds off the engine's own
+        // switchback for a tick it had not earned.
+        if (closed) {
+            train.setPacked(leader.level().getGameTime());
+        }
 
         // Charged here because this is the one place per tick that knows where the head was and
         // where it now is. Every car crosses the same joints as the head, so billing the head once
@@ -259,6 +380,133 @@ public final class TrainPlacer {
         RailDrag.bend(leader, turn);
 
         return null;
+    }
+
+    // The first cart of another train lying where one of these seats would put a car, or across
+    // the ground that car would cover getting there, or null for a clear run. One entity query for
+    // the whole train rather than one per car: the query is the expensive half, and a cart close
+    // enough to foul any seat is inside the span of all of them.
+    private static @Nullable AbstractMinecart fouled(
+            Train train, List<AbstractMinecart> cars, Seat[] seats) {
+        AABB span = null;
+
+        for (int i = 0; i < seats.length; i++) {
+            if (seats[i] != null) {
+                AABB swept = swept(cars.get(i), seats[i]);
+
+                span = span == null ? swept : span.minmax(swept);
+            }
+        }
+
+        if (span == null) {
+            return null;
+        }
+
+        List<AbstractMinecart> others = cars.getFirst().level().getEntitiesOfClass(
+                AbstractMinecart.class, span, car -> !train.contains(car));
+
+        for (int i = 0; i < seats.length; i++) {
+            if (seats[i] == null) {
+                continue;
+            }
+
+            AABB swept = swept(cars.get(i), seats[i]);
+
+            for (AbstractMinecart other : others) {
+                if (swept.intersects(other.getBoundingBox())) {
+                    return other;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // The ground one car covers reaching its seat: the box it stands in now joined to the box it
+    // would stand in there. A placed car is put at its seat rather than moved to it, so there is
+    // nothing else that describes what it goes past on the way.
+    //
+    // Only for a car the placer is already holding. One being taken back up has been loose and may
+    // be anywhere by now, and joining those two boxes gives a volume that grows with however far it
+    // scattered — which fouls on whatever it reaches, refuses the seating, and leaves the car loose
+    // to scatter further. A train knocked apart could then never be gathered again.
+    private static AABB swept(AbstractMinecart car, Seat seat) {
+        AABB at = car.getBoundingBox().move(seat.at().subtract(car.position()));
+
+        return seated(car) ? car.getBoundingBox().minmax(at) : at;
+    }
+
+    // How many of the couplings behind the car that met the block are being pressed into
+    // it. Only those are in compression: past the furthest thing pushing that way the train is
+    // being towed rather than shoved, and a coupling in tension does not close up.
+    //
+    // Two things push: an engine of the train's own, and a player leaning on a car. Either is
+    // asked against the rail under the car it acts on, so one round a bend still counts as
+    // pushing the way the track goes there, and the furthest of them sets the span.
+    private static int pressedGaps(Train train, TrackRibbon ribbon, double headArc,
+            double[] offsets, int order, int lead, double towards) {
+        List<AbstractMinecart> cars = train.cars();
+        int reach = 0;
+
+        for (int i = 0; i < cars.size(); i++) {
+            AbstractMinecart car = cars.get(i);
+            Vec3 tangent = ribbon.tangentAt(headArc - order * offsets[i]);
+            Vec3 along = tangent == null ? Vec3.ZERO : tangent.horizontal();
+
+            if (along.lengthSqr() < EPSILON * EPSILON) {
+                continue;
+            }
+
+            Vec3 into = along.normalize().scale(towards);
+
+            if (drives(car, into) || shoved(car, into)) {
+                reach = Math.max(reach, Math.abs(i - lead));
+            }
+        }
+
+        return reach;
+    }
+
+    // Whether this car's own engine is pushing it towards the block.
+    private static boolean drives(AbstractMinecart car, Vec3 into) {
+        return car.minecarttweaks$driving()
+                && car.minecarttweaks$driveHeading().horizontal().dot(into) > 0.0;
+    }
+
+    // Whether a player is leaning on this car from the side away from the block. Standing against
+    // it is the whole of the test: vanilla shoves an entity out of a box it overlaps whether or
+    // not whoever is overlapping it is moving, so someone in contact is already pushing.
+    private static boolean shoved(AbstractMinecart car, Vec3 into) {
+        for (Player player : car.level().getEntitiesOfClass(
+                Player.class, car.getBoundingBox().inflate(SHOVE_SHELL))) {
+            Vec3 behind = car.position().subtract(player.position()).horizontal();
+
+            if (!player.isSpectator()
+                    && behind.lengthSqr() > EPSILON * EPSILON
+                    && behind.normalize().dot(into) > SHOVE_ARC) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // How far behind the head each car sits, as a running total of the gaps ahead of it. One entry
+    // per car, the head's being zero, so a seat is one subtraction wherever it is asked for.
+    //
+    // Laid in arc, which is a horizontal measure, so each gap is taken down to its ground plan by
+    // how flat the track is. A gap is meant along the rails: left unscaled it would hold its
+    // horizontal length up a grade and stand the cars half again as far apart there as on the
+    // level. Read once at the leading car rather than per gap, a train being short enough that
+    // the track under it is the same track.
+    private static double[] offsets(double[] gaps, double level) {
+        double[] out = new double[gaps.length + 1];
+
+        for (int i = 0; i < gaps.length; i++) {
+            out[i + 1] = out[i] + gaps[i] * level;
+        }
+
+        return out;
     }
 
     // Drops every car's seat mark, so that none of this train reads as placed.
@@ -283,17 +531,17 @@ public final class TrainPlacer {
     // just been coupled, or has just come to rest against something, has a leading car whose
     // remaining movement is noise — and the answer is then held for the life of the ribbon's
     // numbering, so one bad reading lays the train backwards for good, seating its cars off the end
-    // of the track it is standing on. Two cars closer together than a quarter of the pitch are not
-    // far enough apart to say, which is also what a train that has already collapsed looks like.
+    // of the track it is standing on. Two cars closer together than a quarter of their own gap
+    // are not far enough apart to say, which is what a collapsed train looks like as well.
     private static @Nullable Integer lieOf(
-            @Nullable Double nextArc, double leadArc, int lead, double pitch) {
+            @Nullable Double nextArc, double leadArc, int lead, double gap) {
         if (nextArc == null) {
             return null;
         }
 
         double away = (leadArc - nextArc) * (lead == 0 ? 1.0 : -1.0);
 
-        return Math.abs(away) < pitch * 0.25 ? null : (int) Math.signum(away);
+        return Math.abs(away) < gap * 0.25 ? null : (int) Math.signum(away);
     }
 
     // Which way along the ribbon the leading car is travelling, as a sign on the tangent, or zero
@@ -345,6 +593,16 @@ public final class TrainPlacer {
         // and on a hill it picks between exactly plus and minus 45 degrees.
         car.setDeltaMovement(forward.scale(speed));
         car.setPos(seat.at().x, seat.at().y, seat.at().z);
+
+        // The one thing a seated car cannot do for itself. Vanilla re-aims an engine off the
+        // ground it covered, and a seated car covers none, so a train's engines are handed the
+        // heading the train is actually running on — without which they keep the one they were
+        // lit on, through every corner since.
+        Vec3 heading = forward.horizontal();
+
+        if (speed > EPSILON && heading.lengthSqr() > EPSILON * EPSILON) {
+            car.minecarttweaks$aimEngine(heading.normalize());
+        }
 
         if (!(car.getBehavior() instanceof NewMinecartBehavior behavior)) {
             return;

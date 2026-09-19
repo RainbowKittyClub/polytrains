@@ -14,6 +14,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -40,13 +41,13 @@ public final class TrainCoupling {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     // Centre-to-centre distance at which two carts are too far apart to link, and how far apart
-    // the cars of a linked train then sit. The first is the straight line between them rather than
+    // the cars of a linked train settle. The first is the straight line between them rather than
     // the track that runs between, so a curve costs a link no reach.
     //
-    // The two are not independent: the placer seats a new train at the second outright, so the
-    // difference between them is how far a car is moved the tick after it is coupled. Kept under
-    // a car's width, or that move puts the car through the one it was coupled to.
-    private static final double MAX_LINK_DISTANCE = 2.25;
+    // Independent of each other: a train holds one interval per gap and keeps whatever it was
+    // coupled at, so the pair closes up over the ticks after rather than being moved the whole
+    // difference on the one it was coupled.
+    private static final double MAX_LINK_DISTANCE = 3.0;
 
     private static final double TARGET_SPACING = 1.5;
 
@@ -835,13 +836,22 @@ public final class TrainCoupling {
     // What to do about a train the ribbon could not seat. Most refusals are a train waiting rather
     // than a train in trouble: one with no leading end is standing still, one that cannot yet
     // read which way round it lies has not moved far enough to say, one with no room for its tail
-    // is up against the end of its track, and one whose track has not reached a car may yet
-    // record it. None of those names a car, and so none is a reason to break anything. A refusal
+    // is up against the end of its track, one whose track has not reached a car may yet record it,
+    // and one whose seats are fouled is waiting on another train to clear them. None of those
+    // names a car, and so none is a reason to break anything. A refusal
     // that does name one names a car the track cannot answer for, or one the train is running
     // away from, and once that has held it is a sever.
     private static void cutIfLost(ServerLevel level, Train train, TrainPlacer.Refusal refusal) {
         if (refusal.car() == TrainPlacer.Refusal.NONE) {
             train.faultHeld(TrainPlacer.Refusal.NONE, SEVER_TICKS);
+            return;
+        }
+
+        // A car in the air is not a car the track has lost. It is between one piece of track and
+        // the next, and where it is now says nothing about whether it will come down on rails —
+        // which is the question, and one only a landing can answer. The count is left standing
+        // rather than cleared, so a train already failing takes up where it left off once down.
+        if (!train.cars().get(refusal.car()).onGround()) {
             return;
         }
 
@@ -927,8 +937,22 @@ public final class TrainCoupling {
         TrackRibbon ribbon = train.ribbon();
         AbstractMinecart leader = train.leader();
 
-        if (leader == null || ribbon.isEmpty()) {
+        if (leader == null) {
             return;
+        }
+
+        // A ribbon holds only what the leading car has stepped along, and a car standing still
+        // steps along nothing — so a train that was stopped when its world loaded has an empty one
+        // and no way to come by a first node. Seeded with the rail it stands on, which is the block
+        // its own first step would have recorded anyway; the growth below lays the rest from there.
+        if (ribbon.isEmpty()) {
+            BlockPos under = leader.getCurrentBlockPosOrRailBelow();
+
+            if (!BaseRailBlock.isRail(level.getBlockState(under))) {
+                return;
+            }
+
+            ribbon.record(level, under, leader.getDeltaMovement().horizontal());
         }
 
         Double arc = ribbon.arcOfLeader(leader);
@@ -939,7 +963,11 @@ public final class TrainCoupling {
 
         // Both ways, not just behind: a train reverses by swapping which end leads, and the cars
         // that were behind the old one are ahead of the new.
-        double span = (train.size() - 1) * TARGET_SPACING + 1.0;
+        // Every gap counted at a full link's worth, not at what it is seated at: a train built this
+        // tick has no intervals recorded and its cars may stand a whole link apart. Asking for less
+        // would leave the seating wanting track the ribbon was never sent for, bail, and so never
+        // record the intervals that would have made the ask smaller.
+        double span = train.length(MAX_LINK_DISTANCE) + 1.0;
 
         ribbon.extendTo(level, arc - span, arc + span);
     }
@@ -962,7 +990,7 @@ public final class TrainCoupling {
             return;
         }
 
-        double reach = train.size() * TARGET_SPACING + RIBBON_MARGIN;
+        double reach = train.length(MAX_LINK_DISTANCE) + MAX_LINK_DISTANCE + RIBBON_MARGIN;
         ribbon.trim(arc - reach, arc + reach);
     }
 
