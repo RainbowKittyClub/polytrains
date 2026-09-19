@@ -7,10 +7,12 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.level.gamerules.GameRule;
+import net.minecraft.world.phys.AABB;
 
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
 import club.rainbowkitty.minecarttweaks.rail.RailContext;
 import club.rainbowkitty.minecarttweaks.rail.RailForces;
+import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.train.TrainPlacer;
@@ -78,7 +80,7 @@ public enum CartInteraction {
 
         if (other instanceof AbstractMinecart car) {
             // Carts that merely pass close by on separate track are no concern of each other's.
-            if (!RailContext.sharesTrack(cart, car)) {
+            if (!RailContext.sharesTrack(cart, car) && !crossing(cart, car)) {
                 return IGNORE;
             }
 
@@ -172,6 +174,41 @@ public enum CartInteraction {
     /** Whether the cart hits it, throwing it clear and injuring it if it is moving fast enough. */
     public boolean strikes() {
         return strikes;
+    }
+
+    // Whether the pair cross each other's ground this tick despite standing further apart than
+    // sharesTrack can see. That test reaches one rail either side of a cart, which is everything a
+    // cart moving under a block a tick can get to; above that a pair closes the whole gap between
+    // two ticks and meets somewhere neither is standing at either end of one. Which is how a train
+    // at speed goes clean through another and neither notices.
+    //
+    // Both boxes are the held ones, so the answer does not depend on which of the pair asks first
+    // or on how much of the tick either has already spent.
+    private static boolean crossing(AbstractMinecart cart, AbstractMinecart other) {
+        AABB mine = cart.minecarttweaks$sweptBox();
+        AABB theirs = other.minecarttweaks$sweptBox();
+
+        if (!mine.intersects(theirs)) {
+            return false;
+        }
+
+        // Boxes are world space, and track that doubles back inside a block or two lays two carts'
+        // boxes across each other that the rails run yards apart — either side of a tight turn is
+        // not about to meet, however close the two read. Settled along the track instead: the run
+        // between them has to be inside the ground the two of them cover between them.
+        //
+        // Asked both ways round and taken if either answers, which is what keeps it symmetric: the
+        // walk starts from the cart it is asked of, and erring towards a collision is the side to
+        // err on.
+        double run = reach(mine) + reach(theirs);
+
+        return RailPath.between(cart, other, run) != null
+                || RailPath.between(other, cart, run) != null;
+    }
+
+    // How far one swept box reaches, as the longer of its horizontal sides.
+    private static double reach(AABB swept) {
+        return Math.max(swept.getXsize(), swept.getZsize());
     }
 
     // Coupled cars pass through each other, but only while both are on the rails that hold them

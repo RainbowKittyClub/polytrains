@@ -52,8 +52,10 @@ public record RailContext(
     }
 
     /**
-     * Whether two carts stand on the same rail or one exit apart — as far as this need see, since
-     * carts more than a block apart cannot touch.
+     * Whether two carts stand on the same rail or one exit apart, which is as far as this sees.
+     * That covers every pair a tick of ordinary movement can bring together; a pair closing faster
+     * than a block a tick can meet beyond it, and what catches those is the swept-box test in
+     * {@code CartInteraction}, not this.
      *
      * <p>True if either says so: a junction rail picks its shape from the cart reading it, so a
      * cart on one sees only its own axis, and erring towards neighbours merely collides as vanilla
