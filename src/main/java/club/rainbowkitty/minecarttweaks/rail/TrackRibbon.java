@@ -81,6 +81,28 @@ public final class TrackRibbon {
     // which the reset count alone cannot manage, two ribbons on their first both answering it.
     private int frame = FRAMES.incrementAndGet();
 
+    /** A ribbon with no track on it. */
+    public TrackRibbon() {
+    }
+
+    /**
+     * A ribbon holding the same track as {@code other}, for a train being split off the one that
+     * recorded it. Both halves are still on those rails, and one object between them is not
+     * sharing track but fighting over it: each tick, whichever leader records second reads the
+     * other's track as a discontinuity and throws it away, so neither is ever seated again.
+     *
+     * <p>The arc numbering comes across with the track, because it is the same numbering and not
+     * merely a like one. Anything held against it — a car's leading end, a seat, which way round
+     * a train lies — still means what it meant.
+     */
+    public TrackRibbon(TrackRibbon other) {
+        nodes.addAll(other.nodes);
+        leaderArc = other.leaderArc;
+        resets = other.resets;
+        revisits = other.revisits;
+        frame = other.frame;
+    }
+
     /** Whether this ribbon has any track recorded yet. */
     public boolean isEmpty() {
         return nodes.isEmpty();
@@ -108,9 +130,12 @@ public final class TrackRibbon {
     }
 
     /**
-     * Which arc numbering this ribbon is on, as a number no other ribbon's numbering shares.
-     * Anything remembered in terms of an arc — how far along it something sits, or which way
-     * along it something points — is only good for the numbering it was taken against.
+     * Which arc numbering this ribbon is on. Anything remembered in terms of an arc — how far
+     * along it something sits, or which way along it something points — is only good for the
+     * numbering it was taken against, and every reset starts a new one.
+     *
+     * <p>Two ribbons answer the same only when one was copied from the other, which makes the
+     * numbering shared rather than merely alike.
      */
     public int frame() {
         return frame;

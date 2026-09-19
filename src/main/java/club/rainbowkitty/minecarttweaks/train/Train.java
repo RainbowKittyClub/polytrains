@@ -183,7 +183,10 @@ public final class Train {
         // could have held it together — so the next tick cannot seat it, the correction takes it
         // instead, and the sever that just happened happens again. Track that no longer describes
         // where the train is fails the same way an empty one does, through arcOfLeader.
-        Train built = build(car, tick, held == null ? null : held.ribbon);
+        //
+        // Copied rather than handed over, because a split leaves both halves inheriting from the
+        // same train and one ribbon cannot be recorded on from two places at once.
+        Train built = build(car, tick, held == null ? null : new TrackRibbon(held.ribbon));
 
         for (AbstractMinecart member : built.cars) {
             if (member instanceof AbstractMinecartExt ext) {
