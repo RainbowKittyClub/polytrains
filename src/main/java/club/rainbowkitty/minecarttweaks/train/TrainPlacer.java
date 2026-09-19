@@ -182,9 +182,7 @@ public final class TrainPlacer {
         Double nextArc = ribbon.arcOf(cars.get(lead == 0 ? 1 : cars.size() - 2));
         double speed = leader.getDeltaMovement().horizontalDistance();
         double widest = TrainCoupling.maxLinkDistance();
-        double level = ribbon.levelAt(leadArc);
         double[] gaps = train.nextGaps(target, widest, speed);
-        double[] offsets = offsets(gaps, level);
         int order = train.order();
 
         if (order == 0) {
@@ -200,6 +198,8 @@ public final class TrainPlacer {
             train.setOrder(lie);
             order = lie;
         }
+
+        double[] offsets = offsets(ribbon, gaps, leadArc, order, lead);
 
         int tail = lead == 0 ? cars.size() - 1 : 0;
         double clearance = cars.get(tail).getBbWidth() * 0.5;
@@ -247,7 +247,7 @@ public final class TrainPlacer {
         // a wall it is driving off, which a train that still has widening to do meets every tick.
         if (pressing || packing) {
             gaps = train.nextGaps(target, widest, 0.0);
-            offsets = offsets(gaps, level);
+            offsets = offsets(ribbon, gaps, leadArc, order, lead);
         }
 
         // What it cannot put behind it, a train packs into itself; one driven up against a block
@@ -281,7 +281,7 @@ public final class TrainPlacer {
         }
 
         if (pressing || packing) {
-            offsets = offsets(gaps, level);
+            offsets = offsets(ribbon, gaps, leadArc, order, lead);
             headArc = leadArc + order * offsets[lead];
             tailArc = headArc - order * offsets[tail];
         }
@@ -494,16 +494,37 @@ public final class TrainPlacer {
     // How far behind the head each car sits, as a running total of the gaps ahead of it. One entry
     // per car, the head's being zero, so a seat is one subtraction wherever it is asked for.
     //
-    // Laid in arc, which is a horizontal measure, so each gap is taken down to its ground plan by
-    // how flat the track is. A gap is meant along the rails: left unscaled it would hold its
-    // horizontal length up a grade and stand the cars half again as far apart there as on the
-    // level. Read once at the leading car rather than per gap, a train being short enough that
-    // the track under it is the same track.
-    private static double[] offsets(double[] gaps, double level) {
+    // Laid in arc, which is a horizontal measure, while a gap is meant along the rails — so each
+    // one is walked over the track it actually spans rather than scaled by a single reading. The
+    // train is not short enough for one reading to do: taken at the leading car, a train nosing
+    // onto a grade takes every one of its couplings down at once, and the cars still on the flat
+    // behind it are drawn together by a third with nothing under them to account for it.
+    //
+    // Walked from the leading car, the one whose arc is known, outwards through the train; which
+    // end that is decides which way the walk runs.
+    private static double[] offsets(TrackRibbon ribbon, double[] gaps, double leadArc,
+            int order, int lead) {
+        double[] spans = new double[gaps.length];
+        double at = leadArc;
+
+        // Cars run head to tail against the arc, so a gap towards the tail is a step by -order and
+        // one towards the head a step by +order.
+        if (lead == 0) {
+            for (int i = 0; i < gaps.length; i++) {
+                spans[i] = ribbon.arcAlong(at, gaps[i], -order);
+                at -= order * spans[i];
+            }
+        } else {
+            for (int i = gaps.length - 1; i >= 0; i--) {
+                spans[i] = ribbon.arcAlong(at, gaps[i], order);
+                at += order * spans[i];
+            }
+        }
+
         double[] out = new double[gaps.length + 1];
 
         for (int i = 0; i < gaps.length; i++) {
-            out[i + 1] = out[i] + gaps[i] * level;
+            out[i + 1] = out[i] + spans[i];
         }
 
         return out;

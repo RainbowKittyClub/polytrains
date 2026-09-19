@@ -2,6 +2,7 @@ package club.rainbowkitty.minecarttweaks.rail;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -577,10 +578,59 @@ public final class TrackRibbon {
     public double levelAt(double arc) {
         Node node = nodeAt(arc);
 
-        if (node == null) {
-            return 1.0;
+        return node == null ? 1.0 : level(node);
+    }
+
+    /**
+     * How much arc it takes to cover {@code along} of track measured along the rails, starting at
+     * {@code arc} and running the way {@code sign} points. The same number on the level, and less
+     * than {@code along} wherever the track between the two ends is tilted.
+     *
+     * <p>Walked node by node rather than scaled by one reading, because the thing being measured
+     * is usually longer than the thing that would be read. A gap standing one car at the foot of a
+     * hill and the next on it is part level and part not, and taking all of it at either rate
+     * moves a car that has not reached the grade yet — or leaves one already on it short.
+     *
+     * <p>Track the ribbon does not hold is taken flat, an unrecorded stretch being worth no
+     * particular grade. The caller finds out it asked past the end through {@link #reaches}.
+     */
+    public double arcAlong(double arc, double along, double sign) {
+        if (!(along > EPSILON)) {
+            return 0.0;
         }
 
+        Iterator<Node> walk = sign < 0.0 ? nodes.descendingIterator() : nodes.iterator();
+        double at = arc;
+        double left = along;
+
+        while (walk.hasNext() && left > EPSILON) {
+            Node node = walk.next();
+            double low = node.arc();
+            double high = low + node.span();
+            double room = Math.min(sign < 0.0 ? at - low : high - at, node.span());
+
+            // Track on the far side of where this started, which the walk reaches only after
+            // spending its way there.
+            if (room <= EPSILON) {
+                continue;
+            }
+
+            double level = level(node);
+            double takes = left * level;
+
+            if (takes <= room) {
+                return Math.abs(at + sign * takes - arc);
+            }
+
+            at += sign * room;
+            left -= room / level;
+        }
+
+        return Math.abs(at + sign * left - arc);
+    }
+
+    // How much of one node's track lies flat: its chord's ground plan over its chord.
+    private static double level(Node node) {
         double run = node.exit().subtract(node.entry()).length();
 
         return run < EPSILON ? 1.0 : node.span() / run;
