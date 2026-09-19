@@ -541,6 +541,26 @@ public final class TrackRibbon {
                 0.0, 1.0);
     }
 
+    /**
+     * How much of the track at {@code arc} lies flat: one on the level, and about seven tenths on
+     * the steepest rail there is. One outside the ribbon, which measures nothing.
+     *
+     * <p>Arc is horizontal throughout, so a distance meant along the rails is not one in arc until
+     * it has been scaled by this. Without it a spacing holds its ground plan up a hill and stands
+     * the cars half again as far apart as they are on the flat.
+     */
+    public double levelAt(double arc) {
+        Node node = nodeAt(arc);
+
+        if (node == null) {
+            return 1.0;
+        }
+
+        double run = node.exit().subtract(node.entry()).length();
+
+        return run < EPSILON ? 1.0 : node.span() / run;
+    }
+
     // Which way a node's own chord runs, or null where its two edge midpoints coincide. Flat: a
     // grade tilts a chord without turning it, and arc is a horizontal measure throughout.
     private static @Nullable Vec3 heading(Node node) {
