@@ -611,7 +611,7 @@ seated car — which for a held train is index 0 or 1. Its two callers are one s
 leader decision, neither on the per-collision-candidate path, so it is not cached. If it ever needs
 to be, `mass` and `rolling` in the same class show the per-tick pattern.
 
-## S13 — Seat from a car other than the leader when the leader has not ticked — **planned**
+## S13 — Seat from a car other than the leader when the leader has not ticked — **in progress**
 
 **Build.** Seating is driven by exactly one car per tick and is simply not done if that car does
 not tick — a leading car outside simulation distance on a train that straddles the border, or a
@@ -627,6 +627,42 @@ is exactly the staleness that put `holdAfterMove` at `tick` TAIL in the first pl
 blocks a tick a stale read is not a small error. It may be that the right answer is to refuse to
 seat rather than to seat from stale data, in which case this stage is a `release` with a reason
 attached instead. Resolve by building it and watching the border case.
+
+### As built
+
+Written early: the code is built and the in-world confirmation is outstanding.
+
+**The staleness the Build text was worried about does not apply to the case this fixes**, and
+noticing that is what made the stage small. A leading car that has not ticked *yet* this tick is
+about to move, and reading it then is reading it up to four blocks early — that is the real hazard
+and it is why `holdAfterMove` sits at `tick` TAIL. But a leading car that missed the tick *before*
+is not late, it is stopped: it is not being simulated, so it is not going anywhere, and where it
+stands is exactly where it is going to be. The two are indistinguishable within one tick and
+obvious across two. So the fallback waits a whole tick out, and then seats from a position that is
+not stale at all rather than from one that is.
+
+That made the per-cart tick stamp unnecessary. One field on `Train` carries it:
+
+```java
+public boolean unheld(long tick) {
+    return heldTick + 1 < tick;
+}
+```
+
+with `holdTrain` stamping `setHeldAt` at the top — deliberately before the attempt, because what it
+records is that somebody asked, not that the asking worked. A train refused every tick is being
+looked after, and a refusal must not let a second car conclude the first never came.
+
+Checked against the steady state, which is what a fallback like this most often breaks: a trailing
+car ticking *before* its leader reads `heldTick == tick - 1`, so `unheld` is false and nothing
+fires. It fires only after a tick with no holder at all, and the first car to notice stamps it, so
+it fires once.
+
+Not built: any attempt to close the one-tick hole. `seated` forgives one tick and the fallback
+arrives on the second, so the cars run on vanilla's own movement for the tick this decides in and
+are gathered up at the end of it. Closing it would mean knowing whether a car is going to tick,
+which is not knowable within the tick. One tick loose beats loose for as long as the leading car
+stays outside the border.
 
 ## S14 — Derive `order` after a ribbon reset — **planned**
 
