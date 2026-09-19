@@ -126,8 +126,11 @@ public final class Train {
     // only so the meter can report it.
     private double turn;
 
-    // How the last seating attempt went, so only a change of answer is worth reporting.
+    // How the last seating attempt went, so only a change of answer is worth reporting, and
+    // whether one has been made at all — a train built this tick has been neither placed nor
+    // refused, which is not the same as having been placed.
     private TrainPlacer.@Nullable Bail bail;
+    private boolean attempted;
 
     // Consecutive ticks the ribbon has failed to place each car. Allocated with the train and
     // dropped with it, so a train rebuilt around a link change starts forgiven rather than
@@ -263,20 +266,29 @@ public final class Train {
      * block positions that differ every tick and would report a steady fault as a new one.
      */
     public boolean seatingChanged(TrainPlacer.@Nullable Bail now) {
-        boolean changed = bail != now;
+        boolean changed = bail != now || !attempted;
 
+        attempted = true;
         bail = now;
 
         return changed;
     }
 
     /**
-     * Whether the placer is holding this train — its last seating attempt placed it — so that its
-     * cars move as one and a shove on any of them belongs to the car vanilla drives. A train not
-     * yet attempted answers yes, its first attempt being a tick away.
+     * Whether the placer is holding this train, so that its cars move as one and a shove on any of
+     * them belongs to the car vanilla drives.
+     *
+     * <p>The train-wide half of a question the per-car {@link TrainPlacer#seated} answers the other
+     * half of. That one says whether vanilla's movement is cancelled for one car, which the leading
+     * car is always a no to — it is the car vanilla drives, and the only one that records track. So
+     * the leading car of a train this answers yes for is held by the placer and moved by vanilla at
+     * the same time, and neither answer can stand in for the other.
+     *
+     * <p>A train never attempted answers no. It used to answer yes on the grounds that its first
+     * attempt was a tick away, which made a third answer out of a question that already had two.
      */
     public boolean placed() {
-        return bail == null;
+        return attempted && bail == null;
     }
 
     /**
