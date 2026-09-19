@@ -8,11 +8,13 @@ import org.joml.Vector3f;
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
-import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.kalic0re.common.display.RenderTrail;
+import club.rainbowkitty.minecarttweaks.rail.RailPath;
+import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 
 /**
@@ -38,8 +40,8 @@ public final class LinkChain extends ElementHolder {
     private static final Vector3f MODEL_AXIS = new Vector3f(0.5F, 0.0F, 0.5F);
 
     // The cart this chain is drawn from, which carries the display, and the one it is drawn to.
-    private final Entity cart;
-    private final Entity parent;
+    private final AbstractMinecart cart;
+    private final AbstractMinecart parent;
 
     // The block display element rendering the chain itself.
     private final BlockDisplayElement chain;
@@ -59,7 +61,7 @@ public final class LinkChain extends ElementHolder {
     private boolean seated;
 
     // Builds the display and aims it before it is ever sent.
-    private LinkChain(Entity cart, Entity parent) {
+    private LinkChain(AbstractMinecart cart, AbstractMinecart parent) {
         this.cart = cart;
         this.parent = parent;
         this.cartTrail = new RenderTrail(cart, RENDER_LAG);
@@ -90,7 +92,8 @@ public final class LinkChain extends ElementHolder {
      * retargeting or removing it as needed, and returns the chain to hold onto.
      */
     public static @Nullable LinkChain sync(
-            @Nullable LinkChain current, Entity cart, @Nullable Entity parent) {
+            @Nullable LinkChain current, AbstractMinecart cart,
+            @Nullable AbstractMinecart parent) {
         boolean usable = parent != null && parent.level() == cart.level();
 
         if (current != null && (!usable || current.parent != parent)) {
@@ -149,13 +152,21 @@ public final class LinkChain extends ElementHolder {
         Vec3 cartAxis = lengthwise(cartYaw, cartPitch);
         Vec3 parentAxis = lengthwise(parentYaw, parentPitch);
 
-        // A coupler is bolted to one end of the car, so the face is chosen once. Only a car lifted
-        // off the track can be set back down the other way round, which reopens the question.
+        // Each car is asked against its own track rather than against the line through the air to
+        // the other one. Round a corner those two disagree — the line runs across the inside of
+        // the bend, which can point at the wrong end of either car — while an exit of the block a
+        // car stands on is a direction its own body is actually lying along.
+        //
+        // A coupler is bolted to one end of the car, so the face is settled once — but not until
+        // the placer has laid the train out. Its first seating turns each car to its train's track
+        // and walks it along to the pitch, so a face settled against where a car stood at the
+        // moment it was coupled names the wrong end of it a tick later. Re-reading until then
+        // costs nothing that matters: the track a car stands on does not flicker the way the line
+        // between two cars does.
         if (!seated) {
-            Vec3 between = centres.normalize();
-            cartFront = cartAxis.dot(between) >= 0.0;
-            parentFront = parentAxis.dot(between) < 0.0;
-            seated = !MinecartHelper.isDerailed(cart) && !MinecartHelper.isDerailed(parent);
+            cartFront = cartAxis.dot(towards(parent, cart, centres)) >= 0.0;
+            parentFront = parentAxis.dot(towards(cart, parent, centres.reverse())) >= 0.0;
+            seated = laid(cart) && laid(parent);
         }
 
         Vec3 from = cartCentre.add(coupler(cartAxis, cart.getBbWidth(), cartFront));
@@ -177,10 +188,24 @@ public final class LinkChain extends ElementHolder {
                 (float) anchor.z - axisOffset.z));
     }
 
+    // Whether the placer has laid this car out on its train's track, which is when its position
+    // and facing stop being whatever they happened to be when it was coupled.
+    private static boolean laid(AbstractMinecart car) {
+        return !MinecartHelper.isDerailed(car) && car.minecarttweaks$seatedAt() != 0L;
+    }
+
+    // The exit the near car's own block leads to the far one by. Falls back to the line between
+    // them where there is no track to read, which is the best a car off the rails can be asked.
+    private static Vec3 towards(AbstractMinecart far, AbstractMinecart near, Vec3 fallback) {
+        RailPath along = RailPath.between(far, near, TrainCoupling.maxLinkWalk());
+
+        return along == null ? fallback.normalize() : along.toForward();
+    }
+
     // Measured up the cart's own body rather than straight up from its position, because a pitched
     // cart's middle swings out over the track behind it. On a crest, where the two carts lean
     // apart, taking it as vertical brings the coupler faces together and draws the chain short.
-    private static Vec3 centre(Vec3 position, float yaw, float pitch, Entity cart) {
+    private static Vec3 centre(Vec3 position, float yaw, float pitch, AbstractMinecart cart) {
         return position.add(lengthwise(yaw, pitch + 90.0F).scale(cart.getBbHeight() * 0.5));
     }
 

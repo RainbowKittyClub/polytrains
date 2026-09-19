@@ -445,7 +445,7 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
 
         // Each cart draws exactly the one chain, to whichever cart it follows.
         AbstractMinecart parent = TrainCoupling.tickTrain(serverLevel, self);
-        minecarttweaks$chain = LinkChain.sync(minecarttweaks$chain, this, parent);
+        minecarttweaks$chain = LinkChain.sync(minecarttweaks$chain, self, parent);
 
         CartImpact.strikeNearby(serverLevel, self);
     }
