@@ -73,7 +73,6 @@ public final class TrainPlacer {
     public enum Bail {
         NO_LEADING_END(true),
         LEADER_OFF_RIBBON(true),
-        LEADER_MID_TRAIN(true),
         ORDER_UNREADABLE(true),
         RIBBON_SHORT(false),
         CAR_OFF_RIBBON(false),
@@ -87,9 +86,9 @@ public final class TrainPlacer {
 
         /**
          * Whether this leaves the placer with no frame of reference and so takes the whole train
-         * back. The four that do are all about the leading car or the train's lie along its track,
-         * which every other car's seat is measured from; the three that do not are one car's own
-         * problem, and the cars around it are still placed exactly where they belong.
+         * back. The three that do are all about the leading car or the train's lie along its
+         * track, which every other car's seat is measured from; the three that do not are one
+         * car's own problem, and the cars around it are still placed exactly where they belong.
          */
         public boolean whole() {
             return whole;
@@ -213,12 +212,10 @@ public final class TrainPlacer {
                     + " nodes running " + span(ribbon));
         }
 
+        // An end car, always: Train.leader is only ever assigned an end of its own list, and that
+        // list is final, so the two cannot drift apart. Guarded at Train.heldLeader rather than
+        // checked again here — a second statement of an invariant can only ever agree with it.
         int lead = cars.indexOf(leader);
-
-        if (lead != 0 && lead != cars.size() - 1) {
-            return new Refusal(Bail.LEADER_MID_TRAIN, Refusal.NONE,
-                    "lead=" + lead + "/" + (cars.size() - 1));
-        }
 
         // Where the car beside the leading one sits says which way round the train lies.
         Double nextArc = ribbon.arcOf(cars.get(lead == 0 ? 1 : cars.size() - 2));
