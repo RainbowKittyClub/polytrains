@@ -57,8 +57,6 @@ public final class Train {
 
     // The minecarts in this train, head first.
     private final List<AbstractMinecart> cars;
-    // Whether this train closes on itself (forms a cycle).
-    private final boolean closed;
 
     // Set when the link graph under this train changes. It lives on the one object every car of
     // the train points at, so marking it marks it for all of them at once — which is what lets
@@ -137,10 +135,8 @@ public final class Train {
     private int @Nullable [] faults;
 
     // Starts checked on the tick it was built, so its first use does not re-sweep its own cars.
-    private Train(List<AbstractMinecart> cars, boolean closed, long tick,
-            @Nullable TrackRibbon inherited) {
+    private Train(List<AbstractMinecart> cars, long tick, @Nullable TrackRibbon inherited) {
         this.cars = cars;
-        this.closed = closed;
         this.checkedTick = tick;
         this.ribbon = inherited == null ? new TrackRibbon() : inherited;
     }
@@ -213,10 +209,6 @@ public final class Train {
      * consumer of this pays for a change of mind and none of them pays for a stale answer.
      */
     public @Nullable AbstractMinecart leader() {
-        if (closed) {
-            return null;
-        }
-
         long tick = cars.getFirst().level().getGameTime();
 
         if (tick != leaderTick) {
@@ -620,24 +612,8 @@ public final class Train {
         return cars.contains(car);
     }
 
-    /**
-     * The one car that speaks for this train when it has no leading end: its head, or the
-     * lowest-UUID car of a train that closes on itself and so has no head. Exactly one car of any
-     * train answers itself here, which is what keeps a per-car tick from asking once per car.
-     */
-    public @Nullable AbstractMinecart anchor() {
-        return closed ? lowest(cars) : cars.getFirst();
-    }
-
-    /**
-     * The car {@code car} follows, or null if it heads the train, is unlinked, or the train closes
-     * on itself and so has no head to follow towards.
-     */
+    /** The car {@code car} follows, or null if it heads the train or is unlinked. */
     public @Nullable AbstractMinecart follows(AbstractMinecart car) {
-        if (closed) {
-            return null;
-        }
-
         int index = cars.indexOf(car);
 
         return index > 0 ? cars.get(index - 1) : null;
@@ -711,17 +687,23 @@ public final class Train {
         double outward = headArc - nextArc;
         double along = heading.dot(tangent) / speed;
 
+        // A reading too weak to name an end keeps the one already named, and names the head when
+        // there is none. Not null: every train of two or more has a leading end, because one car of
+        // it has to speak for the whole when the per-car tick comes round, and the head answers
+        // that as well as either end would.
         if (Math.abs(outward) < EPSILON || Math.abs(along) < LEADER_HOLD) {
-            return held;
+            return held != null ? held : head;
         }
 
         return along * outward > 0.0 ? head : cars.getLast();
     }
 
-    // The end that was leading, so long as it is still one of ours — a train rebuilt around a split
-    // can be holding a car that has since gone its own way.
+    // The end that was leading, so long as it is still an end of ours — a train rebuilt around a
+    // split can be holding a car that has since gone its own way, and one rebuilt around a merge
+    // can be holding a car that is now somewhere in the middle. Membership alone is not enough:
+    // a leading car mid-train is the one thing the placer cannot lay a train from.
     private @Nullable AbstractMinecart heldLeader() {
-        return leader != null && cars.contains(leader) ? leader : null;
+        return leader == cars.getFirst() || leader == cars.getLast() ? leader : null;
     }
 
     // Whether this train can still be handed out. A link change marks it stale outright; a car
@@ -757,9 +739,22 @@ public final class Train {
         List<AbstractMinecart> order = new ArrayList<>();
         AbstractMinecart end = walk(car, null);
 
+        // A link graph that comes back on itself is corruption, not a kind of train. Coupling two
+        // carts already in one train is refused, so nothing a player does builds one; only a save
+        // written half way can. Read from the lowest-UUID car so every car of it agrees where the
+        // list starts, and go on as an ordinary train — the links are not touched, so this decides
+        // nothing but the ordering.
         if (end == null) {
             walk(car, order);
-            return new Train(order, true, tick, inherited);
+
+            AbstractMinecart from = lowest(order);
+
+            LOGGER.warn("train of {} links back on itself, reading it from {}",
+                    order.size(), from == null ? car.getUUID() : from.getUUID());
+            order.clear();
+            walk(from == null ? car : from, order);
+
+            return new Train(order, tick, inherited);
         }
 
         walk(end, order);
@@ -768,7 +763,7 @@ public final class Train {
             Collections.reverse(order);
         }
 
-        return new Train(order, false, tick, inherited);
+        return new Train(order, tick, inherited);
     }
 
     // Follows the links away from start, collecting into sink when one is given. Returns the car

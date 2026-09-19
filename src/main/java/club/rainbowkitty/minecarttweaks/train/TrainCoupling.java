@@ -125,9 +125,8 @@ public final class TrainCoupling {
      * has to run after that car's own movement and before nothing in particular.
      *
      * <p>The leading car drives rather than a fixed end of the train, because it is the one whose
-     * position everything else is measured from. A train with no leading end — closed, or never yet
-     * moved — falls back to its anchor, so that exactly one car still asks on behalf of a train the
-     * placer cannot yet answer for.
+     * position everything else is measured from. Every train of two or more has one, so exactly one
+     * car asks per tick — a train that cannot be read names its head rather than nothing.
      */
     public static void holdAfterMove(ServerLevel level, AbstractMinecart cart) {
         if (!MTGameRules.trainsEnabled(level) || !cart.hasLink()) {
@@ -135,9 +134,8 @@ public final class TrainCoupling {
         }
 
         Train train = Train.of(cart);
-        AbstractMinecart driver = train.leader();
 
-        if ((driver == null ? train.anchor() : driver) == cart) {
+        if (train.leader() == cart) {
             holdTrain(level, train);
         }
     }
@@ -670,11 +668,8 @@ public final class TrainCoupling {
             return leader;
         }
 
-        // A train that has never moved has no leading end to read. Its anchor is the one car every
-        // car of it agrees on, so a shove at either end still arrives somewhere that can carry it.
-        AbstractMinecart anchor = train.anchor();
-
-        return anchor == null ? cart : anchor;
+        // Only a train of one has no leading end to read, and that one car is this one.
+        return cart;
     }
 
     /**
