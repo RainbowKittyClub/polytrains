@@ -10,6 +10,10 @@ during the 2026-09-18 session; line numbers are from `09f3a8e` plus the uncommit
 (leader-as-head) are reasoned, not measured — that stage is the one most likely to be wrong, and
 it is deliberately placed after the cheap wins so the rest is not blocked on it.
 
+Status as of 2026-09-19: S1, S2, S4, S5, S6, S7 and S8 are built and verified in world; S3 was
+built, measured and backed out; S9 is built but not yet confirmed in world. S10–S14 come out of the unseating audit
+in the Findings below and are not started.
+
 Stage order. S6, S7 and S8 narrow the ways a train can be released and are the highest-value work
 here — build them first, in that order, since each is independent and S8 is the one that pays most.
 S1 and S2 are independent of everything and of each other. S4 depends on S1 (abolishing the closed
@@ -66,6 +70,64 @@ train; three are one car's problem and need not.
 | `RIBBON_SHORT` | one car | need not release the rest (S8) |
 | `CAR_OFF_RIBBON` | one car | need not release the rest (S8) |
 | `SEAT_FOULED` | one car | need not release the rest (S8) |
+
+**The seven bails are not the whole of it. A train also comes unseated with no bail at all, and
+that path leaves no log line.** Audited 2026-09-19 by reading every route into and out of
+`TrainPlacer.seat`, after S1–S8 landed; this supersedes the two-kinds table above, which described
+only the refusals.
+
+Seating is reached from exactly one place — `AbstractMinecartMixin.tick` TAIL →
+`TrainCoupling.holdAfterMove` (`TrainCoupling.java:131`) — and that call is made by **one car per
+train per tick**, the one `leader()` names. Four things stop it being made at all:
+
+| Cause | Site | Costs |
+| --- | --- | --- |
+| Game rule off | `TrainCoupling.java:132` | whole train |
+| Cart holds no link | `TrainCoupling.java:132` | n/a |
+| No car satisfies `leader() == cart` this tick | `TrainCoupling.java:138` | whole train |
+| Train rebuilt, so `attempted` is false again | `Train.java:291` | `placed()` only |
+
+The third is the live one. The leading car may not tick: it can sit outside simulation distance
+while the trailing cars are inside it, on a train long enough to straddle the border; or the train
+can be rebuilt during another car's tick and the new `leader()` be a car that already ticked. The
+one-tick grace in `seated()` absorbs exactly one missed tick and no more, so it is load-bearing for
+this and not slack.
+
+The fourth is an asymmetry rather than a failure, but a sharp one: a rebuild discards `attempted`
+while the cars keep their stamps, so for one tick the cars read seated and the train reads
+unplaced. `EntityMixin.shoveTrain` gates on `placed()`, so a shove arriving on a rebuild tick is
+not routed to the leading car — it lands on a car whose movement the placer overwrites, and is
+lost.
+
+**Two of the four train-wide bails are now unreachable or nearly so, and one is reachable for a
+reason S6 did not cover.**
+
+| Bail | Now |
+| --- | --- |
+| `NO_LEADING_END` | `leader == null` is unreachable for two cars or more; fires only on `size < 2`, which means a linked partner that did not resolve — an unloaded chunk (`Linkable.java:50`). Self-heals on reload. |
+| `LEADER_OFF_RIBBON` | **still the largest source.** `arcOfLeader` demands `node.block().equals(pos)` — exact block identity, no tolerance — so a leader nudged off its rail block by a collision reads as fully off-ribbon on an intact ribbon. S6's re-seed does not help: it is gated on the car standing on a rail. |
+| `LEADER_MID_TRAIN` | **structurally impossible.** `leader` is only ever assigned from `decideLeader`, which returns `cars.getFirst()`, `cars.getLast()` or `heldLeader()`, and `heldLeader()` (`Train.java:717`) returns null unless the held car is one of those two. `cars` is final on a `Train` and `leader` is cached on that same object, so the two cannot drift apart. |
+| `ORDER_UNREADABLE` | compound and rare: needs a ribbon reset (which renumbers the frame and so voids `order`), cars collapsed tighter than a quarter of their gap, *and* a leader below `EPSILON` speed, all at once. |
+
+**What makes a whole-train release categorically worse than the sum of its per-car parts is
+`CartInteraction.java:223`.** Pass-through between two cars of one train needs at least one of them
+seated:
+
+```java
+&& (TrainPlacer.seated(cart) || TrainPlacer.seated(other))
+```
+
+A per-car refusal leaves one loose car among seated neighbours, so every pair still has a seated
+member and still passes through. A release makes every pair `false || false`, and the whole train
+becomes solid to itself in one tick at whatever spacing the placer last chose. That is the
+mechanism behind carts ending up inside each other, and it is why the four train-wide bails are a
+different kind of event rather than a larger one.
+
+**Of the seven, three are physical facts and stay.** `RIBBON_SHORT` is track that does not reach,
+`CAR_OFF_RIBBON` is rail that was broken, `SEAT_FOULED` is another train in the way, and
+`NO_LEADING_END` is a partner that is not loaded. `SEAT_FOULED` has no exit condition by design,
+which is correct and leaves an unruled-out live-lock: a loose car is driven by vanilla, and vanilla
+can shove it further into the train that is fouling it.
 
 **A train that closes on itself is already unreachable, so `closed` is corruption tolerance wearing
 a train kind's clothes.** `MinecartHelper.refusalFor:463` refuses `SAME_TRAIN` — and closing a loop
@@ -132,7 +194,7 @@ Three rigs, all of which already exist on the primary test track:
 A stage is not finished until its "Done when" is observed in world. Build-green and Checkstyle-clean
 prove nothing here: every defect in the Findings table compiles.
 
-## S1 — Refuse the closed train outright — **planned**
+## S1 — Refuse the closed train outright — **done**
 
 **Build.** Delete the `closed` concept from `Train`. `build()` currently sets it when `walk` comes
 back on itself; instead, treat a cycle as the corruption it is — log it once and break the weakest
@@ -150,7 +212,21 @@ The repair-on-detect behaviour is the part to get right. Breaking a link silentl
 cyclic graph may be the better answer. Resolve this by building it and watching what a hand-edited
 cyclic save actually does.
 
-## S2 — Split `seated` into its two questions — **planned**
+### As built
+
+`527c885`. The Build text offered two answers to a cyclic link graph and said to resolve it by
+building; the second won. A cycle is logged at WARN and read from its lowest-UUID car, and **no
+link is touched** — breaking one would have been a second `sever`, which is the thing this document
+keeps finding at the root of other failures. The graph stays exactly as the save wrote it, and the
+only thing the cycle decides is where the list starts.
+
+`closed` is gone from `build`, `leader()` and `follows()`. S4 landed in the same commit, since
+removing the closed case is the whole of what left `anchor()` with nothing to answer.
+
+Not built: the "break the weakest link" repair. There is no weakest link — every coupling in a
+cycle is identical — and choosing one would have been arbitrary in the way the head already was.
+
+## S2 — Split `seated` into its two questions — **done**
 
 **Build.** `TrainPlacer.seated(car)` currently answers both "vanilla's move is cancelled for this
 car" and "this car is under the placer's control". Name them separately — the first stays as the
@@ -173,7 +249,18 @@ one-tick recording hole at exactly the moment the ribbon needs to start growing 
 Reasoned from the source, not observed; it is cheap to confirm once the two questions are named
 apart.
 
-## S3 — Keep the leading car at index 0 — **planned**
+### As built
+
+`7525976`. Split as planned. `Train.placed()` is now `attempted && bail == null`, so a train never
+attempted answers *no* rather than *yes*; the one-tick grace stayed on the per-car question, where
+the Build text expected it.
+
+The flagged edge — a one-tick recording hole on the tick the leading end flips, where the new
+leading car is still reading as seated and so records nothing — was **not** confirmed either way.
+It is cheap to observe (`ribbon nodes=` in `TrainMeter` stalling for one tick across a
+`changed leading end` line) and was not looked for. Still open.
+
+## S3 — Keep the leading car at index 0 — **skipped**
 
 **Build.** When the leading end changes, reverse the car list so `cars.getFirst()` is always the
 leading car, and reverse every per-index array with it in the same operation — `gaps` (one per
@@ -199,7 +286,30 @@ and everything it indexes, or the stage is not done.
 This is the stage most likely to be wrong. It is also the one that pays for itself only if S1 and S4
 land first — a train with no leading end has no index 0 to be the leader.
 
-## S4 — Delete `anchor` — **planned**
+### As built
+
+Built as specified and **backed out the same session**; the attempt is saved at
+`scratchpad/s3-attempt`.
+
+What the measurement showed. Flip rate was *unchanged* — 20.7 `changed leading end` lines per
+minute under S3 against 22.2 per minute before it. So S3 did not cause more reversals; it changed
+what each one cost. `TrainMeter` reported `worst=0.00` up to a reversal, then `worst=0.55` and
+ribbon `worst=1.27` after it, and never recovered. Spacing broke *at* the reversal and stayed
+broken.
+
+Each piece of the reversal — `cars`, `gaps`, `faults`, `order` — was audited individually and each
+was correct on its own. The fault was not located. That is itself the finding, and it is the exact
+risk the Build text named: a per-index misattribution across a reversal is silent, and being silent
+it was not diagnosable from the logs in one session.
+
+What was built instead: S9's orientation consolidation, which takes the readability half of the
+prize without making any per-index state orientation-sensitive.
+
+What would revive it. A way to see the arrays across a single reversal directly — a debug line
+dumping `gaps`, `order` and `lead` on the tick `leader()` changes its mind — so the
+misattribution is observed rather than inferred. Without that, a retry is the same blind swap.
+
+## S4 — Delete `anchor` — **done**
 
 **Build.** Remove `Train.anchor()`. Its two callers (`TrainCoupling.java:140` and `:675`) become
 plain reads of the leading car once S1 guarantees one exists.
@@ -210,7 +320,11 @@ still calls `holdTrain` per tick — observable as one `TrainMeter` line per tra
 Trivial once S1 is in, and listed separately because it is the point at which the "which car speaks"
 row of the Findings table has a single answer.
 
-## S5 — Gate the drive on control, not on linkage — **planned**
+### As built
+
+`527c885`, alongside S1. `Train.anchor()` and both call sites are gone.
+
+## S5 — Gate the drive on control, not on linkage — **done**
 
 **Build.** Make the force model ask for the leading car itself instead of relying on the placer to
 arrange that every other car never reaches it.
@@ -249,7 +363,22 @@ seated and has no settled leading end. `decideLeader` returns the head in that c
 car is still nominated and the drive still has somewhere to go — but that is reasoned from the
 source, not observed, and it is the thing to watch while building this.
 
-## S6 — Seed the ribbon whenever it cannot answer for the leading car — **planned**
+### As built
+
+`d34525c`. The Build text's claim that the speed curve is unaffected held: both routes to
+`Train.drive()` already divided by train mass, so neither produces a different figure.
+
+It also found the **opposite** bug, which the Build text did not predict. `sharedAcceleration` was
+gated on `hasLink()`, so a train with a *trailing* furnace spent the train's whole figure a second
+time — once through the leading car's `hauled`, once through the trailing engine's own path. Both
+now ask `train.leader() == this` and a car that is not it gets `0.0`.
+
+Verified in world on the rear-furnace rig: a three-car train repeatedly crossing a one-block gap,
+with two of its three cars loose, held `worst=0.00` and a steady 0.50 speed instead of accelerating
+apart. The bootstrap unknown resolved the way it was reasoned — a standing train still nominates
+its head, so the drive always has somewhere to go.
+
+## S6 — Seed the ribbon whenever it cannot answer for the leading car — **done**
 
 **Build.** `TrainCoupling.reachTrain` seeds a ribbon from the rail under the leading car, but only
 `if (ribbon.isEmpty())`. A ribbon that holds track and simply does not cover where the leading car
@@ -266,7 +395,17 @@ This is a strict improvement on what the ribbon already does for itself: `record
 has never seen as a discontinuity and starts over. This stage simply asks the same question a tick
 earlier, from the placer, rather than waiting for the leader to cross a block boundary.
 
-## S7 — Keep the leading end readable — **planned**
+### As built
+
+`fd0630f`. Widened exactly as specified: `reachTrain` now seeds on
+`ribbon.isEmpty() || ribbon.arcOfLeader(leader) == null`.
+
+The residual the Build text did not account for: the seed is gated on the leading car **standing on
+a rail**, so it does nothing for a car knocked off its rail block by a collision — which is the
+common case, not the rare one. `LEADER_OFF_RIBBON` survives there, and the audit below names it as
+the largest remaining source of whole-train releases. S11 closes it.
+
+## S7 — Keep the leading end readable — **done**
 
 **Build.** Two small guards.
 
@@ -292,7 +431,19 @@ collisions and a busy junction. `LEADER_MID_TRAIN` should then be genuinely unre
 merely rare — S3 makes it structurally impossible, and this is the cheap version of the same
 guarantee.
 
-## S8 — Release only the cars that cannot be placed — **planned**
+### As built
+
+`c534f62`. Both guards landed. `heldLeader` now requires an end car rather than mere membership.
+
+The Build text's own correction was the right one: falling back to the *held* `order` is unsound,
+because `Train.order()` already returns the held value whenever the ribbon keeps its frame, so
+`lieOf` is reached only when nothing is held. The travel-direction fallback was built instead.
+
+The prediction that `LEADER_MID_TRAIN` would become "genuinely unreachable rather than merely rare"
+turned out stronger than stated — the audit below traces every assignment of `leader` and finds the
+bail **structurally impossible**, not merely unobserved. S10 deletes it.
+
+## S8 — Release only the cars that cannot be placed — **done**
 
 **Build.** The three per-car bails (`RIBBON_SHORT`, `CAR_OFF_RIBBON`, `SEAT_FOULED`) name a car
 already. Place every car the ribbon can answer for and leave only the named one to vanilla, instead
@@ -313,6 +464,136 @@ That is real, but it is weighed against the present behaviour, which is that *ev
 and under N-fold power. Build it and compare the two in world before deciding it is right; this is
 the stage most worth being willing to back out.
 
+### As built
+
+`b6763d9`. Built, and the counter-argument was weighed in world rather than on paper: a partly-held
+train whose rigid cars cannot respond to a loose one is a real cost, and it is smaller than every
+car being loose at once. 79% of bails now cost exactly one car.
+
+`SEAT_FOULED` deliberately keeps `Refusal.NONE` rather than naming its car, because `Refusal.car()`
+is read by nothing but the sever and a fouled train is waiting on another train, not coming apart.
+
+One thing was built, measured and removed inside this stage: a `FOUL_TICKS = 5` give-up that let a
+train seat itself after five fouled ticks. It seated trains *into* each other permanently — a seat
+is applied outright, so neither train could then move under its own power to work its way out.
+`SEAT_FOULED` now refuses for as long as it takes, with no allowance that runs out.
+
+## S9 — Derive the train's orientation once — **in progress**
+
+**Build.** S3's premise was that nine `lead == 0 ? x : y` branches are nine chances to get a sign
+wrong. That premise was right; its remedy was not. Keep `lead` as a value that can be either end,
+and derive the orientation from it **once**, near the top of `TrainPlacer.attempt`, so that every
+later question about which end a thing sits at is a read of a name rather than a fresh ternary.
+
+**Done when.** `grep -n "lead == 0 ?"` returns three adjacent derivations and nothing else, and a
+train reversing repeatedly on the busy junction holds `worst=` at the same figure it held before —
+this is a behaviour-preserving refactor, so the exit criterion is that *nothing changes*.
+
+### As built
+
+Written early: the code is built and uncommitted, and the in-world "nothing changed" confirmation
+is outstanding. Three names carry it:
+
+```java
+int fromHead = lead == 0 ? 1 : -1;
+int tail     = lead == 0 ? cars.size() - 1 : 0;
+int nearGap  = lead == 0 ? 0 : cars.size() - 2;
+```
+
+Every former ternary became a read: `cars.get(lead + fromHead)`, `gaps[nearGap]`, `fromHead < 0`,
+`order * fromHead`, `(leadArc - nextArc) * fromHead`, and in `TrainCoupling.sever`,
+`car == lead ? fromHead : -fromHead`. The two mirrored loops in `offsets` collapsed into one with
+`step = order * fromHead` and `i = fromHead > 0 ? away : gaps.length - 1 - away`; both directions
+were traced back to the originals term by term.
+
+Nine independent sign decisions became three adjacent ones. The point is not the line count: a
+wrong sign is now wrong *everywhere at once*, which is a bug found in the first minute rather than
+the first grade. And unlike S3 it needs no orientation-sensitive state — `gaps` and `faults` stay
+indexed head-first forever.
+
+## S10 — Delete `LEADER_MID_TRAIN` — **planned**
+
+**Build.** Remove the enum constant and its guard in `TrainPlacer.attempt`. The audit traces every
+assignment of `Train.leader` and finds no route by which it can be a middle car: `decideLeader`
+returns only `cars.getFirst()`, `cars.getLast()` or `heldLeader()`, `heldLeader()` requires an end
+car, `cars` is final on a `Train`, and `leader` is cached on that same object. S7 made this true;
+the bail is what was left behind.
+
+Correct the `Bail` javadoc with it — it says "the four that do" of the train-wide kind, and after
+this there are three.
+
+**Done when.** `grep -rn LEADER_MID_TRAIN src` returns nothing, and a session including merges and
+hard collisions shows no new bail kind in its place.
+
+The thing to be sure of is that deleting a guard does not delete the invariant. It does not: the
+invariant is enforced at `heldLeader`, which is where it belongs, and the guard was a second
+statement of it that could only ever agree.
+
+## S11 — Let `arcOfLeader` tolerate a car off its own block — **planned**
+
+**Build.** `TrackRibbon.arcOfLeader` matches on `node.block().equals(pos)` and gives up when no
+node holds that block. A leading car shoved sideways by a collision — the single most common thing
+that happens to a train — is then fully off a ribbon that describes its track perfectly. Add a
+fallback: when no node holds the block, take the node whose chord passes nearest the car in space,
+within a radius derived from the car's own width, tie-broken by continuity from `leaderArc` exactly
+as the exact-match path already is.
+
+This closes two failures, not one. Today a shoved leader either releases the whole train
+(`LEADER_OFF_RIBBON`) or, if it happens to be over some other rail, makes `reachTrain` call
+`record` on a block the ribbon has never seen — which is a **discontinuity, so the ribbon resets**,
+taking `order` and `headArc` with it. The tolerance prevents both.
+
+**Done when.** `LEADER_OFF_RIBBON` no longer appears for a leading car within a block of its
+recorded track, and the `ribbon reset at` rate in `debug.log` falls across a session of head-on
+collisions. Both are countable before and after on the same rig.
+
+The risk to watch is parallel track a block apart: a leader shoved from track A onto track B's
+block will snap to A, and the whole train is then seated a block from where its leader really is.
+That is bounded, self-corrects the moment the leader lands back on recorded track, and is strictly
+better than the release it replaces — but it is the thing to look for, so keep the radius tight
+and take the distance in three dimensions so a car on a bridge cannot match track beneath it.
+
+## S12 — Carry the seating verdict across a rebuild — **planned**
+
+**Build.** `Train.of` already inherits the ribbon across a rebuild, on the grounds that a link
+change does not move the train. `attempted` and `bail` are the same argument and are not carried,
+so a rebuilt train reads `placed() == false` for one tick while its cars are still stamped seated.
+Carry them, as the ribbon is carried.
+
+**Done when.** A shove landing on the tick a train is coupled or severed reaches the leading car
+rather than vanishing — observable as the train moving at all, where today that one shove is
+silently dropped.
+
+## S13 — Seat from a car other than the leader when the leader has not ticked — **planned**
+
+**Build.** Seating is driven by exactly one car per tick and is simply not done if that car does
+not tick — a leading car outside simulation distance on a train that straddles the border, or a
+rebuild that renames the leader to a car already ticked. Let a second car drive it, but only on the
+*second* consecutive missed tick, so the existing one-tick grace still does the work in the common
+case and nothing changes for a train that is fine.
+
+**Done when.** A train long enough to straddle the simulation border holds formation instead of
+its trailing half coming loose.
+
+The reason this is last and not first: reading the leading car's position from another car's tick
+is exactly the staleness that put `holdAfterMove` at `tick` TAIL in the first place, and at four
+blocks a tick a stale read is not a small error. It may be that the right answer is to refuse to
+seat rather than to seat from stale data, in which case this stage is a `release` with a reason
+attached instead. Resolve by building it and watching the border case.
+
+## S14 — Derive `order` after a ribbon reset — **planned**
+
+**Build.** `Train.order()` returns 0 whenever `ribbon.frame() != orderAt`, so every reset throws
+the train's lie away and `lieOf` has to read it back off the cars — which is what `ORDER_UNREADABLE`
+fires on when they are collapsed. But a reset is not an unknown: `record` sets `leaderArc = 0.0`
+and orients the new frame off the leading car's own `movement`, so the sign is recoverable rather
+than lost. Recover it.
+
+**Done when.** `ORDER_UNREADABLE` no longer appears after a `ribbon reset at` line in
+`debug.log`.
+
+Narrow, and worth doing only after S11 — which removes most of the resets that would reach it.
+
 ---
 
 ## Open decisions
@@ -322,13 +603,16 @@ the stage most worth being willing to back out.
 leaves a train of one. Observed at `01:22:23`: a five-car train coming to rest on a junction that
 other traffic kept throwing was cut where it stood, having been seated correctly the whole time.
 The alternative is to stop seating it and let vanilla drive its cars onto the rails that actually
-exist, which is self-correcting. Settled by S5: releasing instead of severing is only safe once an
-uncontrolled train is not also under power, and is actively worse before that.
+exist, which is self-correcting. This was blocked on S5 — releasing instead of severing is only
+safe once an uncontrolled train is not also under power, and is actively worse before that. **S5
+has landed, so it is now unblocked and still undecided.** What would settle it: run the busy
+junction with the sever replaced by a release and count how often a train that would have been cut
+recovers on its own.
 
 **Whether `Refusal.car()` should name a car at all.** Every use of the index is a sever, and severs
-are what this document keeps finding at the root of other failures. If S5 makes release-instead-of-
-sever viable, the index may have no remaining consumer. Settled by whether any non-sever caller
-appears once S5 is built.
+are what this document keeps finding at the root of other failures. S5 is built and no non-sever
+caller appeared, so the index still has exactly one consumer — which means this decision now rides
+entirely on the one above it. Settle them together.
 
 ## Reference: what deliberately stays
 
