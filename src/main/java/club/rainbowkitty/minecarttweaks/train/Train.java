@@ -106,6 +106,11 @@ public final class Train {
     // The tick this train last had give taken out of its gaps by something it has run into.
     private long packedTick = Long.MIN_VALUE;
 
+    // The last tick this train was laid out. A train is laid out once a tick by the car leading
+    // it, so a gap here is that car not having ticked — which is not a thing a car chooses, and
+    // so not a thing the rest of the train can wait out.
+    private long heldTick;
+
     // How fast this train was running on the last tick it had somewhere to run to.
     private double carried;
 
@@ -138,9 +143,12 @@ public final class Train {
     private int @Nullable [] faults;
 
     // Starts checked on the tick it was built, so its first use does not re-sweep its own cars.
+    // Starts held on it too, for the same reason read the other way round: a train built this tick
+    // has not missed being laid out, it has not been due one yet.
     private Train(List<AbstractMinecart> cars, long tick, @Nullable TrackRibbon inherited) {
         this.cars = cars;
         this.checkedTick = tick;
+        this.heldTick = tick;
         this.ribbon = inherited == null ? new TrackRibbon() : inherited;
     }
 
@@ -303,6 +311,35 @@ public final class Train {
         }
 
         return false;
+    }
+
+    /** Records that this train was laid out on tick {@code tick}. */
+    public void setHeldAt(long tick) {
+        heldTick = tick;
+    }
+
+    /**
+     * Whether a whole tick has gone by without this train being laid out, so that a car which is
+     * not the one leading it should do it rather than go on waiting.
+     *
+     * <p>A train is laid out by its leading car alone, which is right while that car ticks and
+     * leaves the train with nobody to lay it out when that car does not. A car can fail to tick
+     * without being gone: it can sit in a chunk outside the ticking radius while the cars behind
+     * it are inside one, which a train long enough to straddle that border does routinely.
+     *
+     * <p>A whole tick and not this one. A car that has merely not ticked <i>yet</i> is about to
+     * move, and laying the train against where it currently stands would be reading it four blocks
+     * early; a car that missed the tick before is not late but stopped, and where it stands is
+     * exactly where it is going to be. The two are indistinguishable within a tick and obvious
+     * across two, so this waits the tick out rather than guessing.
+     *
+     * <p>The cost of waiting is that the seat marks expire first — {@link TrainPlacer#seated}
+     * forgives one tick, not two — so the cars run on vanilla's own movement for the tick this is
+     * deciding in, and are gathered back up at the end of it. One tick loose against being loose
+     * for as long as the leading car stays outside the border.
+     */
+    public boolean unheld(long tick) {
+        return heldTick + 1 < tick;
     }
 
     /**

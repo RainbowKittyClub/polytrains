@@ -127,6 +127,12 @@ public final class TrainCoupling {
      * <p>The leading car drives rather than a fixed end of the train, because it is the one whose
      * position everything else is measured from. Every train of two or more has one, so exactly one
      * car asks per tick — a train that cannot be read names its head rather than nothing.
+     *
+     * <p>Unless that car does not tick, which is not the same as it being gone: a cart in a chunk
+     * outside the ticking radius stays loaded, stays linked and stays the car this train is
+     * measured from, while the cars behind it go on ticking without anything to hold them. So any
+     * car may lay the train out once a whole tick has passed without one — see {@link
+     * Train#unheld}, which is also where the reason for waiting that tick out is written down.
      */
     public static void holdAfterMove(ServerLevel level, AbstractMinecart cart) {
         if (!MTGameRules.trainsEnabled(level) || !cart.hasLink()) {
@@ -135,7 +141,7 @@ public final class TrainCoupling {
 
         Train train = Train.of(cart);
 
-        if (train.leader() == cart) {
+        if (train.leader() == cart || train.unheld(level.getGameTime())) {
             holdTrain(level, train);
         }
     }
@@ -838,6 +844,11 @@ public final class TrainCoupling {
     // apart for a reason this can name. Nothing corrects a car towards where it ought to be, so
     // there is no correction to lose a race against, and no gap that has to be measured.
     private static void holdTrain(ServerLevel level, Train train) {
+        // Stamped at the top, so a train that bailed still counts as having been laid out. What
+        // this records is that somebody asked, not that the asking worked — a train refused every
+        // tick is being looked after, and the one thing that must not follow from a refusal is a
+        // second car deciding the first never came.
+        train.setHeldAt(level.getGameTime());
         reachTrain(level, train);
 
         TrainPlacer.Refusal refusal = TrainPlacer.seat(train, TARGET_SPACING);
