@@ -15,7 +15,7 @@ public final class MTTags {
     /** Item tag keys. */
     public static final class Items {
 
-        /** Items that link two carts together when shift-used on them. */
+        /** Items a link is made out of, spent from the pack when the wrench makes one. */
         public static final TagKey<Item> LINK_ITEMS =
                 TagKey.create(Registries.ITEM, MinecartTweaks.id("link_items"));
 

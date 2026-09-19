@@ -1,0 +1,34 @@
+package club.rainbowkitty.minecarttweaks.init;
+
+import com.mojang.serialization.Codec;
+
+import net.minecraft.util.StringRepresentable;
+
+/** Which of its two jobs a player's wrench is set to do to a cart it is used on. */
+public enum WrenchMode implements StringRepresentable {
+
+    /** Couples two carts, spending a chain out of the player's pack. */
+    LINK("link"),
+
+    /** Breaks every coupling on the cart, handing its chains back. */
+    UNLINK("unlink");
+
+    /** Persistence codec for this mode. */
+    public static final Codec<WrenchMode> CODEC = StringRepresentable.fromEnum(WrenchMode::values);
+
+    private final String name;
+
+    WrenchMode(String name) {
+        this.name = name;
+    }
+
+    /** The job the wrench moves to when the player switches it. */
+    public WrenchMode next() {
+        return this == LINK ? UNLINK : LINK;
+    }
+
+    @Override
+    public String getSerializedName() {
+        return this.name;
+    }
+}

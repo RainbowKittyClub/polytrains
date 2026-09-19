@@ -11,24 +11,19 @@ import org.slf4j.Logger;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.item.CreativeModeTab;
-import net.minecraft.world.level.Level;
 
 import club.rainbowkitty.minecarttweaks.init.MTAttachments;
 import club.rainbowkitty.minecarttweaks.init.MTBlocks;
 import club.rainbowkitty.minecarttweaks.init.MTDataComponents;
 import club.rainbowkitty.minecarttweaks.init.MTItems;
-import club.rainbowkitty.minecarttweaks.init.MTTags;
 import club.rainbowkitty.minecarttweaks.init.MTTicketTypes;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
+import club.rainbowkitty.minecarttweaks.visual.LinkTargeting;
 
 /** Mod entrypoint — wires events and registers content. */
 public class MinecartTweaks implements ModInitializer {
@@ -53,6 +48,7 @@ public class MinecartTweaks implements ModInitializer {
         MTGameRules.init();
         MTAttachments.init();
         MTTicketTypes.init();
+        LinkTargeting.init();
 
         // The junction rail's model and texture only reach clients through this pack.
         PolymerResourcePackUtils.addModAssets(MOD_ID);
@@ -79,53 +75,12 @@ public class MinecartTweaks implements ModInitializer {
 
         UseEntityCallback.EVENT.register((player, level, hand, entity, hitResult) ->
                 entity instanceof AbstractMinecart minecart
-                        ? useMinecart(player, level, hand, minecart)
+                        ? MinecartHelper.useMinecart(player, level, hand, minecart)
                         : InteractionResult.PASS);
     }
 
     /** Constructs a namespaced {@link Identifier} under this mod's namespace. */
     public static Identifier id(String name) {
         return Identifier.fromNamespaceAndPath(MOD_ID, name);
-    }
-
-    // Shift-clicking a cart with a link item couples it to the last one clicked; with anything
-    // else, tries to craft the cart into whatever that item upgrades it to.
-    private static InteractionResult useMinecart(
-            Player player, Level level, InteractionHand hand, AbstractMinecart minecart) {
-        var heldItem = player.getItemInHand(hand);
-
-        // A click the client cannot consume is offered to the off hand as well, and a link item in
-        // the main hand has already answered it: a second link item would attempt the pair again,
-        // against a selection the first has spent, and anything else would upgrade the cart that
-        // was being coupled.
-        if (hand == InteractionHand.OFF_HAND
-                && player.getMainHandItem().is(MTTags.Items.LINK_ITEMS)) {
-            return InteractionResult.PASS;
-        }
-
-        if (MinecartHelper.mayAttemptLinking(player, heldItem)) {
-            if (!(level instanceof ServerLevel serverLevel)) {
-                return InteractionResult.SUCCESS;
-            }
-
-            if (!MTGameRules.trainsEnabled(serverLevel)) {
-                player.sendOverlayMessage(MinecartHelper.Refusal.DISABLED.message());
-                return InteractionResult.FAIL;
-            }
-
-            MinecartHelper.tryLinkMinecart(player, serverLevel, minecart, heldItem);
-            return InteractionResult.SUCCESS;
-        }
-
-        if (player.isShiftKeyDown()
-                && player instanceof ServerPlayer serverPlayer
-                && level instanceof ServerLevel serverLevel
-                && MinecartHelper.tryUpgradeMinecart(
-                        serverPlayer, serverLevel, hand, minecart, heldItem)) {
-            player.swing(hand, true);
-            return InteractionResult.SUCCESS;
-        }
-
-        return InteractionResult.PASS;
     }
 }

@@ -2,6 +2,7 @@ package club.rainbowkitty.minecarttweaks.util;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
 
@@ -12,8 +13,10 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
@@ -30,31 +33,56 @@ import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
-import club.rainbowkitty.minecarttweaks.init.MTDataComponents;
+import club.rainbowkitty.minecarttweaks.init.MTAttachments;
+import club.rainbowkitty.minecarttweaks.init.MTItems;
 import club.rainbowkitty.minecarttweaks.init.MTTags;
-import club.rainbowkitty.minecarttweaks.init.SelectedCart;
+import club.rainbowkitty.minecarttweaks.init.WrenchMode;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
 import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
+import club.rainbowkitty.minecarttweaks.visual.LinkTargeting;
 
 /** Utility methods for minecart linking, upgrading, and brake logic. */
 public final class MinecartHelper {
     /** Why a link was not allowed. Each constant names its own overlay message. */
     public enum Refusal {
         DISABLED,
-        ALREADY_LINKED,
         SAME_TRAIN,
         DERAILED,
+        NO_CHAIN,
+        NOT_LINKED,
+        NOT_COUPLED,
         TOO_FAR,
         TOO_LONG,
         BLOCKED;
 
         /** The message shown to the player, in the colour a refusal is shown in. */
         public Component message() {
-            return Component.translatable(
-                            MinecartTweaks.MOD_ID + ".link." + name().toLowerCase(Locale.ROOT))
-                    .withStyle(ChatFormatting.RED);
+            return linkMessage(name().toLowerCase(Locale.ROOT), ChatFormatting.RED);
+        }
+    }
+
+    /** What a link has to say when it is not refusing. Each constant names its own message. */
+    public enum Notice {
+        SELECTED(ChatFormatting.YELLOW),
+        CLEARED(ChatFormatting.GRAY),
+        LINKED(ChatFormatting.GREEN),
+        UNLINKED(ChatFormatting.GREEN),
+        GONE(ChatFormatting.GRAY),
+        WALKED_OFF(ChatFormatting.RED),
+        LINK_MODE(ChatFormatting.AQUA),
+        UNLINK_MODE(ChatFormatting.GOLD);
+
+        private final ChatFormatting colour;
+
+        Notice(ChatFormatting colour) {
+            this.colour = colour;
+        }
+
+        /** The message shown to the player, in this outcome's own colour. */
+        public Component message() {
+            return linkMessage(name().toLowerCase(Locale.ROOT), this.colour);
         }
     }
 
@@ -62,62 +90,59 @@ public final class MinecartHelper {
     private MinecartHelper() {}
 
     /**
-     * Returns true if the player is holding a link item and shift-clicking a minecart,
-     * meaning a link attempt should be handled.
+     * Answers one use of a minecart. The wrench does whichever job it is set to; shift-clicking
+     * with anything else tries to craft the cart into whatever that item upgrades it to.
      */
-    public static boolean mayAttemptLinking(Player player, ItemStack heldItem) {
-        if (!heldItem.is(MTTags.Items.LINK_ITEMS)) {
-            return false;
+    public static InteractionResult useMinecart(
+            Player player, Level level, InteractionHand hand, AbstractMinecart minecart) {
+        // A click the client cannot consume is offered to the off hand as well, and the main hand
+        // has already answered it: a second wrench would attempt the pair again, against a
+        // selection the first has spent, and anything else would upgrade the cart being coupled.
+        // Asked of when the last click was answered rather than of what either hand holds, which
+        // a swap between the two halves of one click would otherwise change the answer to.
+        if (hand == InteractionHand.OFF_HAND
+                && level instanceof ServerLevel answered
+                && MTAttachments.answeredUseAt(player, answered.getGameTime())) {
+            return InteractionResult.PASS;
         }
 
-        return player.isShiftKeyDown();
-    }
+        // Both of the things a use can mean here are shift-clicks. Leaving the plain click alone
+        // is also what lets a player still ride the cart: vanilla's own ride declines a sneaking
+        // click before any of this runs, which is sturdier than cancelling the ride afterwards.
+        if (!player.isShiftKeyDown()) {
+            return InteractionResult.PASS;
+        }
 
-    /**
-     * Attempts to link or select the target cart for linking. The first click selects one cart, and
-     * a second on a different cart with a free neighbour slot completes the link.
-     */
-    public static void tryLinkMinecart(
-            Player player, ServerLevel serverLevel,
-            AbstractMinecart target, ItemStack heldItem) {
-        SelectedCart selectedCart = heldItem.get(MTDataComponents.SELECTED_CART);
-        if (selectedCart == null) {
-            if (isDerailed(target)) {
-                refuseLink(player, target, Refusal.DERAILED);
-                return;
+        ItemStack heldItem = player.getItemInHand(hand);
+
+        if (isWrench(heldItem)) {
+            // The client answers its own click so its hand swings without waiting on the server;
+            // everything the link itself needs is server-side.
+            if (!(level instanceof ServerLevel serverLevel)
+                    || !(player instanceof ServerPlayer viewer)) {
+                return InteractionResult.SUCCESS;
             }
 
-            heldItem.set(MTDataComponents.SELECTED_CART, new SelectedCart(target.getUUID()));
+            MTAttachments.setAnsweredUseAt(player, serverLevel.getGameTime());
 
-            // Entity.playSound broadcasts to everyone nearby; Player.playSound passes the player as
-            // the entity to exclude, so the one person who needs to hear this would not.
-            target.playSound(SoundEvents.CHAIN_PLACE);
-            return;
+            if (!MTGameRules.trainsEnabled(serverLevel)) {
+                LinkTargeting.notice(viewer, Refusal.DISABLED.message());
+                return InteractionResult.FAIL;
+            }
+
+            useWrench(viewer, serverLevel, minecart);
+            return InteractionResult.SUCCESS;
         }
 
-        heldItem.remove(MTDataComponents.SELECTED_CART);
-        Entity firstEntity = serverLevel.getEntity(selectedCart.value());
-
-        if (selectedCart.value().equals(target.getUUID())
-                || !(firstEntity instanceof AbstractMinecart first)) {
-            target.playSound(SoundEvents.CHAIN_BREAK);
-            return;
+        if (player instanceof ServerPlayer serverPlayer
+                && level instanceof ServerLevel serverLevel
+                && tryUpgradeMinecart(serverPlayer, serverLevel, hand, minecart, heldItem)) {
+            MTAttachments.setAnsweredUseAt(player, serverLevel.getGameTime());
+            player.swing(hand, true);
+            return InteractionResult.SUCCESS;
         }
 
-        var refusal = refusalFor(serverLevel, first, target);
-        if (refusal != null) {
-            refuseLink(player, target, refusal);
-            return;
-        }
-
-        Linkable.link(first, target);
-
-        // Until now the two carts were tracked separately, so they are almost certainly being
-        // replayed on different ticks.
-        TrainCoupling.resyncTrain(target);
-
-        target.playSound(SoundEvents.CHAIN_PLACE);
-        heldItem.consume(1, player);
+        return InteractionResult.PASS;
     }
 
     /**
@@ -180,6 +205,37 @@ public final class MinecartHelper {
         return new Vec3(Math.cos(radians), 0.0, Math.sin(radians));
     }
 
+    /** Whether either of the player's hands holds the tool that couples carts. */
+    public static boolean holdsWrench(Player player) {
+        return isWrench(player.getMainHandItem()) || isWrench(player.getOffhandItem());
+    }
+
+    /**
+     * Whether clicking {@code target} with the wrench as it is set would do anything: act on the
+     * pair it makes with {@code first}, or be picked as one end of a pair of its own.
+     *
+     * <p>The same questions the click itself asks, so what the display promises is what happens.
+     */
+    public static boolean canUse(ServerPlayer player, ServerLevel serverLevel,
+            @Nullable AbstractMinecart first, AbstractMinecart target) {
+        WrenchMode mode = MTAttachments.getWrenchMode(player);
+
+        return first == null
+                ? startRefusal(player, mode, target) == null
+                : pairRefusal(player, serverLevel, mode, first, target) == null;
+    }
+
+    /** The standing label naming the job the wrench is set to. */
+    public static Component modeLabel(WrenchMode mode) {
+        return (mode == WrenchMode.UNLINK ? Notice.UNLINK_MODE : Notice.LINK_MODE).message();
+    }
+
+    /** Gives up a player's half-made link, telling them which way it went. */
+    public static void dropSelection(ServerPlayer player, Notice why) {
+        MTAttachments.setLinkSelection(player, null);
+        LinkTargeting.notice(player, why.message());
+    }
+
     /** Whether {@code entity} is a cart currently sitting on no rail. */
     public static boolean isDerailed(Entity entity) {
         return entity instanceof AbstractMinecart cart
@@ -187,11 +243,162 @@ public final class MinecartHelper {
                         cart.level().getBlockState(cart.getCurrentBlockPosOrRailBelow()));
     }
 
+    // The overlay line for one link outcome, under this mod's shared link message keys.
+    private static Component linkMessage(String outcome, ChatFormatting colour) {
+        return Component.translatable(MinecartTweaks.MOD_ID + ".link." + outcome)
+                .withStyle(colour);
+    }
+
+    // Whether this stack is the tool a link is made with.
+    private static boolean isWrench(ItemStack stack) {
+        return stack.is(MTItems.WRENCH);
+    }
+
+    // Whether this stack is one of the things a link is made out of.
+    private static boolean isLinkItem(ItemStack stack) {
+        return stack.is(MTTags.Items.LINK_ITEMS);
+    }
+
+    // Why this cart cannot be picked as one end, or null if it can.
+    private static @Nullable Refusal startRefusal(
+            ServerPlayer player, WrenchMode mode, AbstractMinecart target) {
+        if (mode == WrenchMode.UNLINK) {
+            return target.hasLink() ? null : Refusal.NOT_LINKED;
+        }
+
+        if (!hasLinkItem(player)) {
+            return Refusal.NO_CHAIN;
+        }
+        if (isDerailed(target)) {
+            return Refusal.DERAILED;
+        }
+
+        return target.hasFreeSlot() ? null : Refusal.BLOCKED;
+    }
+
+    // Why these two cannot be acted on as a pair, or null if they can.
+    private static @Nullable Refusal pairRefusal(ServerPlayer player, ServerLevel serverLevel,
+            WrenchMode mode, AbstractMinecart first, AbstractMinecart target) {
+        if (mode == WrenchMode.UNLINK) {
+            return Linkable.coupled(first, target) ? null : Refusal.NOT_COUPLED;
+        }
+
+        return refusalFor(player, serverLevel, first, target);
+    }
+
+    // Whether the player is carrying anything a link can be made out of.
+    private static boolean hasLinkItem(ServerPlayer player) {
+        return player.hasInfiniteMaterials() || findLinkItem(player) >= 0;
+    }
+
+    // Spends one link item out of the player's pack, wherever in it they are keeping them.
+    private static void takeLinkItem(ServerPlayer player) {
+        int slot = findLinkItem(player);
+
+        if (!player.hasInfiniteMaterials() && slot >= 0) {
+            player.getInventory().getItem(slot).shrink(1);
+        }
+    }
+
+    // The first slot holding a link item, or -1. Asked of the whole inventory rather than of a
+    // hand: the wrench is what is held now, so the chain being spent is wherever it was put.
+    private static int findLinkItem(ServerPlayer player) {
+        Inventory inventory = player.getInventory();
+
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            if (isLinkItem(inventory.getItem(slot))) {
+                return slot;
+            }
+        }
+
+        return -1;
+    }
+
+    /**
+     * Does whichever job the wrench is set to. Both take the same two clicks: the first picks one
+     * cart, a second on a different one acts on the pair, and a second on the same one calls it
+     * off — only the questions asked along the way differ between them.
+     */
+    private static void useWrench(
+            ServerPlayer player, ServerLevel serverLevel, AbstractMinecart target) {
+        WrenchMode mode = MTAttachments.getWrenchMode(player);
+        UUID selected = MTAttachments.getLinkSelection(player);
+
+        if (selected == null) {
+            Refusal refusal = startRefusal(player, mode, target);
+
+            if (refusal != null) {
+                refuseLink(player, target, refusal);
+                return;
+            }
+
+            MTAttachments.setLinkSelection(player, target.getUUID());
+            LinkTargeting.notice(player, Notice.SELECTED.message());
+            target.playSound(SoundEvents.CHAIN_PLACE);
+            return;
+        }
+
+        MTAttachments.setLinkSelection(player, null);
+        Entity firstEntity = serverLevel.getEntity(selected);
+
+        // Clicking the picked cart again calls the pair off, as does one whose other end has gone.
+        // Said out loud: a click that silently undid the one before it reads as a click that did
+        // nothing, and the answer to that is to click again, which undoes the next one too.
+        if (selected.equals(target.getUUID())
+                || !(firstEntity instanceof AbstractMinecart first)) {
+            LinkTargeting.notice(player, Notice.CLEARED.message());
+            target.playSound(SoundEvents.CHAIN_BREAK);
+            return;
+        }
+
+        Refusal refusal = pairRefusal(player, serverLevel, mode, first, target);
+
+        if (refusal != null) {
+            refuseLink(player, target, refusal);
+            return;
+        }
+
+        if (mode == WrenchMode.UNLINK) {
+            unlinkPair(player, first, target);
+        } else {
+            linkPair(player, first, target);
+        }
+    }
+
+    // Couples the pair, spending a chain out of the player's pack.
+    private static void linkPair(
+            ServerPlayer player, AbstractMinecart first, AbstractMinecart target) {
+        Linkable.link(first, target);
+
+        // Until now the two carts were tracked separately, so they are almost certainly being
+        // replayed on different ticks.
+        TrainCoupling.resyncTrain(target);
+
+        LinkTargeting.notice(player, Notice.LINKED.message());
+        target.playSound(SoundEvents.CHAIN_PLACE);
+        takeLinkItem(player);
+    }
+
+    // Breaks the one coupling between the pair, handing the chain that held it back to the player
+    // rather than dropping it: they were stood there to take it off, so they are who it belongs to.
+    private static void unlinkPair(
+            ServerPlayer player, AbstractMinecart first, AbstractMinecart target) {
+        Linkable.unlink(first, target);
+
+        // Nothing is handed back in creative, where nothing was spent making it either.
+        if (!player.hasInfiniteMaterials()) {
+            player.getInventory().placeItemBackInInventory(new ItemStack(Items.IRON_CHAIN));
+        }
+
+        LinkTargeting.notice(player, Notice.UNLINKED.message());
+        target.playSound(SoundEvents.CHAIN_BREAK);
+    }
+
     /**
      * Attempts to upgrade the cart under the player's hand using a crafting recipe, preserving its
      * links and passengers.
      */
-    public static boolean tryUpgradeMinecart(
+    private static boolean tryUpgradeMinecart(
             ServerPlayer player, ServerLevel level, InteractionHand hand,
             AbstractMinecart originalMinecart, ItemStack heldItem) {
         if (!originalMinecart.isAlive()) {
@@ -233,14 +440,18 @@ public final class MinecartHelper {
         return true;
     }
 
-    // Returns why this link is not allowed, or null if it is.
-    private static @Nullable Refusal refusalFor(
-            ServerLevel serverLevel, AbstractMinecart first, AbstractMinecart target) {
+    /** Returns why linking these two is not allowed, or null if it is. */
+    public static @Nullable Refusal refusalFor(ServerPlayer player, ServerLevel serverLevel,
+            AbstractMinecart first, AbstractMinecart target) {
+        if (!hasLinkItem(player)) {
+            return Refusal.NO_CHAIN;
+        }
+
         // Both carts have to have a free slot, so one in the middle of a train is refused
         // whichever of the two it was clicked as. Asked of the slots rather than of the carts they
         // resolve to, so that this agrees with what Linkable.link will actually accept.
         if (!first.hasFreeSlot() || !target.hasFreeSlot()) {
-            return Refusal.ALREADY_LINKED;
+            return Refusal.BLOCKED;
         }
 
         Train firstTrain = Train.of(first);
@@ -261,13 +472,28 @@ public final class MinecartHelper {
             return Refusal.DERAILED;
         }
 
+        // Measured as the chord — the line the chain itself spans — and not as the run of track
+        // between the two. A pair either side of a curve sits as close together as the same pair
+        // on a straight, and charging the reach for the arc would make a bend cost more to link
+        // across than the gap it actually leaves.
         double linkLimit = TrainCoupling.maxLinkDistance();
-        if (first.distanceTo(target) > linkLimit) {
+
+        if (first.distanceTo(target) >= linkLimit) {
             return Refusal.TOO_FAR;
         }
 
-        if (!canUseFreeExit(first, target, linkLimit)
-                || !canUseFreeExit(target, first, linkLimit)) {
+        // There still has to be track for the chain to follow, walked with room for the arc a
+        // chord that long can hide behind it. Nothing else asks this — canUseFreeExit walks the
+        // rails, but answers yes outright for a cart with no link to hold the walk against, which
+        // is both of them the first time a pair is made.
+        double reach = TrainCoupling.maxLinkWalk();
+
+        if (RailPath.between(first, target, reach) == null) {
+            return Refusal.TOO_FAR;
+        }
+
+        if (!canUseFreeExit(first, target, reach)
+                || !canUseFreeExit(target, first, reach)) {
             return Refusal.BLOCKED;
         }
 
@@ -275,8 +501,10 @@ public final class MinecartHelper {
     }
 
     // Whether candidate lies beyond middle's unoccupied rail exit, or neither exit is occupied.
+    // The reach is how much track to walk, not how far apart the two may be — that is the chord,
+    // and it has been answered before this is asked.
     private static boolean canUseFreeExit(
-            AbstractMinecart middle, AbstractMinecart candidate, double limit) {
+            AbstractMinecart middle, AbstractMinecart candidate, double reach) {
         if (!middle.hasLink()) {
             return true;
         }
@@ -286,18 +514,18 @@ public final class MinecartHelper {
             return false;
         }
 
-        RailPath held = RailPath.between(neighbours.getFirst(), middle, limit);
-        RailPath offered = RailPath.between(middle, candidate, limit);
+        RailPath held = RailPath.between(neighbours.getFirst(), middle, reach);
+        RailPath offered = RailPath.between(middle, candidate, reach);
 
         return held != null
                 && offered != null
                 && held.toForward().dot(offered.fromForward()) > 0.5;
     }
 
-    // Tells the player why, and leaves the stack with its selection already cleared so the next
+    // Tells the player why. The player's selection is already cleared by this point, so the next
     // click starts a fresh pair rather than retrying against a cart that was refused.
-    private static void refuseLink(Player player, Entity target, Refusal refusal) {
-        player.sendOverlayMessage(refusal.message());
+    private static void refuseLink(ServerPlayer player, Entity target, Refusal refusal) {
+        LinkTargeting.notice(player, refusal.message());
         target.playSound(SoundEvents.CHAIN_BREAK);
     }
 

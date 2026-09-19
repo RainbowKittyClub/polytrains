@@ -11,7 +11,11 @@ import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 /** Data-component type registrations. */
 public final class MTDataComponents {
 
-    /** Stores the UUID of the cart selected as one end during a link operation. */
+    /**
+     * Where a link selection used to be stored, before it moved onto the player. Registered but
+     * never written: an unknown component id is a decode error for the whole stack, so a chain
+     * saved by an earlier build would fail to load without this. Safe to delete a release on.
+     */
     public static final DataComponentType<SelectedCart> SELECTED_CART =
             DataComponentType.<SelectedCart>builder()
                     .persistent(SelectedCart.CODEC)
