@@ -23,6 +23,7 @@ import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
+import club.rainbowkitty.kalic0re.common.aim.Crosshair;
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 import club.rainbowkitty.minecarttweaks.block.SwitchedRailBlock;
 import club.rainbowkitty.minecarttweaks.init.MTAttachments;
@@ -59,7 +60,7 @@ public class WrenchItem extends Item implements PolymerItem {
         // A click reaches the server once per hand, and a wrench in both would switch twice over,
         // leaving the mode where it started.
         if (MTAttachments.answeredUseAt(viewer, serverLevel.getGameTime())
-                || !LinkTargeting.pointingAtNothing(viewer)) {
+                || !Crosshair.onNothing(viewer)) {
             return InteractionResult.PASS;
         }
 

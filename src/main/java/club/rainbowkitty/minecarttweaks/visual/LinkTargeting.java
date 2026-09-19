@@ -16,10 +16,10 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.scores.TeamColor;
 
 import club.rainbowkitty.kalic0re.common.aim.Crosshair;
+import club.rainbowkitty.kalic0re.common.glow.PrivateGlow;
 import club.rainbowkitty.minecarttweaks.init.MTAttachments;
 import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 
@@ -93,7 +93,7 @@ public final class LinkTargeting {
             return;
         }
 
-        AbstractMinecart aimed = aimedCart(player);
+        AbstractMinecart aimed = Crosshair.entity(player, AbstractMinecart.class);
         boolean phase = (level.getGameTime() % (BLINK_TICKS * 2L)) < BLINK_TICKS;
         List<Outline> wanted = new ArrayList<>(2);
 
@@ -135,20 +135,6 @@ public final class LinkTargeting {
         }
 
         return cart;
-    }
-
-    /** Whether the player's crosshair is on nothing at all: no block within reach, no entity. */
-    public static boolean pointingAtNothing(ServerPlayer player) {
-        Crosshair.Hit hit = Crosshair.of(player, entity -> true);
-
-        return hit.entity() == null && hit.block().getType() == HitResult.Type.MISS;
-    }
-
-    // The cart under the player's crosshair, or null where they are pointing at something else.
-    private static @Nullable AbstractMinecart aimedCart(ServerPlayer player) {
-        var hit = Crosshair.of(player, entity -> entity instanceof AbstractMinecart).entity();
-
-        return hit != null && hit.getEntity() instanceof AbstractMinecart cart ? cart : null;
     }
 
     // Sends only what changed: the outlines a player is shown are a lie their client holds onto

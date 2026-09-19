@@ -7,5 +7,3 @@ inject-interface net/minecraft/world/item/MinecartItem club/rainbowkitty/minecar
 accessible method net/minecraft/world/item/BucketItem playEmptySound (Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/level/LevelAccessor;Lnet/minecraft/core/BlockPos;)V
 
 transitive-inject-interface net/minecraft/world/entity/vehicle/minecart/AbstractMinecart club/rainbowkitty/minecarttweaks/ext/AbstractMinecartExt
-
-accessible field net/minecraft/world/entity/Entity DATA_SHARED_FLAGS_ID Lnet/minecraft/network/syncher/EntityDataAccessor;
