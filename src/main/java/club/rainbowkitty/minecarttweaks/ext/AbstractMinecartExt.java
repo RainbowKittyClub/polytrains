@@ -4,6 +4,7 @@ import org.jspecify.annotations.Nullable;
 
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.rail.RailContext;
@@ -45,6 +46,25 @@ public interface AbstractMinecartExt extends Linkable {
     }
 
     /**
+     * Turns this cart's own power to {@code heading}, laid along the rail it is standing on, for a
+     * train that has given up trying to move the way it was pointed.
+     *
+     * <p>Unconditional, unlike {@link #minecarttweaks$aimEngine(Vec3)}: the whole point is to turn
+     * an engine round, so the refusals that keep a heading from being knocked about do not apply.
+     */
+    public default void minecarttweaks$turnEngine(Vec3 heading) {}
+
+    /**
+     * Lays this cart's own power along {@code heading}, for a cart the placer is seating.
+     *
+     * <p>A seated cart never runs vanilla's stepper, and that stepper is the only thing that
+     * re-aims an engine off the ground it covered — so an engine in a placed train would otherwise
+     * keep the heading it had before it was first seated, through every corner after it. Refusing
+     * a reversal is still the engine's own business, so this only offers the heading.
+     */
+    public default void minecarttweaks$aimEngine(Vec3 heading) {}
+
+    /**
      * This cart's own speed ceiling, as its own kind of cart works it out. Exists so that the car
      * driving a train can ask the cars behind it without reaching for a {@code protected} method on
      * somebody else's instance.
@@ -60,6 +80,16 @@ public interface AbstractMinecartExt extends Linkable {
      * every candidate pair, so it must not walk the rails again on each call.
      */
     public RailContext minecarttweaks$railContext();
+
+    /**
+     * This cart's box joined to where its own movement would carry it this tick, read once a tick
+     * and held.
+     *
+     * <p>Held for the same reason the rail context is: collision asks each of a pair about the
+     * other separately, and a box read live would be read on either side of the cart having moved,
+     * giving one of them a wall the other did not have.
+     */
+    public AABB minecarttweaks$sweptBox();
 
     /** The train this cart was last placed in, whether or not it is still good to use. */
     public @Nullable Train minecarttweaks$train();

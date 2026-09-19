@@ -28,6 +28,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.RailShape;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.block.JunctionRailBlock;
@@ -105,6 +106,13 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     @Unique
     private long minecarttweaks$railTick;
 
+    // The ground this cart covers this tick, and the tick it was read on. Held alongside the rail
+    // context and for the same reason; its own zero never reads as fresh either.
+    @Unique
+    private @Nullable AABB minecarttweaks$swept;
+    @Unique
+    private long minecarttweaks$sweptTick;
+
     // Never called: present only to satisfy the compiler about the superclass this mixin extends.
     public AbstractMinecartMixin(EntityType<?> type, Level level) {
         super(type, level);
@@ -177,6 +185,21 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         }
 
         return minecarttweaks$rail;
+    }
+
+    @Override
+    public AABB minecarttweaks$sweptBox() {
+        long now = level().getGameTime();
+
+        if (minecarttweaks$swept == null || minecarttweaks$sweptTick != now) {
+            AbstractMinecart self = minecarttweaks$self();
+
+            minecarttweaks$swept = self.getBoundingBox()
+                    .expandTowards(self.getDeltaMovement());
+            minecarttweaks$sweptTick = now;
+        }
+
+        return minecarttweaks$swept;
     }
 
     @Override

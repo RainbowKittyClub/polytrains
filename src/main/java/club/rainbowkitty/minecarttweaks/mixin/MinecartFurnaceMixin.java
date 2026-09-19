@@ -117,6 +117,28 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         return minecarttweaks$driving() ? push : Vec3.ZERO;
     }
 
+    @Override
+    public void minecarttweaks$aimEngine(Vec3 heading) {
+        minecarttweaks$aimAlong(heading);
+    }
+
+    @Override
+    public void minecarttweaks$turnEngine(Vec3 heading) {
+        // Cleared whether or not the heading takes, so that the other engines of a train turning
+        // together do not each fire their own turn on the same tick and undo one another.
+        minecarttweaks$stalled = 0;
+
+        BlockPos on = getCurrentBlockPosOrRailBelow();
+        BlockPos exit = RailPath.ahead(level(), on, heading.horizontal());
+
+        if (exit == null) {
+            return;
+        }
+
+        push = Vec3.atLowerCornerOf(exit.subtract(on)).horizontal().normalize();
+        minecarttweaks$headingRail = on;
+    }
+
     // Vanilla halves a furnace cart's ceiling, which leaves the engine slower than the carts it
     // tows and so makes it the limit on its own train. The physical model undoes that, for a
     // ceiling of max_minecart_speed like every other cart; the vanilla model keeps the halving,
@@ -281,10 +303,19 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     // vanilla's, and a cart nothing can move is not behaviour worth mirroring.
     // Unaffected by the power curve, which a reader will want to know here: effort is at its
     // maximum at rest, so a wedged cart is still one the engine is pushing at full force.
+    // Whether the train this engine is in is still closing up on what it met. Four ticks is less
+    // than a train takes to pack, so without this the engine turns round mid-compression and the
+    // train never shuts — and an engine that is still closing gaps is moving something.
+    @Unique
+    private boolean minecarttweaks$closingUp() {
+        return hasLink() && Train.of(this).packing(level().getGameTime());
+    }
+
     @Unique
     private void minecarttweaks$countStall() {
         if (fuel <= 0 || minecarttweaks$parked
-                || getDeltaMovement().horizontalDistanceSqr() > IMPULSE_EPSILON) {
+                || getDeltaMovement().horizontalDistanceSqr() > IMPULSE_EPSILON
+                || minecarttweaks$closingUp()) {
             minecarttweaks$stalled = 0;
             return;
         }
@@ -293,12 +324,16 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
             return;
         }
 
-        minecarttweaks$stalled = 0;
-        push = push.scale(-1.0);
+        // The whole train turns, not this one engine of it, and every engine is handed the same
+        // heading rather than each reversing its own. A train's cars stall at different moments —
+        // its leading car is driven by vanilla while the rest are placed — so engines left to turn
+        // one at a time end up pushing against each other. Two that do sum to nothing, and a train
+        // whose engines sum to nothing cannot start itself again at all.
+        Vec3 turned = push.scale(-1.0);
 
-        // Stamped on the rail it turned on, so aimAlong reads the movement that follows as
-        // agreeing with the new heading rather than as a reversal to be refused.
-        minecarttweaks$headingRail = getCurrentBlockPosOrRailBelow();
+        for (AbstractMinecart car : Train.of(this).cars()) {
+            car.minecarttweaks$turnEngine(turned);
+        }
     }
 
     // Replaces vanilla's hardcoded burn-time ceiling with the rule's.
