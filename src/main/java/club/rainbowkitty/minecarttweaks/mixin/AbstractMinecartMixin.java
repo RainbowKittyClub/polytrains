@@ -92,12 +92,11 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     @Unique
     private long minecarttweaks$seatedTick;
 
-    // Which way along its train's ribbon this cart's nose points, and the arc numbering that was
-    // taken against. A frame is never zero, so a cart never asked reads as unanswered.
+    // Which way this cart's nose points, in the world. Null until it has been read once. A
+    // heading rather than a sign along the ribbon, so that re-recording the track does not take
+    // this with it — see AbstractMinecartExt.
     @Unique
-    private int minecarttweaks$nose;
-    @Unique
-    private int minecarttweaks$noseFrame;
+    private Vec3 minecarttweaks$nose;
 
     // This cart's stretch of track, and the tick it was read on. The tick only matters once the
     // context is non-null, so its own zero never reads as fresh.
@@ -228,14 +227,13 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     }
 
     @Override
-    public int minecarttweaks$nose(int frame) {
-        return minecarttweaks$noseFrame == frame ? minecarttweaks$nose : 0;
+    public @Nullable Vec3 minecarttweaks$nose() {
+        return minecarttweaks$nose;
     }
 
     @Override
-    public void minecarttweaks$setNose(int sign, int frame) {
-        minecarttweaks$nose = sign;
-        minecarttweaks$noseFrame = frame;
+    public void minecarttweaks$setNose(Vec3 heading) {
+        minecarttweaks$nose = heading;
     }
 
     @Override
@@ -273,6 +271,7 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     private void minecarttweaks$holdTrain(CallbackInfo info) {
         if (level() instanceof ServerLevel serverLevel) {
             TrainCoupling.holdAfterMove(serverLevel, minecarttweaks$self());
+            TrainPlacer.holdNose(minecarttweaks$self());
         }
     }
 

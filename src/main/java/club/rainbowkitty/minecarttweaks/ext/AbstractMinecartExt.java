@@ -110,17 +110,21 @@ public interface AbstractMinecartExt extends Linkable {
     public void minecarttweaks$setSeatArc(double arc);
 
     /**
-     * Which way along the arc numbering {@code frame} this cart's nose points — +1 towards the
-     * higher arc — or zero if it has not been taken against that numbering.
+     * Which way this cart's nose points, as a heading in the world, or null if it has never been
+     * recorded.
      *
      * <p>Which end a cart leads with is a fact about the cart: it cannot turn round on a rail, and
      * two cars of one train may honestly face opposite ways. So it is remembered rather than worked
      * out again from which way the train happens to be going.
+     *
+     * <p>Held as a direction and not as a sign along some track, because a sign is only worth
+     * anything while that track keeps the numbering it was taken against — and a ribbon is thrown
+     * away and re-recorded often, which would discard this with it every time.
      */
-    public int minecarttweaks$nose(int frame);
+    public @Nullable Vec3 minecarttweaks$nose();
 
-    /** Records which way along the arc numbering {@code frame} this cart's nose points. */
-    public void minecarttweaks$setNose(int sign, int frame);
+    /** Records which way this cart's nose points. */
+    public void minecarttweaks$setNose(Vec3 heading);
 
     /** The game time this cart's tracker withholds position updates until, or zero for none. */
     public long minecarttweaks$resyncAt();

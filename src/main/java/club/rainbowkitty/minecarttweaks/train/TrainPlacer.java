@@ -630,7 +630,7 @@ public final class TrainPlacer {
         Vec3 moved = car.position().subtract(was);
 
         if (lay) {
-            aim(car, seat.tangent(), facing, moved, train.ribbon().frame());
+            aim(car, seat.tangent(), facing, moved);
         }
 
         // Nothing else tells the client this car moved, and a step short of the ground it covered
@@ -680,8 +680,7 @@ public final class TrainPlacer {
     //
     // Grade comes out of the ground covered rather than off the rail, so a car crossing onto a
     // slope pitches by what it climbed instead of snapping to a fixed angle.
-    private static void aim(
-            AbstractMinecart car, Vec3 tangent, double facing, Vec3 moved, int frame) {
+    private static void aim(AbstractMinecart car, Vec3 tangent, double facing, Vec3 moved) {
         Vec3 along = tangent.horizontal();
 
         if (along.lengthSqr() < EPSILON * EPSILON) {
@@ -690,7 +689,7 @@ public final class TrainPlacer {
 
         along = along.normalize();
 
-        int nose = noseOf(car, along, frame);
+        int nose = noseOf(car, along);
 
         // Vanilla's own record of a cart running backwards. Derived here rather than toggled, so
         // that no reading of it can be missed, doubled or taken a tick late: whatever it was, it is
@@ -713,24 +712,63 @@ public final class TrainPlacer {
         car.setXRot(Math.clamp(flipped ? -pitch : pitch, -45.0F, 45.0F) % 360.0F);
     }
 
-    // Which way along the ribbon a car's nose points, taken once per arc numbering and remembered
-    // after. Read off the way the car is already lying, which is along its rail or against it and
-    // so cannot be read wrong; an answer taken against another numbering is no answer, a
-    // re-recorded ribbon being free to run the other way.
-    private static int noseOf(AbstractMinecart car, Vec3 along, int frame) {
+    /**
+     * Holds one cart to the end it leads with, wherever it is and whatever is moving it. Asked of
+     * every cart every tick; one that has never run in a train has no recorded nose and is left to
+     * vanilla entirely.
+     *
+     * <p>A cart is free to turn, and the recorded nose follows it round: a corner is an honest
+     * turn and so is a bend taken under vanilla's own steering. What a cart may not do is come
+     * round end for end, which is a thing no cart on a rail can do and which vanilla lets through
+     * whenever a step is not along the rails — a collision being exactly such a step.
+     *
+     * <p>Needed outside the placer because the placer only aims cars it is seating. A cart severed
+     * on its own is a train of one and is never seated at all; a train that cannot be seated has
+     * every one of its cars handed back to vanilla; and the leading car is never laid even when
+     * its train is. All three would otherwise keep whichever way a collision left them pointing.
+     */
+    public static void holdNose(AbstractMinecart car) {
+        if (!(car instanceof AbstractMinecartExt ext)) {
+            return;
+        }
+
+        Vec3 nose = ext.minecarttweaks$nose();
+
+        if (nose == null) {
+            return;
+        }
+
+        Vec3 heading = MinecartHelper.headingOf(car.getYRot());
+
+        if (heading.dot(nose) >= 0.0) {
+            ext.minecarttweaks$setNose(heading);
+            return;
+        }
+
+        // Vanilla's own record of running backwards goes back with the yaw. Without it the next
+        // step the cart takes works the same turn out again and undoes this.
+        car.setFlipped(car.getDeltaMovement().horizontal().dot(nose) < 0.0);
+        car.setYRot(MinecartHelper.yawOf(nose));
+    }
+
+    // Which way along the track at a car it is facing: +1 with its nose towards the higher arc.
+    // Worked out from the heading the car is known to lead with rather than from where it is
+    // pointing now, which is only the same thing while the placer is the one aiming it — vanilla
+    // aims a car it is driving off the step it just took, and a step out of a collision is not
+    // along the rails at all.
+    //
+    // The heading is written back each time, so it follows the car round a corner and is never
+    // more than one tick of turn from the track it is being read against.
+    private static int noseOf(AbstractMinecart car, Vec3 along) {
         if (!(car instanceof AbstractMinecartExt ext)) {
             return 1;
         }
 
-        int held = ext.minecarttweaks$nose(frame);
+        Vec3 held = ext.minecarttweaks$nose();
+        Vec3 known = held == null ? MinecartHelper.headingOf(car.getYRot()) : held;
+        int nose = known.dot(along) < 0.0 ? -1 : 1;
 
-        if (held != 0) {
-            return held;
-        }
-
-        int nose = MinecartHelper.headingOf(car.getYRot()).dot(along) < 0.0 ? -1 : 1;
-
-        ext.minecarttweaks$setNose(nose, frame);
+        ext.minecarttweaks$setNose(along.scale(nose));
 
         return nose;
     }
