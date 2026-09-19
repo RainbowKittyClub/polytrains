@@ -99,6 +99,18 @@ transitions and picking between exactly ±45 degrees on a hill; the ribbon tange
 climb still comes from the ground covered, since there is no horizontal reading to take it from, and
 a car placed where it already stood keeps the angle it has.
 
+**The ribbon is three-dimensional but its arc length is not.** Arc stays horizontal because that
+is the currency vanilla charges movement in (`newDeltaMovement.horizontalDistance()`), but a car
+has to be put on the rail, so `positionAt` returns the height the rail runs at. The two units sit
+side by side and every projection back onto the ribbon drops the height first (`TrackRibbon.along`,
+`heading`). Taking the height from vanilla's rail-transition adjustment instead was tried and
+abandoned: it is wrong on most grades and rotates the cart while it is at it.
+
+**The consequence is that a distance meant along the rails is not one in arc.** A seating interval
+spent unscaled holds its ground plan up a grade and stands the cars half again as far apart there
+as on the level — 1.5 horizontal is 2.12 along a 45-degree rail. `TrackRibbon.levelAt` reports the
+horizontal fraction of the track at an arc, and the placer takes each gap down by it.
+
 **A heading inferred from which end leads is not one to turn cars by.** `attempt` fell back to
 `facing = lead == 0 ? order : -order` whenever the train was too slow to read a heading, and used it
 for both the cars' movement and their rotation. For movement that is harmless — at that speed it
