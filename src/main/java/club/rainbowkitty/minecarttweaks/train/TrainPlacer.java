@@ -179,10 +179,19 @@ public final class TrainPlacer {
         double speed = leader.getDeltaMovement().horizontalDistance();
         double widest = TrainCoupling.maxLinkDistance();
         double[] gaps = train.nextGaps(target, widest, speed);
+        double read = facing(leader, ribbon.tangentAt(leadArc));
         int order = train.order();
 
         if (order == 0) {
             Integer lie = lieOf(nextArc, leadArc, lead, gaps[lead == 0 ? 0 : gaps.length - 1]);
+
+            // Where the cars stand too close together to say, which way the leading car is going
+            // says it instead: the end that leads is the end of the train it is running towards.
+            // Asked second and not first because movement answers this wrongly exactly when it is
+            // noise — a train just coupled, or just come to rest — where the cars never do.
+            if (lie == null && read != 0.0) {
+                lie = (int) (read * (lead == 0 ? 1.0 : -1.0));
+            }
 
             if (lie == null) {
                 return new Refusal(Bail.ORDER_UNREADABLE, Refusal.NONE,
@@ -206,7 +215,6 @@ public final class TrainPlacer {
         double room = farEnd ? ribbon.to() - tailArc : tailArc - ribbon.from();
         boolean blocked = room + EPSILON < clearance
                 && ribbon.blockedBeyond(leader.level(), farEnd);
-        double read = facing(leader, ribbon.tangentAt(leadArc));
 
         // Whether the train is driving its tail further into that end rather than away from it. A
         // train too slow to read a heading off counts as pressing: it has nowhere to lengthen to
