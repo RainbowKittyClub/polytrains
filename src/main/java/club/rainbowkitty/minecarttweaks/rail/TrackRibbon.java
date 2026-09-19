@@ -214,10 +214,30 @@ public final class TrackRibbon {
      * in space. On a circuit the two occurrences are a lap apart but can be a couple of blocks
      * from each other, so the nearest in space is a coin toss, and losing it puts the whole train
      * a lap from where it belongs.
+     *
+     * <p>Answered off the block the car stands on where it can be, and off the track running
+     * nearest the car where it cannot. Standing on a block is the stricter reading and the one
+     * that tells two laps apart, but it is also all-or-nothing: a car knocked a foot sideways by a
+     * collision stands on the next block along and reads as having left a ribbon that describes
+     * its track exactly. That answer costs the whole train, so it is worth a second question.
      */
     public @Nullable Double arcOfLeader(AbstractMinecart leader) {
-        BlockPos pos = leader.getCurrentBlockPosOrRailBelow();
-        Vec3 at = leader.position().horizontal();
+        Double best = occurrenceUnder(leader.getCurrentBlockPosOrRailBelow(), leader.position());
+
+        if (best == null) {
+            best = nearestTrack(leader.position(), leader.getBbWidth());
+        }
+
+        if (best != null) {
+            leaderArc = best;
+        }
+
+        return best;
+    }
+
+    // Where along this ribbon the occurrence of pos nearest the leading car's last arc puts a car
+    // standing at at, or null if this ribbon does not record that block at all.
+    private @Nullable Double occurrenceUnder(BlockPos pos, Vec3 at) {
         Double best = null;
         double nearest = Double.MAX_VALUE;
 
@@ -235,8 +255,40 @@ public final class TrackRibbon {
             }
         }
 
-        if (best != null) {
-            leaderArc = best;
+        return best;
+    }
+
+    // Where the recorded track passing nearest a car standing off its own rail block would put it,
+    // or null if none passes within reach of it.
+    //
+    // Measured in three dimensions, so track under a bridge cannot answer for a car on it, and
+    // bounded by the car's own width — which is just under a block, so a car sitting squarely on a
+    // parallel line one block over falls outside and is honestly reported as off this ribbon.
+    //
+    // Ranked as arcOf ranks: nearest in space, and where two are the same point — which the two
+    // occurrences of a lap are — whichever lies nearer the arc the leading car was last at.
+    private @Nullable Double nearestTrack(Vec3 at, double reach) {
+        double limit = reach * reach;
+        Double best = null;
+        double nearest = Double.MAX_VALUE;
+        double apart = Double.MAX_VALUE;
+
+        for (Node node : nodes) {
+            double along = along(node, at);
+            double away = node.entry().lerp(node.exit(), along).distanceToSqr(at);
+
+            if (away > limit) {
+                continue;
+            }
+
+            double arc = node.arc() + along * node.span();
+            double lap = Math.abs(arc - leaderArc);
+
+            if (away < nearest - EPSILON || (away < nearest + EPSILON && lap < apart)) {
+                nearest = away;
+                apart = lap;
+                best = arc;
+            }
         }
 
         return best;
