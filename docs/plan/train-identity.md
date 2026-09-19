@@ -664,7 +664,7 @@ are gathered up at the end of it. Closing it would mean knowing whether a car is
 which is not knowable within the tick. One tick loose beats loose for as long as the leading car
 stays outside the border.
 
-## S14 — Derive `order` after a ribbon reset — **planned**
+## S14 — Derive `order` after a ribbon reset — **in progress**
 
 **Build.** `Train.order()` returns 0 whenever `ribbon.frame() != orderAt`, so every reset throws
 the train's lie away and `lieOf` has to read it back off the cars — which is what `ORDER_UNREADABLE`
@@ -676,6 +676,42 @@ than lost. Recover it.
 `debug.log`.
 
 Narrow, and worth doing only after S11 — which removes most of the resets that would reach it.
+
+### As built
+
+Written early: the code is built and the in-world confirmation is outstanding.
+
+**The Build text sold this on the wrong benefit.** `ORDER_UNREADABLE` was observed once in about a
+thousand bails, so refusing less often is worth almost nothing. What is worth something is the
+failure next door: when `lieOf` *does* read two collapsed cars and gets the sign wrong, the train
+is laid backwards for the life of the frame and seated off the end of its own track — which
+`lieOf`'s own comment names as the thing it is most afraid of. Settling the lie at the reset means
+`lieOf` is never asked after one, so that reading cannot be got wrong there at all.
+
+The derivation, checked twice over because a wrong sign here is exactly the failure being
+prevented. A reset seeds its one node from `RailPath.crossing(level, pos, movement)`, whose exit is
+the one the movement is heading for — so arc increases the way the leading car was going, which
+puts that car at the highest arc of the train and every other car behind it at lower ones. The head
+is at the higher arc exactly when the head is the car that was leading, so `order = fromHead`.
+Cross-checked against S7's independent travel-direction fallback, `lie = read * fromHead`: at a
+reset `read` is +1 by construction, giving the same answer.
+
+Where it had to go. Not in `order()` asked lazily, which was the obvious shape and is wrong: the
+frame's numbering is fixed at the reset but which car leads is not, and after a reversal the
+leading car sits at the *lowest* arc, so the same comparison made later gives the opposite answer.
+It has to be taken at the reset, while it is still true. `recordTrack` compares `ribbon.frame()`
+either side of the `record` call and settles it when the frame moved.
+
+Guarded on the movement having a direction in it. `makeStepAlongTrack` only fires for a cart that
+is crossing blocks, so this should never be zero — but the whole derivation rests on that vector,
+and a lie settled off a rail walked in an arbitrary direction is the backwards-train failure with
+extra steps.
+
+Not built: carrying `order` across a rebuild. It looks free, since the ribbon and its frame are
+inherited, but `order` is defined against `cars.getFirst()` and `build` re-picks the head by UUID —
+so a sever can hand a half-train the opposite head and invert the sign. The frame guard on
+`orderAt` stays for exactly that case, and a rebuild goes on reading the lie off the cars, which
+is the common path and works.
 
 ## S15 — Ask whether the placer holds *this car*, not whether it holds every car — **in progress**
 
