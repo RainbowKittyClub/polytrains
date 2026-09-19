@@ -319,7 +319,10 @@ public final class Train {
         double[] held = gaps != null && gaps.length == count ? gaps : null;
 
         for (int i = 0; i < count; i++) {
-            double stood = Math.min(Math.abs(arcs[i + 1] - arcs[i]), widest);
+            // Along the rails, not in arc. An interval is a distance on the track and arc is its
+            // ground plan, so on a hill a correctly seated pair reads as standing closer than its
+            // interval — and clamping to that walks the interval down a little further every tick.
+            double stood = Math.min(ribbon.trackBetween(arcs[i], arcs[i + 1]), widest);
             double at = held != null ? held[i] : target;
 
             if (held == null && stood > 0.0) {

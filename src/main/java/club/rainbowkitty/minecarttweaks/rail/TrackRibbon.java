@@ -629,6 +629,37 @@ public final class TrackRibbon {
         return Math.abs(at + sign * left - arc);
     }
 
+    /**
+     * How much track, measured along the rails, lies between arcs {@code from} and {@code to} —
+     * the inverse of {@link #arcAlong}. The same number on the level, and more than the arc
+     * between them wherever the track they span is tilted.
+     *
+     * <p>What a pair of cars actually stands at, for anything that has to compare that against an
+     * interval it is being seated to. The two are only the same measurement on flat ground, and a
+     * seated pair reads as closer than it is the moment it is on a hill.
+     */
+    public double trackBetween(double from, double to) {
+        double low = Math.min(from, to);
+        double high = Math.max(from, to);
+        double along = 0.0;
+        double inside = 0.0;
+
+        for (Node node : nodes) {
+            double lo = Math.max(low, node.arc());
+            double hi = Math.min(high, node.arc() + node.span());
+
+            if (hi <= lo) {
+                continue;
+            }
+
+            along += (hi - lo) / level(node);
+            inside += hi - lo;
+        }
+
+        // Track the ribbon does not hold, taken flat, as arcAlong takes it.
+        return along + (high - low - inside);
+    }
+
     // How much of one node's track lies flat: its chord's ground plan over its chord.
     private static double level(Node node) {
         double run = node.exit().subtract(node.entry()).length();
