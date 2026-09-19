@@ -903,7 +903,10 @@ public final class TrainCoupling {
         List<AbstractMinecart> cars = train.cars();
         AbstractMinecart leader = train.leader();
         int lead = leader == null ? 0 : cars.indexOf(leader);
-        int towards = car == lead ? (lead == 0 ? 1 : -1) : (lead == 0 ? -1 : 1);
+        // Which way the leading car lies up the list, and so which neighbour to keep: the one
+        // towards it, or for the leading car itself the one neighbour it has.
+        int fromHead = lead == 0 ? 1 : -1;
+        int towards = car == lead ? fromHead : -fromHead;
         int keep = car + towards;
 
         if (keep < 0 || keep >= cars.size()) {

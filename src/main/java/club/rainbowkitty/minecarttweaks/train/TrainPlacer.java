@@ -217,8 +217,17 @@ public final class TrainPlacer {
         // checked again here — a second statement of an invariant can only ever agree with it.
         int lead = cars.indexOf(leader);
 
+        // Which way this train's list runs against the end it leads with: +1 when the leading car
+        // is the head, so a step towards the tail is a step up the list, and -1 when it is the
+        // other end. Derived once and read everywhere below, because every question about which
+        // end a thing sits at is this one question — and answering it nine separate times is nine
+        // separate chances to answer it backwards, in nine places that all look right alone.
+        int fromHead = lead == 0 ? 1 : -1;
+        int tail = lead == 0 ? cars.size() - 1 : 0;
+        int nearGap = lead == 0 ? 0 : cars.size() - 2;
+
         // Where the car beside the leading one sits says which way round the train lies.
-        Double nextArc = ribbon.arcOf(cars.get(lead == 0 ? 1 : cars.size() - 2));
+        Double nextArc = ribbon.arcOf(cars.get(lead + fromHead));
         double speed = leader.getDeltaMovement().horizontalDistance();
         double widest = TrainCoupling.maxLinkDistance();
         double[] gaps = train.nextGaps(target, widest, speed);
@@ -226,14 +235,14 @@ public final class TrainPlacer {
         int order = train.order();
 
         if (order == 0) {
-            Integer lie = lieOf(nextArc, leadArc, lead, gaps[lead == 0 ? 0 : gaps.length - 1]);
+            Integer lie = lieOf(nextArc, leadArc, fromHead, gaps[nearGap]);
 
             // Where the cars stand too close together to say, which way the leading car is going
             // says it instead: the end that leads is the end of the train it is running towards.
             // Asked second and not first because movement answers this wrongly exactly when it is
             // noise — a train just coupled, or just come to rest — where the cars never do.
             if (lie == null && read != 0.0) {
-                lie = (int) (read * (lead == 0 ? 1.0 : -1.0));
+                lie = (int) read * fromHead;
             }
 
             if (lie == null) {
@@ -247,9 +256,8 @@ public final class TrainPlacer {
             order = lie;
         }
 
-        double[] offsets = offsets(ribbon, gaps, leadArc, order, lead);
+        double[] offsets = offsets(ribbon, gaps, leadArc, order, fromHead);
 
-        int tail = lead == 0 ? cars.size() - 1 : 0;
         double clearance = cars.get(tail).getBbWidth() * 0.5;
         double nose = leader.getBbWidth() * 0.5;
         double headArc = leadArc + order * offsets[lead];
@@ -294,7 +302,7 @@ public final class TrainPlacer {
         // a wall it is driving off, which a train that still has widening to do meets every tick.
         if (pressing || packing) {
             gaps = train.nextGaps(target, widest, 0.0);
-            offsets = offsets(ribbon, gaps, leadArc, order, lead);
+            offsets = offsets(ribbon, gaps, leadArc, order, fromHead);
         }
 
         // What it cannot put behind it, a train packs into itself; one driven up against a block
@@ -315,7 +323,7 @@ public final class TrainPlacer {
         boolean closed = false;
 
         if (packing) {
-            closed = train.pack(gaps, target, lead == cars.size() - 1, reach);
+            closed = train.pack(gaps, target, fromHead < 0, reach);
 
             // A train standing against a block is given no speed either. A seated car is handed
             // the train's own movement every tick, and a furnace car re-aims its push along
@@ -328,7 +336,7 @@ public final class TrainPlacer {
         }
 
         if (pressing || packing) {
-            offsets = offsets(ribbon, gaps, leadArc, order, lead);
+            offsets = offsets(ribbon, gaps, leadArc, order, fromHead);
             headArc = leadArc + order * offsets[lead];
             tailArc = headArc - order * offsets[tail];
         }
@@ -412,7 +420,7 @@ public final class TrainPlacer {
         // answer, and on a train rebuilt around a link change it is whichever end came first. Nor
         // is the inferred end a facing to remember, or the first real movement of a train that
         // has never moved reads as a reversal of it.
-        double facing = read != 0.0 ? read : (lead == 0 ? order : -order);
+        double facing = read != 0.0 ? read : order * fromHead;
 
         for (int i = 0; i < cars.size(); i++) {
             if (i == lead && !blocked) {
@@ -586,22 +594,19 @@ public final class TrainPlacer {
     // Walked from the leading car, the one whose arc is known, outwards through the train; which
     // end that is decides which way the walk runs.
     private static double[] offsets(TrackRibbon ribbon, double[] gaps, double leadArc,
-            int order, int lead) {
+            int order, int fromHead) {
         double[] spans = new double[gaps.length];
         double at = leadArc;
+        double step = order * fromHead;
 
-        // Cars run head to tail against the arc, so a gap towards the tail is a step by -order and
-        // one towards the head a step by +order.
-        if (lead == 0) {
-            for (int i = 0; i < gaps.length; i++) {
-                spans[i] = ribbon.arcAlong(at, gaps[i], -order);
-                at -= order * spans[i];
-            }
-        } else {
-            for (int i = gaps.length - 1; i >= 0; i--) {
-                spans[i] = ribbon.arcAlong(at, gaps[i], order);
-                at += order * spans[i];
-            }
+        // Walked outwards from the leading car, whichever end of the list that is: each gap in
+        // turn is one further down the train, and one further down the train is a step by -step
+        // along the arc.
+        for (int away = 0; away < gaps.length; away++) {
+            int i = fromHead > 0 ? away : gaps.length - 1 - away;
+
+            spans[i] = ribbon.arcAlong(at, gaps[i], -step);
+            at -= step * spans[i];
         }
 
         double[] out = new double[gaps.length + 1];
@@ -643,12 +648,12 @@ public final class TrainPlacer {
     // of the track it is standing on. Two cars closer together than a quarter of their own gap
     // are not far enough apart to say, which is what a collapsed train looks like as well.
     private static @Nullable Integer lieOf(
-            @Nullable Double nextArc, double leadArc, int lead, double gap) {
+            @Nullable Double nextArc, double leadArc, int fromHead, double gap) {
         if (nextArc == null) {
             return null;
         }
 
-        double away = (leadArc - nextArc) * (lead == 0 ? 1.0 : -1.0);
+        double away = (leadArc - nextArc) * fromHead;
 
         return Math.abs(away) < gap * 0.25 ? null : (int) Math.signum(away);
     }
