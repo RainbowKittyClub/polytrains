@@ -60,10 +60,6 @@ public final class TrainPlacer {
     // standing beside it — a cosine, so about sixty degrees either side of the rail.
     private static final double SHOVE_ARC = 0.5;
 
-    // Consecutive seatings a train may be refused for another lying across its seats. Long enough
-    // to cover a collision being resolved, short enough that a pair which has settled into each
-    // other is not left loose over it.
-    private static final int FOUL_TICKS = 5;
 
     /**
      * Why a train could not be seated. The tag is the finite part, so an intermittent fault is read
@@ -335,11 +331,13 @@ public final class TrainPlacer {
         // trouble: it names no car, so it costs nothing towards a sever, and vanilla drives the
         // cars until the way is clear, which is the one state in which they are solid to each
         // other.
+        // Refused for as long as it takes, with no allowance that runs out. Seating a train into
+        // another once one did is not a smaller failure than leaving it loose: a seat is applied
+        // outright, so the two trains end up inside each other, and neither of them moves again
+        // under its own power to work its way out.
         AbstractMinecart fouling = fouled(train, cars, seats);
 
-        if (fouling == null) {
-            train.clearFouls();
-        } else if (train.foulHeld(FOUL_TICKS)) {
+        if (fouling != null) {
             return new Refusal(Bail.SEAT_FOULED, Refusal.NONE, "a cart of another train lies at "
                     + fouling.getCurrentBlockPosOrRailBelow() + ", across this train's seats");
         }

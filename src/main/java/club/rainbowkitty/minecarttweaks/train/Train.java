@@ -111,9 +111,6 @@ public final class Train {
     // How fast this train was running on the last tick it had somewhere to run to.
     private double carried;
 
-    // Consecutive seatings refused for another train lying across this one's seats.
-    private int fouls;
-
     // The interval each pair of cars is being seated at, one per gap and head first, or null
     // before this train has been seated. One per gap and not one for the train: a coupling leaves
     // exactly one gap unlike all the rest, and a single interval cannot hold that without moving
@@ -410,26 +407,6 @@ public final class Train {
      */
     public void setCarried(double speed) {
         carried = speed;
-    }
-
-    /**
-     * Counts a seating refused for fouled seats, and says whether to go on refusing them.
-     *
-     * <p>Answers no once {@code ticks} have been spent on it. A train refused for that long is one
-     * that cannot get out of the way of whatever is refusing it — usually because being refused is
-     * what left it loose in the first place — and a guard that cannot be satisfied is worse than
-     * the crossing it was put there to stop. Reset by {@link #clearFouls()} on the first seating
-     * that is not fouled, so the allowance is per run and not per train.
-     */
-    public boolean foulHeld(int ticks) {
-        fouls = Math.min(fouls + 1, ticks + 1);
-
-        return fouls <= ticks;
-    }
-
-    /** Forgets any run of refused seatings. */
-    public void clearFouls() {
-        fouls = 0;
     }
 
     /** Records that this train closed up on this tick. */
