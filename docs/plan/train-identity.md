@@ -10,9 +10,10 @@ during the 2026-09-18 session; line numbers are from `09f3a8e` plus the uncommit
 (leader-as-head) are reasoned, not measured — that stage is the one most likely to be wrong, and
 it is deliberately placed after the cheap wins so the rest is not blocked on it.
 
-Status as of 2026-09-19: S1, S2, S4, S5, S6, S7 and S8 are built and verified in world; S3 was
-built, measured and backed out; S9 is built but not yet confirmed in world. S10–S15 come out of the unseating audit
-in the Findings below and are not started.
+Status as of 2026-09-19: every stage is done bar S3, which was built, measured and backed out.
+S1–S8 were the original plan; S9–S15 came out of the unseating audit in the Findings below and
+landed the same day, measured in "Measured after S9–S15" near the end. What is left is the two
+Open decisions, which want evidence rather than code.
 
 Stage order. S6, S7 and S8 narrow the ways a train can be released and are the highest-value work
 here — build them first, in that order, since each is independent and S8 is the one that pays most.
@@ -481,7 +482,7 @@ train seat itself after five fouled ticks. It seated trains *into* each other pe
 is applied outright, so neither train could then move under its own power to work its way out.
 `SEAT_FOULED` now refuses for as long as it takes, with no allowance that runs out.
 
-## S9 — Derive the train's orientation once — **in progress**
+## S9 — Derive the train's orientation once — **done**
 
 **Build.** S3's premise was that nine `lead == 0 ? x : y` branches are nine chances to get a sign
 wrong. That premise was right; its remedy was not. Keep `lead` as a value that can be either end,
@@ -494,8 +495,7 @@ this is a behaviour-preserving refactor, so the exit criterion is that *nothing 
 
 ### As built
 
-Written early: the code is built and uncommitted, and the in-world "nothing changed" confirmation
-is outstanding. Three names carry it:
+Three names carry it:
 
 ```java
 int fromHead = lead == 0 ? 1 : -1;
@@ -514,7 +514,7 @@ wrong sign is now wrong *everywhere at once*, which is a bug found in the first 
 the first grade. And unlike S3 it needs no orientation-sensitive state — `gaps` and `faults` stay
 indexed head-first forever.
 
-## S10 — Delete `LEADER_MID_TRAIN` — **planned**
+## S10 — Delete `LEADER_MID_TRAIN` — **done**
 
 **Build.** Remove the enum constant and its guard in `TrainPlacer.attempt`. The audit traces every
 assignment of `Train.leader` and finds no route by which it can be a middle car: `decideLeader`
@@ -532,7 +532,14 @@ The thing to be sure of is that deleting a guard does not delete the invariant. 
 invariant is enforced at `heldLeader`, which is where it belongs, and the guard was a second
 statement of it that could only ever agree.
 
-## S11 — Let `arcOfLeader` tolerate a car off its own block — **planned**
+### As built
+
+As specified, and it is the whole of the change: the constant, the guard, and "the four that do"
+in the `Bail` javadoc. Where the guard stood there is now a comment saying where the invariant
+actually lives, because an invariant nothing states anywhere is one the next reader re-adds a
+check for.
+
+## S11 — Let `arcOfLeader` tolerate a car off its own block — **done**
 
 **Build.** `TrackRibbon.arcOfLeader` matches on `node.block().equals(pos)` and gives up when no
 node holds that block. A leading car shoved sideways by a collision — the single most common thing
@@ -556,7 +563,28 @@ That is bounded, self-corrects the moment the leader lands back on recorded trac
 better than the release it replaces — but it is the thing to look for, so keep the radius tight
 and take the distance in three dimensions so a car on a bridge cannot match track beneath it.
 
-## S12 — Carry the seating verdict across a rebuild — **in progress**
+### As built
+
+`occurrenceUnder` keeps the strict reading; `nearestTrack` is the fallback, ranked exactly as
+`arcOf` ranks so the lap tie-break carries over.
+
+The radius turned out to select itself, which was luck rather than design. A cart's `getBbWidth()`
+is 0.98 and parallel track sits 1.0 apart, so a car squarely on a neighbouring line falls *outside*
+reach and is honestly reported off this ribbon, while a car nudged off its own rail — 0.3 to 0.6
+from the chord — falls inside. Deriving the bound from the entity rather than from a block literal
+is what put it there.
+
+It closes a second failure the Build text did not name. Before this, a shoved leader standing over
+*some other* rail made `reachTrain` call `record` on a block the ribbon had never seen, which is a
+discontinuity — so the ribbon reset, taking `order` and `headArc` with it. The tolerance stops the
+reset as well as the release, because `reachTrain`'s re-seed is gated on `arcOfLeader` returning
+null.
+
+Not fully closed: `LEADER_OFF_RIBBON` still runs at about one a minute in bursts when two trains
+collide at speed, where the leader ends up further than its own width from any recorded track. It
+clears on the next pass now instead of costing a sever — see the measurements below.
+
+## S12 — Carry the seating verdict across a rebuild — **done**
 
 **Build.** `Train.of` already inherits the ribbon across a rebuild, on the grounds that a link
 change does not move the train. `attempted` and `bail` are the same argument and are not carried,
@@ -568,8 +596,6 @@ rather than vanishing — observable as the train moving at all, where today tha
 silently dropped.
 
 ### As built
-
-Written early: the code is built and the in-world confirmation is outstanding.
 
 **Nothing is carried.** The Build text proposed inheriting `attempted` and `bail` the way the
 ribbon is inherited, and that would have worked, but it keeps a second key for a fact the cars
@@ -611,7 +637,7 @@ seated car — which for a held train is index 0 or 1. Its two callers are one s
 leader decision, neither on the per-collision-candidate path, so it is not cached. If it ever needs
 to be, `mass` and `rolling` in the same class show the per-tick pattern.
 
-## S13 — Seat from a car other than the leader when the leader has not ticked — **in progress**
+## S13 — Seat from a car other than the leader when the leader has not ticked — **done**
 
 **Build.** Seating is driven by exactly one car per tick and is simply not done if that car does
 not tick — a leading car outside simulation distance on a train that straddles the border, or a
@@ -629,8 +655,6 @@ seat rather than to seat from stale data, in which case this stage is a `release
 attached instead. Resolve by building it and watching the border case.
 
 ### As built
-
-Written early: the code is built and the in-world confirmation is outstanding.
 
 **The staleness the Build text was worried about does not apply to the case this fixes**, and
 noticing that is what made the stage small. A leading car that has not ticked *yet* this tick is
@@ -664,7 +688,7 @@ are gathered up at the end of it. Closing it would mean knowing whether a car is
 which is not knowable within the tick. One tick loose beats loose for as long as the leading car
 stays outside the border.
 
-## S14 — Derive `order` after a ribbon reset — **in progress**
+## S14 — Derive `order` after a ribbon reset — **done**
 
 **Build.** `Train.order()` returns 0 whenever `ribbon.frame() != orderAt`, so every reset throws
 the train's lie away and `lieOf` has to read it back off the cars — which is what `ORDER_UNREADABLE`
@@ -678,8 +702,6 @@ than lost. Recover it.
 Narrow, and worth doing only after S11 — which removes most of the resets that would reach it.
 
 ### As built
-
-Written early: the code is built and the in-world confirmation is outstanding.
 
 **The Build text sold this on the wrong benefit.** `ORDER_UNREADABLE` was observed once in about a
 thousand bails, so refusing less often is worth almost nothing. What is worth something is the
@@ -713,7 +735,7 @@ so a sever can hand a half-train the opposite head and invert the sign. The fram
 `orderAt` stays for exactly that case, and a rebuild goes on reading the lie off the cars, which
 is the common path and works.
 
-## S15 — Ask whether the placer holds *this car*, not whether it holds every car — **in progress**
+## S15 — Ask whether the placer holds *this car*, not whether it holds every car — **done**
 
 **Build.** `Train.placed()` is `attempted && bail == null`, and it has exactly one reader:
 `EntityMixin.shoveTrain:74`, the gate that cancels vanilla's mutual shove, divides it by train mass
@@ -748,8 +770,6 @@ This is the largest single bail class by an order of magnitude — nine in ten �
 S11 touches it. Do it before either of the remaining planned stages.
 
 ### As built
-
-Written early: the code is built and the in-world confirmation is outstanding.
 
 The Build text said `placed()` had exactly one reader. **It had two.** The second is
 `Train.settledLeader` (`Train.java:649`), which freezes the leading end whenever the train is not
@@ -792,6 +812,33 @@ because it seated trains permanently into each other. What is wrong is not the r
 refusal is taken to mean about the other cars.
 
 ---
+
+## Measured after S9–S15
+
+One 49-minute session on the dev rig against the last session before any of this landed. Rates per
+minute, because the windows differ in length; `debug.log` rotates on each deploy, so the rows in
+between are a few minutes each of whatever was being tested at the time and are **not** a
+controlled comparison. The first and last rows are the ones worth reading.
+
+| Build | mins | flips/m | resets/m | `LEADER_OFF`/m | `SEAT_FOULED`/m | severs |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| before S9 | 12.7 | 27.3 | 1.1 | 0.0 | 34.4 | 1 |
+| after S15 | 49.0 | **7.7** | 1.9 | 0.9 | **3.7** | **0** |
+
+Leading-end flips fell from 27 a minute to 8, fouls from 34 to 4, and no train was cut in
+forty-nine minutes where four of the five windows before it cut one. `ORDER_UNREADABLE` did not
+appear once across 111 ribbon resets, and `LEADER_MID_TRAIN` cannot appear at all.
+
+`now lies` fired 5 times against those 111 resets, which is the evidence that S14 is live at all: a
+reset that leaves the lie unchanged logs nothing, so those five are resets where the sign really
+did change — the cases `lieOf` would otherwise have had to read off two collapsed cars.
+
+What remains is understood rather than open. `LEADER_OFF_RIBBON` fires in bursts when two trains
+collide at speed and clears on the next pass: the placer's own log shows `RIBBON_SHORT`, then
+`LEADER_OFF_RIBBON`, then `seated` inside the same second, with spacing back at `worst=0.00` in
+between. Worst spacing seen all session was 1.35, during those collisions. What changed is not that
+a collision stops knocking a leader off its track, but that a train no longer has to be cut to
+recover from it.
 
 ## Open decisions
 
