@@ -39,12 +39,21 @@ public final class TrainCoupling {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    // Furthest centre-to-centre distance two carts may be linked at, and how far apart the cars of
-    // a linked train then sit. The first is what a player is allowed to couple; the second is only
-    // a layout figure, since nothing is measured against it any more.
+    // Centre-to-centre distance at which two carts are too far apart to link, and how far apart
+    // the cars of a linked train then sit. The first is the straight line between them rather than
+    // the track that runs between, so a curve costs a link no reach.
+    //
+    // The two are not independent: the placer seats a new train at the second outright, so the
+    // difference between them is how far a car is moved the tick after it is coupled. Kept under
+    // a car's width, or that move puts the car through the one it was coupled to.
     private static final double MAX_LINK_DISTANCE = 2.25;
 
     private static final double TARGET_SPACING = 1.5;
+
+    // How much track a chord of the link distance can hide behind it. A curve makes the run
+    // between two carts longer than the line they are apart by, and the reach is spent on the
+    // line — so a walk looking for the far end has to be allowed the arc as well.
+    private static final double LINK_ARC_ALLOWANCE = 2.0;
 
     // How far from a block to look for a car of a train that might be lying across it. A train at
     // the speeds this allows moves several blocks between ticks, so the car nearest a block can be
@@ -253,6 +262,14 @@ public final class TrainCoupling {
     /** The furthest centre-to-centre distance at which two carts may be linked. */
     public static double maxLinkDistance() {
         return MAX_LINK_DISTANCE;
+    }
+
+    /**
+     * How much track to walk looking for the far end of a coupling, which is not how far apart the
+     * two may be — that is {@link #maxLinkDistance()}, measured as the straight line between them.
+     */
+    public static double maxLinkWalk() {
+        return MAX_LINK_DISTANCE * LINK_ARC_ALLOWANCE;
     }
 
     /** The distance along the rails the coupling holds consecutive cars at. */
