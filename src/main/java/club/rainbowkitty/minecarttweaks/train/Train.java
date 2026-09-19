@@ -660,6 +660,34 @@ public final class Train {
         orderAt = ribbon.frame();
     }
 
+    /**
+     * Settles which way round this train lies on a ribbon that has just been started over, from
+     * the one thing a fresh ribbon does say about it.
+     *
+     * <p>A reset numbers its first node off the movement of the car that stepped onto it, so arc
+     * increases the way that car was going — which puts that car at the highest arc of the train,
+     * every other car trailing it at lower ones. The head is therefore at the higher arc exactly
+     * when the head is the car that was leading, and the lie is that comparison and nothing else.
+     *
+     * <p>Settled here and not left to be read back off the cars. Two cars standing closer together
+     * than a quarter of their gap cannot say which is in front, which is what a train collapsed
+     * against a buffer looks like and what {@code ORDER_UNREADABLE} refuses on; and a reading taken
+     * from them and got wrong lays the train backwards for the life of the frame. The reset knows
+     * the answer outright, so it is worth taking while it is still true.
+     *
+     * <p>Only at the reset. The frame's numbering is fixed from here, but which car leads is not —
+     * a train reverses routinely, and after one the leading car is at the <i>lowest</i> arc, so the
+     * same comparison made later gives the opposite answer. That is why this cannot be deferred
+     * into {@link #order()} and asked lazily.
+     */
+    public void relaidOn(AbstractMinecart leading) {
+        int lead = cars.indexOf(leading);
+
+        if (lead >= 0) {
+            setOrder(lead == 0 ? 1 : -1);
+        }
+    }
+
     /** The cars of this train, head first, or in no particular order when it closes on itself. */
     public List<AbstractMinecart> cars() {
         return cars;

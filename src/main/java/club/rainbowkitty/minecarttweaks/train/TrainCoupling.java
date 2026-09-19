@@ -306,9 +306,23 @@ public final class TrainCoupling {
 
         Train train = Train.of(cart);
 
-        if (train.leader() == cart) {
-            train.ribbon().record(
-                    cart.level(), pos, cart.getDeltaMovement().horizontal());
+        if (train.leader() != cart) {
+            return;
+        }
+
+        TrackRibbon ribbon = train.ribbon();
+        Vec3 movement = cart.getDeltaMovement().horizontal();
+        int was = ribbon.frame();
+
+        ribbon.record(cart.level(), pos, movement);
+
+        // A ribbon started over numbers itself off the movement just handed to it, which is the
+        // one moment anything knows which way round the train lies on it without having to measure
+        // two cars that may be standing on top of each other. Taken here rather than left to the
+        // placer to read back, and only on a movement there is a direction in — a reading off no
+        // movement would settle the lie on whichever way the rail happened to be walked.
+        if (ribbon.frame() != was && movement.lengthSqr() > EPSILON * EPSILON) {
+            train.relaidOn(cart);
         }
     }
 
