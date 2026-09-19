@@ -77,16 +77,20 @@ that path leaves no log line.** Audited 2026-09-19 by reading every route into a
 `TrainPlacer.seat`, after S1–S8 landed; this supersedes the two-kinds table above, which described
 only the refusals.
 
+**Read as a record, not as current state.** Every line item below was true when the audit was
+taken, and S10–S15 closed most of them the same day — the table rows are annotated with which
+stage did it. What still stands is in "Measured after S9–S15" near the end.
+
 Seating is reached from exactly one place — `AbstractMinecartMixin.tick` TAIL →
 `TrainCoupling.holdAfterMove` (`TrainCoupling.java:131`) — and that call is made by **one car per
 train per tick**, the one `leader()` names. Four things stop it being made at all:
 
-| Cause | Site | Costs |
-| --- | --- | --- |
-| Game rule off | `TrainCoupling.java:132` | whole train |
-| Cart holds no link | `TrainCoupling.java:132` | n/a |
-| No car satisfies `leader() == cart` this tick | `TrainCoupling.java:138` | whole train |
-| Train rebuilt, so `attempted` is false again | `Train.java:291` | `placed()` only |
+| Cause | Site | Costs | Since |
+| --- | --- | --- | --- |
+| Game rule off | `TrainCoupling.java:132` | whole train | by design |
+| Cart holds no link | `TrainCoupling.java:132` | n/a | by design |
+| No car satisfies `leader() == cart` this tick | `TrainCoupling.java:138` | whole train | **closed by S13** |
+| Train rebuilt, so `attempted` is false again | `Train.java:291` | `placed()` only | **closed by S12** |
 
 The third is the live one. The leading car may not tick: it can sit outside simulation distance
 while the trailing cars are inside it, on a train long enough to straddle the border; or the train
@@ -105,10 +109,10 @@ reason S6 did not cover.**
 
 | Bail | Now |
 | --- | --- |
-| `NO_LEADING_END` | `leader == null` is unreachable for two cars or more; fires only on `size < 2`, which means a linked partner that did not resolve — an unloaded chunk (`Linkable.java:50`). Self-heals on reload. |
-| `LEADER_OFF_RIBBON` | **still the largest source.** `arcOfLeader` demands `node.block().equals(pos)` — exact block identity, no tolerance — so a leader nudged off its rail block by a collision reads as fully off-ribbon on an intact ribbon. S6's re-seed does not help: it is gated on the car standing on a rail. |
-| `LEADER_MID_TRAIN` | **structurally impossible.** `leader` is only ever assigned from `decideLeader`, which returns `cars.getFirst()`, `cars.getLast()` or `heldLeader()`, and `heldLeader()` (`Train.java:717`) returns null unless the held car is one of those two. `cars` is final on a `Train` and `leader` is cached on that same object, so the two cannot drift apart. |
-| `ORDER_UNREADABLE` | compound and rare: needs a ribbon reset (which renumbers the frame and so voids `order`), cars collapsed tighter than a quarter of their gap, *and* a leader below `EPSILON` speed, all at once. |
+| `NO_LEADING_END` | *stands.* `leader == null` is unreachable for two cars or more; fires only on `size < 2`, which means a linked partner that did not resolve — an unloaded chunk (`Linkable.java:50`). Self-heals on reload. |
+| `LEADER_OFF_RIBBON` | **narrowed by S11**, which added a tolerance so a leader within its own width of recorded track still resolves. What survives is a collision transient that clears on the next pass. Formerly: `arcOfLeader` demands `node.block().equals(pos)` — exact block identity, no tolerance — so a leader nudged off its rail block by a collision reads as fully off-ribbon on an intact ribbon. S6's re-seed does not help: it is gated on the car standing on a rail. |
+| `LEADER_MID_TRAIN` | **deleted by S10.** Was structurally impossible: `leader` is only ever assigned from `decideLeader`, which returns `cars.getFirst()`, `cars.getLast()` or `heldLeader()`, and `heldLeader()` (`Train.java:717`) returns null unless the held car is one of those two. `cars` is final on a `Train` and `leader` is cached on that same object, so the two cannot drift apart. |
+| `ORDER_UNREADABLE` | **closed by S14**, which settles the lie at the reset. Was compound and rare: needs a ribbon reset (which renumbers the frame and so voids `order`), cars collapsed tighter than a quarter of their gap, *and* a leader below `EPSILON` speed, all at once. |
 
 **What makes a whole-train release categorically worse than the sum of its per-car parts is
 `CartInteraction.java:223`.** Pass-through between two cars of one train needs at least one of them
@@ -120,7 +124,9 @@ seated:
 
 A per-car refusal leaves one loose car among seated neighbours, so every pair still has a seated
 member and still passes through. A release makes every pair `false || false`, and the whole train
-becomes solid to itself in one tick at whatever spacing the placer last chose. That is the
+becomes solid to itself in one tick at whatever spacing the placer last chose. S15 later found the
+same split missing one level up, in `Train.placed()`, which is what let one fouled seat take the
+mass off a whole train. That is the
 mechanism behind carts ending up inside each other, and it is why the four train-wide bails are a
 different kind of event rather than a larger one.
 
@@ -535,9 +541,17 @@ statement of it that could only ever agree.
 ### As built
 
 As specified, and it is the whole of the change: the constant, the guard, and "the four that do"
-in the `Bail` javadoc. Where the guard stood there is now a comment saying where the invariant
-actually lives, because an invariant nothing states anywhere is one the next reader re-adds a
-check for.
+in the `Bail` javadoc.
+
+The audit was not the first to reach this. `docs/plan/train-ribbon.md` already recorded it, in the
+round that introduced the tag: *"`LEADER_MID_TRAIN` did not [fire], and cannot: the car order and
+`decideLeader` agree by construction, so it guards a contradiction in `Train` rather than a
+situation on the track."* Two independent analyses, same answer, and the bail outlived both because
+neither round went back and deleted it — which is its own small lesson about findings that are
+written down and then left where they were written.
+
+Where the guard stood there is now a comment saying where the invariant actually lives, because an
+invariant nothing states anywhere is one the next reader re-adds a check for.
 
 ## S11 — Let `arcOfLeader` tolerate a car off its own block — **done**
 
