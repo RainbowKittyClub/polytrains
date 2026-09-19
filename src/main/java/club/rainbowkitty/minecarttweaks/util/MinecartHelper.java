@@ -86,6 +86,10 @@ public final class MinecartHelper {
         }
     }
 
+    // Slack on a distance measured against a round limit, so that noise in the last place of the
+    // arithmetic does not decide a link.
+    private static final double EPSILON = 1.0E-6;
+
     // Static-only; blocks instantiation.
     private MinecartHelper() {}
 
@@ -476,9 +480,13 @@ public final class MinecartHelper {
         // between the two. A pair either side of a curve sits as close together as the same pair
         // on a straight, and charging the reach for the arc would make a bend cost more to link
         // across than the gap it actually leaves.
+        //
+        // Inclusive of the limit. A cart is placed at the centre of its rail block, so a pair a
+        // player has stood a whole number of blocks apart is exactly the limit and nothing over,
+        // and refusing that costs the reach its last block.
         double linkLimit = TrainCoupling.maxLinkDistance();
 
-        if (first.distanceTo(target) >= linkLimit) {
+        if (first.distanceTo(target) > linkLimit + EPSILON) {
             return Refusal.TOO_FAR;
         }
 
