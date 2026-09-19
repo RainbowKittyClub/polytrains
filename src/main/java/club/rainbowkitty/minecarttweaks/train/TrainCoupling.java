@@ -940,7 +940,14 @@ public final class TrainCoupling {
         // steps along nothing — so a train that was stopped when its world loaded has an empty one
         // and no way to come by a first node. Seeded with the rail it stands on, which is the block
         // its own first step would have recorded anyway; the growth below lays the rest from there.
-        if (ribbon.isEmpty()) {
+        //
+        // The same answer serves a ribbon holding track that is not the track its leading car is
+        // standing on — a knock off the rails and back on, a load, a reset behind it. Left alone
+        // that refuses the seating every tick for as long as the car stays where it is, since the
+        // ribbon only grows from an arc it can already place that car at. record() continues from
+        // what is there when it can and starts over when it cannot, which is the same judgement it
+        // makes for every other block the car steps onto.
+        if (ribbon.isEmpty() || ribbon.arcOfLeader(leader) == null) {
             BlockPos under = leader.getCurrentBlockPosOrRailBelow();
 
             if (!BaseRailBlock.isRail(level.getBlockState(under))) {
