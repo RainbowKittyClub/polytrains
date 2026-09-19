@@ -556,7 +556,7 @@ That is bounded, self-corrects the moment the leader lands back on recorded trac
 better than the release it replaces — but it is the thing to look for, so keep the radius tight
 and take the distance in three dimensions so a car on a bridge cannot match track beneath it.
 
-## S12 — Carry the seating verdict across a rebuild — **planned**
+## S12 — Carry the seating verdict across a rebuild — **in progress**
 
 **Build.** `Train.of` already inherits the ribbon across a rebuild, on the grounds that a link
 change does not move the train. `attempted` and `bail` are the same argument and are not carried,
@@ -566,6 +566,50 @@ Carry them, as the ribbon is carried.
 **Done when.** A shove landing on the tick a train is coupled or severed reaches the leading car
 rather than vanishing — observable as the train moving at all, where today that one shove is
 silently dropped.
+
+### As built
+
+Written early: the code is built and the in-world confirmation is outstanding.
+
+**Nothing is carried.** The Build text proposed inheriting `attempted` and `bail` the way the
+ribbon is inherited, and that would have worked, but it keeps a second key for a fact the cars
+already record. `holding()` is derived instead:
+
+```java
+public boolean holding() {
+    for (AbstractMinecart car : cars) {
+        if (TrainPlacer.seated(car)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+```
+
+A rebuild then needs no inheritance at all — the seat marks live on the carts and a rebuild does
+not touch them — and three other things fall out that the inheriting version would not have fixed:
+
+- **It says what S8's own `loose()` comment already said** and `holding()` did not: *"a refusal
+  naming one car and leaving one car loose is the placer holding the rest; the same refusal leaving
+  every car loose is not."* The verdict cannot tell those apart, because they are the same verdict.
+  A train of five with one car fouled is still held; a train of two with one car fouled is not.
+- **`release()` reads here without being reported here.** It zeroes every seat mark, so a released
+  train answers no immediately, rather than by way of a `bail` that `seat()` has to remember to set.
+- **A train whose leading car stops ticking answers no after two ticks**, as the stamps expire,
+  instead of holding a stale `bail == null` forever. That does not fix the missed tick — S13 — but
+  it stops the missed tick being invisible to everything downstream.
+
+The deliberate behaviour change: a train with *every* trailing car loose now freezes its leading
+end in `settledLeader`, where before it could still flip. That is the correct reading of that
+method's own comment — such a train is loose carts, and a car of it moving towards the others is
+shunting rather than leading a reversal. It does not touch the single-fouled-car case, which is
+what the deadlock actually looks like in the logs (`1 loose`, not `2 loose`).
+
+Cost: `holding()` is an O(length) scan rather than a field read, short-circuiting on the first
+seated car — which for a held train is index 0 or 1. Its two callers are one shove and one per-tick
+leader decision, neither on the per-collision-candidate path, so it is not cached. If it ever needs
+to be, `mass` and `rolling` in the same class show the per-tick pattern.
 
 ## S13 — Seat from a car other than the leader when the leader has not ticked — **planned**
 
