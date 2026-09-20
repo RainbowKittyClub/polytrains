@@ -10,8 +10,7 @@ import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
-import club.rainbowkitty.minecarttweaks.init.MTDamageTypes;
-import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
+import club.rainbowkitty.minecarttweaks.rule.ModGameRules;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /**
@@ -70,7 +69,7 @@ public final class CartImpact {
 
         // Speed alone decides what the cart throws, and what it hurts, and how badly. The train's
         // weight tells on the other side of the impact only: in how little the train is slowed.
-        int damageRule = level.getGameRules().get(MTGameRules.MINECART_DAMAGE);
+        int damageRule = level.getGameRules().get(ModGameRules.MINECART_DAMAGE);
         boolean hurts = damageRule > 0 && CartInteraction.injures(cart);
         float damage = (float) (CartInteraction.impactSpeed(cart)
                 * DAMAGE_PER_SPEED_PER_RULE * damageRule);
@@ -117,7 +116,8 @@ public final class CartImpact {
 
                 if (hurts) {
                     living.hurtServer(level, living.damageSources().source(
-                            MTDamageTypes.MINECART_DAMAGE, cart, cart.getFirstPassenger()), damage);
+                            CollisionDamageTypes.MINECART_DAMAGE, cart, cart.getFirstPassenger()),
+                            damage);
                 }
             }
         }
@@ -127,19 +127,14 @@ public final class CartImpact {
         }
     }
 
-    // Two carts meeting along the track. The struck cart is brought up to the momentum-weighted
-    // mean of the pair rather than handed the striker's whole movement, and the striker is billed
-    // for what it gave through the same drag a struck mob costs it. Returns that bill.
+    // Two carts meeting along the track. The struck cart moves to the pair's momentum-weighted
+    // mean instead of taking the striker's velocity outright — copying velocity creates momentum
+    // instead of conserving it, snowballing a line of standing carts into a runaway. The striker
+    // is billed for what it gave, through the same drag a struck mob costs it; returns that bill.
     //
-    // It used to copy the movement outright and bill nothing, which created momentum instead of
-    // passing it on: nine carts standing a block apart turned a one-block-a-second nudge into nine
-    // carts running, and rewrote each other's velocity often enough that friction never got a
-    // tick's hold on any of them. With wrecking on, the speed that built up wrote several of them
-    // off.
-    //
-    // Only what the cart is bearing down on. The sweep reaches behind as well, for a mob a fast
-    // cart passed clean through in one tick, but a cart cannot drag along one it is moving away
-    // from — and reaching backwards is what let one nudge light up a line in both directions.
+    // Only accounts for what the cart is bearing down on. The sweep reaches behind too, for a mob
+    // a fast cart passed clean through in one tick, but a cart can't drag one it's moving away
+    // from — reaching backward let one nudge propagate a line in both directions.
     private static double shunt(AbstractMinecart cart, AbstractMinecart struck, Vec3 movement) {
         Vec3 heading = movement.horizontal();
 
@@ -226,13 +221,11 @@ public final class CartImpact {
         return push >= 0 ? Math.max(own, push) : Math.min(own, push);
     }
 
-    // Bleeds the accumulated impact off the train: one car's worth of momentum loss spread over the
-    // whole of it, so the speed a given impact costs falls off as one over the number of cars. Drag
-    // arrives as the fraction a lone cart would lose.
-    //
-    // Laid on the one car vanilla drives rather than written to each of them. The falloff is the
-    // intent and survives; writing every car's movement was the pattern that had to go, since the
-    // placer overwrites all but one of them from that one.
+    // Bleeds the accumulated impact off the train: one car's worth of momentum loss spread over
+    // the whole train, so a given impact's cost falls off as one over the car count. Drag arrives
+    // as the fraction a lone cart would lose, applied to the one car vanilla drives — the placer
+    // overwrites every other car's movement from that one, so writing them individually would
+    // just be undone.
     private static void slowTrain(AbstractMinecart cart, double drag) {
         // Over what the train weighs, not how many cars it has. The two are the same figure under
         // the vanilla model, where every cart weighs one; under the physical model a loaded train

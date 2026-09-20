@@ -1,4 +1,4 @@
-package club.rainbowkitty.minecarttweaks.visual;
+package club.rainbowkitty.minecarttweaks.link;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -20,8 +20,7 @@ import net.minecraft.world.scores.TeamColor;
 
 import club.rainbowkitty.kalic0re.common.aim.Crosshair;
 import club.rainbowkitty.kalic0re.common.glow.PrivateGlow;
-import club.rainbowkitty.minecarttweaks.init.MTAttachments;
-import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
+import club.rainbowkitty.minecarttweaks.init.EntityAttachments;
 
 /**
  * The live picture a player gets while they are holding something that couples carts: a standing
@@ -34,9 +33,9 @@ import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
  */
 public final class LinkTargeting {
 
-    // How long the picked cart's outline stays on, and then off. Only that one blinks: the
-    // verdict on the cart under the crosshair is answering a question being asked right now, and
-    // one that comes and goes is harder to read than one that is simply there.
+    // How long the picked cart's outline stays on, then off. Only that one blinks: the verdict on
+    // the cart under the crosshair answers a question asked right now, and one that comes and
+    // goes is harder to read than one that stays.
     private static final int BLINK_TICKS = 16;
 
     // How long a click's own message holds the action bar before the standing prompt returns.
@@ -88,7 +87,7 @@ public final class LinkTargeting {
         // the player walked off, neither of which is about what is in their hands.
         AbstractMinecart selected = heldSelection(player, level);
 
-        if (!MinecartHelper.holdsWrench(player)) {
+        if (!LinkAction.holdsWrench(player)) {
             clearOutlines(player, level, session);
             return;
         }
@@ -103,7 +102,7 @@ public final class LinkTargeting {
 
         if (aimed != null && aimed != selected) {
             wanted.add(new Outline(aimed.getId(),
-                    MinecartHelper.canUse(player, level, selected, aimed)
+                    LinkAction.canUse(player, level, selected, aimed)
                             ? TeamColor.GREEN
                             : TeamColor.RED,
                     true));
@@ -116,7 +115,7 @@ public final class LinkTargeting {
     // The cart the player has picked, giving the pair up where it can no longer be held to.
     private static @Nullable AbstractMinecart heldSelection(
             ServerPlayer player, ServerLevel level) {
-        UUID selectedId = MTAttachments.getLinkSelection(player);
+        UUID selectedId = EntityAttachments.getLinkSelection(player);
 
         if (selectedId == null) {
             return null;
@@ -125,12 +124,12 @@ public final class LinkTargeting {
         Entity entity = level.getEntity(selectedId);
 
         if (!(entity instanceof AbstractMinecart cart) || cart.isRemoved()) {
-            MinecartHelper.dropSelection(player, MinecartHelper.Notice.GONE);
+            LinkAction.dropSelection(player, LinkAction.Notice.GONE);
             return null;
         }
 
         if (player.distanceToSqr(cart) > SELECTION_RANGE * SELECTION_RANGE) {
-            MinecartHelper.dropSelection(player, MinecartHelper.Notice.WALKED_OFF);
+            LinkAction.dropSelection(player, LinkAction.Notice.WALKED_OFF);
             return null;
         }
 
@@ -190,7 +189,7 @@ public final class LinkTargeting {
 
         session.notice = null;
         player.sendOverlayMessage(
-                MinecartHelper.modeLabel(MTAttachments.getWrenchMode(player)));
+                LinkAction.modeLabel(EntityAttachments.getWrenchMode(player)));
     }
 
     private static void onLeave(ServerPlayer player) {

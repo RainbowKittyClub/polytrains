@@ -15,18 +15,17 @@ import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 /**
  * A chest or hopper cart's share of this mod's rolling friction.
  *
- * <p>Vanilla gives a container cart its own slowdown and returns from it without calling the one
- * on {@code AbstractMinecart}, where this mod hangs its own. So a container cart got none of it:
- * no low-speed drag and, worse, no floor to stop it, leaving it to coast down through a fixed
- * fraction a tick for a couple of thousand ticks before vanilla's own cutoff caught it.
+ * <p>Vanilla gives a container cart its own slowdown and never calls the one on {@code
+ * AbstractMinecart}, where this mod hangs its own. A container cart got no low-speed drag and no
+ * floor to stop it, coasting down by a fixed fraction a tick for a couple of thousand ticks before
+ * vanilla's own cutoff caught it.
  */
 @Mixin(AbstractMinecartContainer.class)
 public abstract class AbstractMinecartContainerMixin {
 
-    // The same retarding law the other carts take, asked for here because the override above does
-    // not reach it. Which law that is belongs to the model: the vanilla one leaves vanilla's own
-    // figure alone, so an emptier container cart goes on rolling better, and the physical one
-    // replaces it with a law that answers to what the cart is carrying instead.
+    // The retarding law every other cart takes, asked for here because the override above skips
+    // it. Which law applies is the model's call: vanilla leaves its own figure alone, so an
+    // emptier container cart rolls better; the physical model answers to what the cart carries.
     @Inject(method = "applyNaturalSlowdown", at = @At("RETURN"), cancellable = true)
     private void minecarttweaks$railFriction(Vec3 movement, CallbackInfoReturnable<Vec3> cir) {
         AbstractMinecart self = (AbstractMinecart) (Object) this;

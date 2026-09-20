@@ -13,7 +13,8 @@ import club.rainbowkitty.minecarttweaks.ext.Linkable;
 import club.rainbowkitty.minecarttweaks.rail.RailContext;
 import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
-import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
+import club.rainbowkitty.minecarttweaks.rule.ModGameRules;
+import club.rainbowkitty.minecarttweaks.rule.PhysicsGameRules;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.train.TrainPlacer;
 
@@ -45,9 +46,9 @@ public enum CartInteraction {
      */
     BUFFER(true, false);
 
-    // Speed at which a cart starts running things down, in blocks per tick: above it any cart at
-    // all injures what it meets and drives on through, below it a cart still throws what it is up
-    // against clear but does no harm doing so, and is stopped by it as vanilla intends.
+    // Speed at which a cart starts running things down, in blocks per tick. Above it, any cart
+    // injures what it meets and drives through; below it, a cart still throws what it's up against
+    // clear but does no harm, and is stopped by it as vanilla intends.
     private static final double HURTING_SPEED = 0.2;
 
     // Below this a cart is standing rather than moving slowly, so nothing it is up against is being
@@ -59,7 +60,7 @@ public enum CartInteraction {
     // Whether the cart hits it, throwing it clear and injuring it if moving fast enough.
     private final boolean strikes;
 
-    // Construct a collision type with its blocking and striking properties.
+    // Constructs a collision type with its blocking and striking properties.
     private CartInteraction(boolean blocks, boolean strikes) {
         this.blocks = blocks;
         this.strikes = strikes;
@@ -84,12 +85,10 @@ public enum CartInteraction {
                 return IGNORE;
             }
 
-            // Two cars of one train never wreck each other and never strike each other, in any
-            // state the train can be in: a train coming apart must not destroy its own cars. What
-            // does change with the state is whether they are solid to each other — while the placer
-            // lays them at fixed offsets they must not block each other or the car leading them,
-            // and while it is not laying them they are ordinary carts that have to stop each other
-            // or an unplaced train piles into its own head.
+            // Two cars of one train never wreck or strike each other. What varies is whether they
+            // are solid to each other: placed cars (fixed offsets) aren't solid to each other or
+            // the leader; unplaced ones are ordinary carts that must stop each other, or an
+            // unplaced train piles into its own head.
             if (TrainCoupling.sameTrain(cart, car) || Linkable.coupled(cart, car)) {
                 return placed(cart, car) ? IGNORE : BUFFER;
             }
@@ -97,9 +96,8 @@ public enum CartInteraction {
             return wrecks(cart, car) ? WRECK : COLLIDE;
         }
 
-        // Ahead of running it over on purpose: a cart slow enough to collect is by default slow
-        // enough that a lone one does no harm anyway, and a long train creeping along should be
-        // loading livestock rather than killing it.
+        // Checked before running over on purpose: a cart slow enough to collect already does no
+        // harm alone, and a slow-creeping train should be loading livestock, not killing it.
         if (collects(cart, other)) {
             return COLLECT;
         }
@@ -147,7 +145,7 @@ public enum CartInteraction {
      * the same for a lone cart and for the head of a train of fifty.
      */
     public static boolean injures(AbstractMinecart cart) {
-        double limit = threshold(cart, MTGameRules.CART_IMPACT_SPEED, Double.MAX_VALUE);
+        double limit = threshold(cart, ModGameRules.CART_IMPACT_SPEED, Double.MAX_VALUE);
 
         // Squared: this is on the per-candidate path, where impactSpeed's sqrt is not worth taking.
         return cart.getDeltaMovement().lengthSqr() > limit * limit;
@@ -160,7 +158,7 @@ public enum CartInteraction {
      * is the whole of what the pickup site has to ask.
      */
     public static boolean gathers(AbstractMinecart cart) {
-        double limit = threshold(cart, MTGameRules.CART_PICKUP_SPEED, 0.0);
+        double limit = threshold(cart, ModGameRules.CART_PICKUP_SPEED, 0.0);
 
         return cart.isRideable() && !cart.isVehicle()
                 && cart.getDeltaMovement().lengthSqr() < limit * limit;
@@ -176,14 +174,13 @@ public enum CartInteraction {
         return strikes;
     }
 
-    // Whether the pair cross each other's ground this tick despite standing further apart than
-    // sharesTrack can see. That test reaches one rail either side of a cart, which is everything a
-    // cart moving under a block a tick can get to; above that a pair closes the whole gap between
-    // two ticks and meets somewhere neither is standing at either end of one. Which is how a train
-    // at speed goes clean through another and neither notices.
+    // Whether the pair cross this tick despite standing outside sharesTrack's reach: that test
+    // only covers one rail either side, everything a cart moving under a block a tick can reach.
+    // Faster than that, a pair can close the whole gap between ticks and meet somewhere neither
+    // end covers — how a fast train passes through another unnoticed.
     //
-    // Both boxes are the held ones, so the answer does not depend on which of the pair asks first
-    // or on how much of the tick either has already spent.
+    // Both boxes are the held (already-computed) ones, so the answer doesn't depend on which cart
+    // of the pair asks first, or how much of the tick either has already spent.
     private static boolean crossing(AbstractMinecart cart, AbstractMinecart other) {
         AABB mine = cart.minecarttweaks$sweptBox();
         AABB theirs = other.minecarttweaks$sweptBox();
@@ -211,33 +208,30 @@ public enum CartInteraction {
         return Math.max(swept.getXsize(), swept.getZsize());
     }
 
-    // Coupled cars pass through each other, but only while both are on the rails that hold them
-    // apart: a derailed car is a solid obstacle again, which stops the train closing up over it.
-    // Rail memos first, then the train test, which is the expensive half.
-    // Whether the placer is holding this pair where it wants them, in which case neither may be
-    // solid to the other. A derailed car is never placed, so it goes on stopping its neighbours
-    // while it is trying to land, which is what it did before any of this.
+    // Whether the placer is holding this pair at fixed offsets, in which case neither is solid to
+    // the other. A derailed car is never placed, so it keeps stopping its neighbours while it
+    // tries to land — coupled cars pass through each other only while both are still on the rails
+    // holding them apart. Rail state is checked first, then the train test, the expensive half.
     private static boolean placed(AbstractMinecart cart, AbstractMinecart other) {
         return cart.minecarttweaks$railContext().onRails()
                 && other.minecarttweaks$railContext().onRails()
                 && (TrainPlacer.seated(cart) || TrainPlacer.seated(other));
     }
 
-    // Two trains meeting hard enough to write each other off. Read off the closing momentum rather
-    // than either train's own speed, so a heavy train overhauling a light one does not wreck it for
-    // the crime of being caught up with.
+    // Two trains meeting hard enough to write each other off, judged by closing momentum rather
+    // than either train's own speed — so a heavy train overtaking a light one isn't punished for
+    // catching up.
     //
-    // Nothing wrecks under the vanilla force model, and this is the whole of that gate: the caller
-    // falls through to COLLIDE, which is vanilla's own solid collision, so refusing here leaves
-    // two trains to stop or shunt each other exactly as vanilla's pushOtherMinecart has them do.
-    // Wrecking goes with the model rather than keeping a rule of its own because it is the one
-    // place this mod's forces break something the player built.
+    // Gated on the physics force model: under vanilla forces nothing wrecks, so the caller falls
+    // through to COLLIDE, vanilla's own solid collision, same as pushOtherMinecart. Wrecking rides
+    // on the model instead of its own rule because it's the one place this mod's forces break
+    // something the player built.
     private static boolean wrecks(AbstractMinecart cart, AbstractMinecart other) {
         if (!RailForces.of(cart.level()).wrecks()) {
             return false;
         }
 
-        double limit = threshold(cart, MTGameRules.CART_WRECK_MOMENTUM, 0.0);
+        double limit = threshold(cart, PhysicsGameRules.CART_WRECK_MOMENTUM, 0.0);
 
         return limit > 0 && TrainCoupling.closingMomentum(cart, other) > limit;
     }
@@ -265,17 +259,16 @@ public enum CartInteraction {
     // Whether the cart owns the collision rather than yielding to it: an engine at any speed, and
     // any cart at all once it is moving fast enough to injure.
     private static boolean runsOver(AbstractMinecart cart, Entity other) {
-        // The train's own speed, not this car's. A placed car's movement is written from the
-        // leader's, so reading it here would have each car answer from a copy — and a car whose
-        // copy is stale answers differently from its neighbours, leaving a train that is solid at
-        // one end and walked through at the other.
+        // The train's own speed, not this car's: a placed car's movement is written from the
+        // leader's, so a stale copy here would answer differently from its neighbours — a train
+        // solid at one end and walked through at the other.
         double speed = TrainCoupling.drivenSpeed(cart);
 
-        // Speed first: underPower walks the train, and a cart about to hit something is almost
-        // always over the bar anyway. Power only counts while the train is actually moving — it
-        // covers a laden train pulling away too slowly to clear the bar, not a standing one. A
-        // burning furnace cart held against a buffer is under power indefinitely, and because the
-        // drive is shared every car of its train would answer yes and let players walk through it.
+        // Speed checked first: underPower walks the whole train, and a cart about to hit something
+        // is almost always over the bar anyway. Power only counts while actually moving, covering a
+        // laden train pulling away too slowly to clear the bar — not one standing still, since a
+        // furnace cart held against a buffer is under power indefinitely and would make its whole
+        // train walkable.
         if (speed > HURTING_SPEED || (speed > STANDING && TrainCoupling.underPower(cart))) {
             return true;
         }

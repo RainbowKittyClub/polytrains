@@ -35,8 +35,9 @@ import club.rainbowkitty.minecarttweaks.block.JunctionRailBlock;
 import club.rainbowkitty.minecarttweaks.block.SwitchedRailBlock;
 import club.rainbowkitty.minecarttweaks.collision.CartImpact;
 import club.rainbowkitty.minecarttweaks.collision.CartInteraction;
+import club.rainbowkitty.minecarttweaks.display.LinkChain;
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
-import club.rainbowkitty.minecarttweaks.init.MTAttachments;
+import club.rainbowkitty.minecarttweaks.init.EntityAttachments;
 import club.rainbowkitty.minecarttweaks.rail.RailBrake;
 import club.rainbowkitty.minecarttweaks.rail.RailContext;
 import club.rainbowkitty.minecarttweaks.rail.RailForces;
@@ -44,22 +45,19 @@ import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.train.TrainPlacer;
 import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
-import club.rainbowkitty.minecarttweaks.visual.LinkChain;
 
 /**
  * A cart's own half of this mod: the link slots it stores, the per-tick memos the coupling reads,
  * and the injections that give a train one speed, one drive and one dead stop, and that let a
  * moving cart through what it is about to run over.
  *
- * <p>No {@code @Unique} instance field here may carry an initializer. Mixin does not merge them
- * into the target's constructor — verified against the exported class, where no constructor writes
- * one — so a field declared with a value silently starts at Java's default instead, and the
- * declaration reads as a guarantee the class does not have. Every field below is written to mean
- * the right thing at its own zero.
+ * <p>No {@code @Unique} instance field here may carry an initializer. Mixin never merges them into
+ * the target's constructor — verified against the exported class, which writes none — so an
+ * initializer silently never runs and the field starts at Java's default instead. Every field
+ * below is written to mean the right thing at zero.
  */
 @Mixin(AbstractMinecart.class)
 public abstract class AbstractMinecartMixin extends Entity implements AbstractMinecartExt {
-
 
     // Vanilla's shove between a cart and something that is not one, read out of
     // AbstractMinecart.push(Entity): the impulse it is worth at touching range, and the separation
@@ -68,7 +66,6 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     private static final double SHOVE_IMPULSE = 0.1 * 0.5;
     @Unique
     private static final double SHOVE_EPSILON = 1.0E-4;
-
 
     // The chain drawn back to the cart this one follows, or null when it follows nothing.
     @Unique
@@ -126,7 +123,7 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
 
     @Override
     public List<AbstractMinecart> getNeighbours() {
-        var data = MTAttachments.getLink(minecarttweaks$self());
+        var data = EntityAttachments.getLink(minecarttweaks$self());
 
         // Walked once per car per tick, and most carts hold no links at all.
         if (!data.hasLink()) {
@@ -141,12 +138,12 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
 
     @Override
     public boolean hasLink() {
-        return MTAttachments.getLink(minecarttweaks$self()).hasLink();
+        return EntityAttachments.getLink(minecarttweaks$self()).hasLink();
     }
 
     @Override
     public boolean hasFreeSlot() {
-        return MTAttachments.getLink(minecarttweaks$self()).hasFreeSlot();
+        return EntityAttachments.getLink(minecarttweaks$self()).hasFreeSlot();
     }
 
     @Override
@@ -154,8 +151,8 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         AbstractMinecart self = minecarttweaks$self();
 
         if (neighbour != self) {
-            MTAttachments.setLink(self,
-                    MTAttachments.getLink(self).withNeighbour(neighbour.getUUID()));
+            EntityAttachments.setLink(self,
+                    EntityAttachments.getLink(self).withNeighbour(neighbour.getUUID()));
             // Both ends: a train is marked on the one object its own cars share, so the two
             // trains being joined are separate objects and neither end's mark reaches the other.
             Train.invalidate(self);
@@ -166,8 +163,8 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     @Override
     public void removeNeighbour(AbstractMinecart neighbour) {
         AbstractMinecart self = minecarttweaks$self();
-        MTAttachments.setLink(self,
-                MTAttachments.getLink(self).withoutNeighbour(neighbour.getUUID()));
+        EntityAttachments.setLink(self,
+                EntityAttachments.getLink(self).withoutNeighbour(neighbour.getUUID()));
         // Both ends, as in addNeighbour: the graph change marks itself rather than relying on
         // Linkable.unlink coming back round to mark the other side.
         Train.invalidate(self);
@@ -253,10 +250,9 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
 
     // ---- injections ----
 
-    // A seated cart is placed along its train's track, so vanilla moving it as well would leave it
-    // wherever the two happened to be applied in — and which came last is entity tick order, which
-    // nothing here chooses. Only the movement is refused; everything the stepper does besides move
-    // is owed by the placer instead.
+    // A seated cart is placed along its train's track, so vanilla moving it too would leave it
+    // wherever the two land — decided by entity tick order, which nothing here controls. Only the
+    // movement is refused; everything else the stepper does belongs to the placer.
     @Inject(method = "moveAlongTrack", at = @At("HEAD"), cancellable = true)
     private void minecarttweaks$placedInstead(ServerLevel level, CallbackInfo info) {
         if (TrainPlacer.seated(minecarttweaks$self())) {
@@ -342,15 +338,15 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         cir.setReturnValue(TrainCoupling.trainCeiling(self, level, cir.getReturnValueD()));
     }
 
-    // Which retarding law applies is the model's to say, and both of its candidates are here: the
-    // movement the cart arrived with, and what vanilla's own body left of it.
+    // Which retarding law applies is the model's to say, given both candidates: the movement the
+    // cart arrived with, and what vanilla's own body left of it.
     //
-    // Asked at whichever override is the outermost one for this kind of cart, because that is the
-    // only one handed the movement the cart really arrived with — and the physical model works from
-    // that rather than from vanilla's figure. A container cart overrides this and returns without
-    // calling it, so it asks for itself and never reaches here. A furnace cart overrides it and
-    // does call it, having already scaled the movement on the way past, so it is skipped here and
-    // asks at its own return instead.
+    // Asked at whichever override is outermost for this kind of cart — the only one handed the
+    // movement the cart really arrived with, which the physical model needs instead of vanilla's
+    // figure. A container cart overrides this and returns without calling it, so it asks for
+    // itself and never reaches here. A furnace cart overrides it, calls it, but has already
+    // scaled the movement on the way past — so it is skipped here and asks at its own return
+    // instead.
     @Inject(method = "applyNaturalSlowdown", at = @At("RETURN"), cancellable = true)
     private void minecarttweaks$railFriction(Vec3 movement, CallbackInfoReturnable<Vec3> cir) {
         AbstractMinecart self = minecarttweaks$self();
@@ -426,10 +422,10 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         Vec3 shove = line.scale(SHOVE_IMPULSE * Math.min(1.0, 1.0 / gap));
         push(-shove.x(), 0.0, -shove.z());
 
-        // The shover is then held to whatever the train has just become, by taking back all of the
-        // speed it is still closing at — which is what makes contact a wall rather than a bounce,
-        // since it can never exceed the shover's own approach. Read off the car vanilla drives,
-        // where the push above landed; every other car's movement is a copy the placer overwrites.
+        // The shover is then held to what the train has just become, by taking back all the speed
+        // it is still closing at — which makes contact a wall rather than a bounce, since it can
+        // never exceed the shover's own approach. Read off the car vanilla drives, where the push
+        // above landed; every other car's movement is a copy the placer overwrites.
         double closing = TrainCoupling.driven(self).getDeltaMovement().dot(line)
                 - entity.getKnownMovement().dot(line);
 

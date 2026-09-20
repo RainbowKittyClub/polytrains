@@ -12,9 +12,9 @@ import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.collision.CartInteraction;
+import club.rainbowkitty.minecarttweaks.link.LinkAction;
 import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
-import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 
 /** Severs a destroyed cart's links, and thins out shoves aimed at a train. */
 @Mixin(Entity.class)
@@ -40,7 +40,7 @@ public abstract class EntityMixin {
         if (reason.shouldDestroy() && cart.level() instanceof ServerLevel serverLevel) {
             // Only a killed cart drops its chains, which is the path a broken one takes. A cart
             // discarded outright — creative, or the old cart of an upgrade — is severed silently.
-            MinecartHelper.severLinks(
+            LinkAction.severLinks(
                     serverLevel, cart, reason == Entity.RemovalReason.KILLED);
         }
     }

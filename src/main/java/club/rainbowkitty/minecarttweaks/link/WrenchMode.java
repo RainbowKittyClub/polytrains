@@ -1,4 +1,4 @@
-package club.rainbowkitty.minecarttweaks.init;
+package club.rainbowkitty.minecarttweaks.link;
 
 import com.mojang.serialization.Codec;
 
@@ -16,8 +16,10 @@ public enum WrenchMode implements StringRepresentable {
     /** Persistence codec for this mode. */
     public static final Codec<WrenchMode> CODEC = StringRepresentable.fromEnum(WrenchMode::values);
 
+    // The string this mode (de)serializes as, independent of the enum constant's own name.
     private final String name;
 
+    // Binds the serialized name to the constant.
     WrenchMode(String name) {
         this.name = name;
     }

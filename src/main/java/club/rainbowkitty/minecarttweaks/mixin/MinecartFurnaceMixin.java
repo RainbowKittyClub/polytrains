@@ -28,10 +28,10 @@ import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
-import club.rainbowkitty.minecarttweaks.init.MTTicketTypes;
+import club.rainbowkitty.minecarttweaks.init.FurnaceTicketTypes;
 import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
-import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
+import club.rainbowkitty.minecarttweaks.rule.ModGameRules;
 import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.util.FurnaceFuel;
@@ -139,8 +139,8 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         minecarttweaks$headingRail = on;
     }
 
-    // Vanilla halves a furnace cart's ceiling, which leaves the engine slower than the carts it
-    // tows and so makes it the limit on its own train. The physical model undoes that, for a
+    // Vanilla halves a furnace cart's ceiling, leaving the engine slower than the carts it tows
+    // and making it the limit on its own train. The physical model undoes that, for a
     // ceiling of max_minecart_speed like every other cart; the vanilla model keeps the halving,
     // which is where its engine's 4 m/s comes from. Raising it past what the world allows anything
     // else is what a rule of its own used to do, and it made that rule a lie.
@@ -181,18 +181,17 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
             return;
         }
 
-        // The direction of travel is the only heading that survives a corner. A coupled cart's is
-        // written along its own rail and trustworthy at any speed; a solo cart's needs a floor
-        // under it, or the jitter of a near-stopped one decides which way it pushes.
+        // The direction of travel is the only heading that survives a corner. A coupled cart's
+        // comes from its own rail record and is trustworthy at any speed; a solo cart needs a
+        // floor under it, or the jitter of a near-stopped one decides which way it pushes.
         //
-        // Aimed under both models, ahead of the decision about whose force drives the cart.
-        // Vanilla aims the impulse by projecting it onto the direction of travel and normalising
-        // the result, and the projection onto a perpendicular heading is the zero vector — which
-        // normalise() turns into a permanently dead engine, since vanilla then never reaches its
-        // own aiming again. A two-block U-turn swings the cart ninety degrees in a single step, so
-        // that is ordinary track rather than a corner case. Aiming first makes vanilla's own
-        // projection a no-op on a heading already parallel to the movement, which is the whole
-        // point: it cannot be degenerate if it has nothing left to do.
+        // Aimed under both models, before deciding whose force drives the cart. Vanilla aims the
+        // impulse by projecting it onto the direction of travel and normalising the result — but
+        // projecting onto a perpendicular heading gives the zero vector, and normalise() turns
+        // that into a permanently dead engine, since vanilla never re-aims after. A two-block
+        // U-turn swings the cart ninety degrees in one step, so that is ordinary track, not an
+        // edge case. Aiming first sidesteps this: the heading is already parallel to the
+        // movement, so vanilla's own projection becomes a no-op.
         double floor = hasLink() ? IMPULSE_EPSILON : MOVING_EPSILON;
 
         if (deltaMovement.horizontalDistanceSqr() > floor) {
@@ -209,22 +208,21 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         }
 
         // Resistance on the movement the cart arrived with, then the engine's impulse on top.
-        // Applied here for the reason the parked branch gives: setting the return value at HEAD
-        // cancels the method, so neither the super call nor the return hook below is reached, and a
-        // lit cart would have no retarding force at all. With flat effort that was invisible — the
-        // free-running speed sat above the default ceiling, so the clamp did the limiting — but the
-        // curve is meant to limit an engine, and it cannot without something to balance against.
+        // Applied here for the reason the parked branch gives: cancelling at HEAD skips both the
+        // super call and the return hook below, so a lit cart would otherwise get no retarding
+        // force at all. Flat effort hid this — free-running speed sat above the default ceiling,
+        // so the clamp did the limiting — but the curve is meant to limit an engine, and needs
+        // something to balance against.
         cir.setReturnValue(
                 RailForces.of(level()).retarded(this, deltaMovement, deltaMovement)
                         .add(push.scale(minecarttweaks$sharedAcceleration())));
     }
 
-    // A furnace cart's retarding law, asked for at its own override rather than at the one it calls
+    // A furnace cart's retarding law, asked for at its own override rather than the one it calls
     // through to. Vanilla scales the movement before that super call — by 0.98 coasting, or by 0.8
-    // plus the impulse under power — so the generic hook is handed a figure a tick of friction has
-    // already been taken out of, and the physical model, which works from the movement the cart
-    // arrived with, would read a furnace cart as barely different from vanilla. Here the argument
-    // is still the real one.
+    // plus the impulse under power — so the generic hook gets a figure a tick of friction has
+    // already left. The physical model works from the movement the cart arrived with, so it would
+    // read a furnace cart as barely different from vanilla there; here the argument is still real.
     @Inject(method = "applyNaturalSlowdown", at = @At("RETURN"), cancellable = true)
     private void minecarttweaks$furnaceFriction(
             Vec3 deltaMovement, CallbackInfoReturnable<Vec3> cir) {
@@ -250,14 +248,14 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         minecarttweaks$headingRail = rail;
     }
 
-    // Force over mass either way: its own output over its own weight when it runs alone, and its
-    // train's whole output over the train's weight when it is coupled — the engines behind it
-    // counted in, since only the leading car reaches this and it is answering for all of them.
-    // Dividing the solo case too is what keeps a lone furnace cart on the same curve as the trains
-    // it heads, rather than giving the one cart that carries a firebox the only free ride.
+    // Force over mass either way: its own output over its own weight alone, or its train's whole
+    // output over the train's weight coupled — engines behind it counted in, since only the
+    // leading car reaches this and answers for all of them. Dividing the solo case too keeps a
+    // lone furnace cart on the same curve as the trains it heads, instead of giving the one cart
+    // with a firebox the only free ride.
     @Unique
     private double minecarttweaks$sharedAcceleration() {
-        if (!hasLink() || !MTGameRules.trainsEnabled(level())) {
+        if (!hasLink() || !ModGameRules.trainsEnabled(level())) {
             return minecarttweaks$driveAcceleration() / TrainCoupling.mass(this);
         }
 
@@ -279,17 +277,17 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
 
         var rules = serverLevel.getGameRules();
 
-        // Read before super.tick() moves the cart, so the movement path sees this tick's rail, and
-        // asked of the whole train: an engine run past the rail while a car behind it is still held
-        // drives against a brake that zeroes the train every tick, re-adding exactly one tick of
-        // impulse each time — a crawl that never stops and never gets anywhere.
+        // Read before super.tick() moves the cart, so the movement path sees this tick's rail —
+        // and asked of the whole train: an engine run past the rail while a car behind it is
+        // still held drives against a brake that zeroes the train every tick, re-adding one tick
+        // of impulse each time, a crawl that never stops and never gets anywhere.
         minecarttweaks$parked = TrainCoupling.held(this);
 
         minecarttweaks$countStall();
 
-        if (fuel > 0 && rules.get(MTGameRules.FURNACE_MINECARTS_LOAD_CHUNKS)) {
+        if (fuel > 0 && rules.get(ModGameRules.FURNACE_MINECARTS_LOAD_CHUNKS)) {
             serverLevel.getChunkSource().addTicketWithRadius(
-                    MTTicketTypes.FURNACE_MINECART, chunkPosition(), CHUNK_TICKET_RADIUS);
+                    FurnaceTicketTypes.FURNACE_MINECART, chunkPosition(), CHUNK_TICKET_RADIUS);
         }
 
         // Vanilla burns a tick of fuel every tick; a parked cart should idle instead. Handing back
@@ -299,26 +297,25 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         }
     }
 
-    // Turns a stalled engine round, which is the one thing neither model can work out for itself.
-    // Both re-aim the impulse from the cart's own movement — vanilla in calculateNewPushAlong and
-    // this mod in aimAlong — and a cart against a buffer has none: stepAlongTrack zeroes a step
-    // that covered no ground, so the engine is handed its impulse back into the obstruction every
-    // tick and the gate that would turn it round never opens. Left alone a fuelled cart at a dead
-    // end wedges there until its fuel runs out, which is what makes a switchback impossible.
-    //
-    // So the stall is counted instead of derived, and read at the top of the tick where last
-    // tick's movement is still what the cart has. Unconditional in both models: the trap is
-    // vanilla's, and a cart nothing can move is not behaviour worth mirroring.
-    // Unaffected by the power curve, which a reader will want to know here: effort is at its
-    // maximum at rest, so a wedged cart is still one the engine is pushing at full force.
     // Whether the train this engine is in is still closing up on what it met. Four ticks is less
-    // than a train takes to pack, so without this the engine turns round mid-compression and the
-    // train never shuts — and an engine that is still closing gaps is moving something.
+    // than a train takes to pack, so without this the engine would turn round mid-compression and
+    // the train never shuts — an engine still closing gaps is moving something.
     @Unique
     private boolean minecarttweaks$closingUp() {
         return hasLink() && Train.of(this).packing(level().getGameTime());
     }
 
+    // Turns a stalled engine round, which neither model can work out for itself. Both re-aim the
+    // impulse from the cart's own movement — vanilla in calculateNewPushAlong, this mod in
+    // aimAlong — and a cart against a buffer has none: stepAlongTrack zeroes a step that covered
+    // no ground, so the impulse drives back into the obstruction every tick and the turning gate
+    // never opens. Left alone, a fuelled cart at a dead end wedges until its fuel runs out — the
+    // switchback that becomes impossible.
+    //
+    // Counted rather than derived, and read at the top of the tick where last tick's movement
+    // still stands. Unconditional in both models — the trap is vanilla's, not behaviour worth
+    // mirroring — and unaffected by the power curve: effort is maximum at rest, so a wedged cart
+    // is still being pushed at full force.
     @Unique
     private void minecarttweaks$countStall() {
         if (fuel <= 0 || minecarttweaks$parked
@@ -348,7 +345,7 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     @ModifyConstant(method = "addFuel", constant = @Constant(intValue = 32000))
     private int minecarttweaks$maxBurnTime(int vanillaMax) {
         return level() instanceof ServerLevel serverLevel
-                ? serverLevel.getGameRules().get(MTGameRules.FURNACE_MAX_BURN_TIME)
+                ? serverLevel.getGameRules().get(ModGameRules.FURNACE_MAX_BURN_TIME)
                 : vanillaMax;
     }
 
@@ -443,11 +440,11 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
 
         if (!(level() instanceof ServerLevel serverLevel)
                 || heldItem.is(ItemTags.FURNACE_MINECART_FUEL)
-                || !serverLevel.getGameRules().get(MTGameRules.FURNACES_CAN_USE_ALL_FUELS)) {
+                || !serverLevel.getGameRules().get(ModGameRules.FURNACES_CAN_USE_ALL_FUELS)) {
             return;
         }
 
-        int maxBurnTime = serverLevel.getGameRules().get(MTGameRules.FURNACE_MAX_BURN_TIME);
+        int maxBurnTime = serverLevel.getGameRules().get(ModGameRules.FURNACE_MAX_BURN_TIME);
         int burnTime = FurnaceFuel.burnDuration(serverLevel, heldItem);
 
         if (burnTime <= 0 || fuel + burnTime > maxBurnTime) {

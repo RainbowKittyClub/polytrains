@@ -15,7 +15,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 
-import club.rainbowkitty.minecarttweaks.init.MTDamageTypes;
+import club.rainbowkitty.minecarttweaks.collision.CollisionDamageTypes;
 
 /** Death message for a cart kill: split on whether it was a train and whether it had a rider. */
 @Mixin(DamageSource.class)
@@ -37,7 +37,7 @@ public abstract class DamageSourceMixin {
     @Inject(method = "getLocalizedDeathMessage", at = @At("HEAD"), cancellable = true)
     private void minecarttweaks$cartDeathMessage(
             LivingEntity victim, CallbackInfoReturnable<Component> cir) {
-        if (!is(MTDamageTypes.MINECART_DAMAGE)
+        if (!is(CollisionDamageTypes.MINECART_DAMAGE)
                 || !(getDirectEntity() instanceof AbstractMinecart cart)) {
             return;
         }

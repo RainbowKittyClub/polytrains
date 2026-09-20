@@ -9,9 +9,8 @@ import net.minecraft.world.level.block.BaseRailBlock;
 
 /**
  * The stretch of track a cart occupies: the rail it stands on and the two its exits lead to. Held
- * so that "are these two on the same piece of track" can be answered by comparing block positions
- * rather than walking the rails, which is what makes the question cheap enough to ask from the
- * collision path.
+ * so "are these two on the same piece of track" can be answered by comparing block positions
+ * rather than walking the rails — cheap enough to ask from the collision path.
  *
  * <p>A cart caches one of these per tick. It is therefore as of the start of the tick, and a cart
  * moving fast enough to cross a block within one has a neighbourhood a block behind where it now
@@ -52,10 +51,10 @@ public record RailContext(
     }
 
     /**
-     * Whether two carts stand on the same rail or one exit apart, which is as far as this sees.
-     * That covers every pair a tick of ordinary movement can bring together; a pair closing faster
-     * than a block a tick can meet beyond it, and what catches those is the swept-box test in
-     * {@code CartInteraction}, not this.
+     * Whether two carts stand on the same rail or one exit apart — the limit of what this checks.
+     * It covers every pair a tick of ordinary movement can bring together, while a pair closing
+     * faster than a block a tick can meet beyond it, caught instead by the swept-box test in
+     * {@code CartInteraction}.
      *
      * <p>True if either says so: a junction rail picks its shape from the cart reading it, so a
      * cart on one sees only its own axis, and erring towards neighbours merely collides as vanilla

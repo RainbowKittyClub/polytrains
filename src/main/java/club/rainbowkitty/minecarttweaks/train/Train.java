@@ -22,7 +22,8 @@ import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
  * train — so the walk is done once and its result handed to every car of the train.
  *
  * <p>A train is derived state and is never saved: the links are the durable half
- * ({@code MTAttachments.LINK}), and a train is rebuilt from them on the first tick after a load.
+ * ({@code EntityAttachments.LINK}), and a train is rebuilt from them on the first tick after a
+ * load.
  */
 public final class Train {
 
@@ -59,8 +60,8 @@ public final class Train {
     private final List<AbstractMinecart> cars;
 
     // Set when the link graph under this train changes. It lives on the one object every car of
-    // the train points at, so marking it marks it for all of them at once — which is what lets
-    // membership below stay an identity test rather than a scan.
+    // the train points at, so marking it marks it for all of them at once, keeping membership
+    // below an identity test rather than a scan.
     private boolean stale;
 
     // The last tick this train checked its cars are still in the world. Once a tick rather than
@@ -543,10 +544,9 @@ public final class Train {
      * and loading a short train is enough to stop it climbing where adding cars used to be the only
      * way.
      *
-     * <p>The mass is the whole train's, not the mean per car, and that difference is the point.
-     * Resistance is per car, so it divides by the mean and length drops out; a single engine's
-     * output is not per car, so it divides by the total and length is exactly what it is up
-     * against.
+     * <p>The mass is the whole train's, not the mean per car: resistance is per car, so it divides
+     * by the mean and length drops out; a single engine's output is not per car, so it divides by
+     * the total and length is exactly what it is up against.
      */
     public double drive() {
         double drive = 0.0;
@@ -669,11 +669,11 @@ public final class Train {
      * every other car trailing it at lower ones. The head is therefore at the higher arc exactly
      * when the head is the car that was leading, and the lie is that comparison and nothing else.
      *
-     * <p>Settled here and not left to be read back off the cars. Two cars standing closer together
-     * than a quarter of their gap cannot say which is in front, which is what a train collapsed
-     * against a buffer looks like and what {@code ORDER_UNREADABLE} refuses on; and a reading taken
-     * from them and got wrong lays the train backwards for the life of the frame. The reset knows
-     * the answer outright, so it is worth taking while it is still true.
+     * <p>Settled here rather than read back off the cars. Two cars standing closer together than a
+     * quarter of their gap cannot say which is in front — what a train collapsed against a buffer
+     * looks like, and what {@code ORDER_UNREADABLE} refuses on — and a reading taken from them and
+     * got wrong lays the train backwards for the life of the frame. The reset knows the answer
+     * outright.
      *
      * <p>Only at the reset. The frame's numbering is fixed from here, but which car leads is not —
      * a train reverses routinely, and after one the leading car is at the <i>lowest</i> arc, so the
@@ -743,7 +743,7 @@ public final class Train {
     }
 
     // Which end the train is running towards, judged along the ribbon rather than through space. A
-    // single car has nothing to measure against and is simply its own leading end.
+    // single car has nothing to measure against and is its own leading end.
     private @Nullable AbstractMinecart decideLeader() {
         AbstractMinecart head = cars.getFirst();
         Vec3 heading = head.getDeltaMovement().horizontal();
@@ -760,9 +760,8 @@ public final class Train {
         // grade collapses, and a moving one stretches out along the track, for good, since the
         // ribbon only ever grows behind the car already named. Either end answers for where the
         // cars go, because lieOf reads the lie off their arcs and not off this choice, and the
-        // ribbon it starts is what lets the next reading correct the end. It does not answer for
-        // which way the cars face, which is why the placer declines to turn a train it cannot
-        // read a heading from.
+        // ribbon it starts lets the next reading correct the end. It does not answer for which way
+        // the cars face, so the placer declines to turn a train it cannot read a heading from.
         if (speed < EPSILON) {
             return held != null ? held : head;
         }
@@ -826,9 +825,8 @@ public final class Train {
     }
 
     // Walks the whole train from car and orders it head first. The head is whichever of the two
-    // ends has the lower UUID, which is the one thing about a train that both of its ends agree on
-    // without either having to be told. Only the ends are compared: a car in the middle cannot head
-    // a train however low its own UUID.
+    // ends has the lower UUID — the one fact both ends agree on without being told. Only the ends
+    // are compared: a car in the middle cannot head a train however low its own UUID.
     private static Train build(AbstractMinecart car, long tick,
             @Nullable TrackRibbon inherited) {
         List<AbstractMinecart> order = new ArrayList<>();

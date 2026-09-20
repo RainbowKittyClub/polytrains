@@ -1,13 +1,10 @@
-package club.rainbowkitty.minecarttweaks.visual;
+package club.rainbowkitty.minecarttweaks.display;
 
-import eu.pb4.polymer.virtualentity.api.ElementHolder;
-import eu.pb4.polymer.virtualentity.api.attachment.EntityAttachment;
 import eu.pb4.polymer.virtualentity.api.elements.BlockDisplayElement;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
-import org.jspecify.annotations.Nullable;
 
-import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
+import net.minecraft.world.entity.EntityAttachment;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
@@ -18,10 +15,11 @@ import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 
 /**
- * The chain a linked cart shows back to the cart it follows, drawn as one block display so that a
- * vanilla client needs nothing installed.
+ * Where the chain between a linked cart and the one it follows sits: the block display element
+ * itself, and the geometry that spans and orients it between the two carts' couplers. Owns no
+ * virtual-entity identity of its own — {@link LinkChain} is the passenger-mounted holder that does.
  */
-public final class LinkChain extends ElementHolder {
+public final class LinkVisual {
 
     // How far out from a cart's middle the coupler sits, in cart widths: half its extent, plus a
     // little clear of the end face.
@@ -39,7 +37,7 @@ public final class LinkChain extends ElementHolder {
     // cancel that corner offset after rotating it, or the chain hangs beside the carts.
     private static final Vector3f MODEL_AXIS = new Vector3f(0.5F, 0.0F, 0.5F);
 
-    // The cart this chain is drawn from, which carries the display, and the one it is drawn to.
+    // The cart this chain is drawn from, and the one it is drawn to.
     private final AbstractMinecart cart;
     private final AbstractMinecart parent;
 
@@ -60,17 +58,18 @@ public final class LinkChain extends ElementHolder {
     // Whether both carts have been on the track since the ends were chosen.
     private boolean seated;
 
-    // Builds the display and aims it before it is ever sent.
-    private LinkChain(AbstractMinecart cart, AbstractMinecart parent) {
+    /**
+     * Builds the chain between {@code cart} and {@code parent}, ready to draw once ticked.
+     *
+     * @param cart the cart the chain is drawn from
+     * @param parent the cart it is drawn to
+     */
+    public LinkVisual(AbstractMinecart cart, AbstractMinecart parent) {
         this.cart = cart;
         this.parent = parent;
         this.cartTrail = new RenderTrail(cart, RENDER_LAG);
         this.parentTrail = new RenderTrail(parent, RENDER_LAG);
-
-        // Rides the cart rather than being placed at it, so the client draws it against the
-        // position it is already showing rather than against server truth.
-        this.chain = addPassengerElement(
-                new BlockDisplayElement(Blocks.IRON_CHAIN.defaultBlockState()));
+        this.chain = new BlockDisplayElement(Blocks.IRON_CHAIN.defaultBlockState());
 
         // A ridden element still gets a position packet every tick by default, aimed at the cart's
         // feet rather than its seat, and the client draws it there for the frame before it puts the
@@ -80,47 +79,16 @@ public final class LinkChain extends ElementHolder {
         // Riding puts the display at the cart's passenger point, so every offset below is measured
         // from there rather than from the cart's own position.
         this.seat = cart.getType().getDimensions().attachments()
-                .getClamped(net.minecraft.world.entity.EntityAttachment.PASSENGER, 0, 0.0F);
-
-        // A display is spawned with no transform, which for this model is stood on end. Aiming it
-        // before it is ever sent means no client sees that frame.
-        aim();
+                .getClamped(EntityAttachment.PASSENGER, 0, 0.0F);
     }
 
-    /**
-     * Brings the chain on {@code cart} into line with the cart it currently follows, creating,
-     * retargeting or removing it as needed, and returns the chain to hold onto.
-     */
-    public static @Nullable LinkChain sync(
-            @Nullable LinkChain current, AbstractMinecart cart,
-            @Nullable AbstractMinecart parent) {
-        boolean usable = parent != null && parent.level() == cart.level();
-
-        if (current != null && (!usable || current.parent != parent)) {
-            current.destroy();
-            current = null;
-        }
-
-        if (!usable) {
-            return null;
-        }
-
-        if (current == null) {
-            current = new LinkChain(cart, parent);
-            EntityAttachment.ofTicking(current, cart);
-
-            // Riders are announced to a client when it starts tracking the cart, so a chain built
-            // while the cart is already tracked has to announce itself or it never mounts.
-            current.sendPacket(new ClientboundSetPassengersPacket(cart));
-        }
-
-        return current;
+    /** The block display element rendering the chain, for a holder to ride it as a passenger. */
+    public BlockDisplayElement chain() {
+        return chain;
     }
 
-    // Runs from the entity tracker rather than the cart's own tick, so a train nobody is near costs
-    // nothing, and a stationary one resolves to the same transform and sends no packet.
-    @Override
-    protected void onTick() {
+    /** Samples both carts' current position, then re-aims the chain to span their couplers. */
+    public void tick() {
         cartTrail.push(cart);
         parentTrail.push(parent);
 
@@ -152,17 +120,15 @@ public final class LinkChain extends ElementHolder {
         Vec3 cartAxis = lengthwise(cartYaw, cartPitch);
         Vec3 parentAxis = lengthwise(parentYaw, parentPitch);
 
-        // Each car is asked against its own track rather than against the line through the air to
-        // the other one. Round a corner those two disagree — the line runs across the inside of
-        // the bend, which can point at the wrong end of either car — while an exit of the block a
-        // car stands on is a direction its own body is actually lying along.
+        // Each car is asked against its own track rather than the line through the air to the
+        // other one. Round a corner those two disagree: the line cuts across the inside of the
+        // bend and can point at the wrong end of either car, while the exit of the block a car
+        // stands on is a direction its body is lying along.
         //
-        // A coupler is bolted to one end of the car, so the face is settled once — but not until
-        // the placer has laid the train out. Its first seating turns each car to its train's track
-        // and walks it along to the pitch, so a face settled against where a car stood at the
-        // moment it was coupled names the wrong end of it a tick later. Re-reading until then
-        // costs nothing that matters: the track a car stands on does not flicker the way the line
-        // between two cars does.
+        // A coupler is bolted to one end of the car, but not settled until the placer has laid
+        // the train out — its first seating turns each car onto its train's track. A face
+        // settled before that names the wrong end a tick later, so re-reading costs nothing: an
+        // unseated car's track does not flicker the way the line between two cars does.
         if (!seated) {
             cartFront = cartAxis.dot(towards(parent, cart, centres)) >= 0.0;
             parentFront = parentAxis.dot(towards(cart, parent, centres.reverse())) >= 0.0;

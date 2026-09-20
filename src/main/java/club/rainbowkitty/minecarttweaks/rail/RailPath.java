@@ -45,9 +45,9 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
 
     private static final Vec3 NORTH = new Vec3(0.0, 0.0, -1.0);
 
-    // How a reading of the track takes a switch it crosses: as it is set, which is what a cart
-    // crossing it right now is riding, or as the rails it joins whichever way it is thrown, since
-    // whether two carts share a run of track is a question about the track and not the throw.
+    // How a reading of the track takes a switch it crosses: as it's set — what a cart crossing it
+    // right now is riding — or as the rails it joins whichever way it's thrown, since whether two
+    // carts share a run of track is a question about the track, not the throw.
     private enum Switches {
         LAID,
         JOINED
@@ -61,8 +61,8 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
      * @param entry the edge midpoint the cart comes in by, at the height the rail runs there
      * @param exit the edge midpoint it leaves by, at the height the rail runs there
      * @param forward the exit direction, as a unit vector; horizontal, whatever the grade
-     * @param span how far apart the two midpoints are horizontally, which is the unit vanilla
-     *     charges movement in
+     * @param span how far apart the two midpoints are horizontally — the unit vanilla charges
+     *     movement in
      */
     public record Crossing(Vec3 entry, Vec3 exit, Vec3 forward, double span) {}
 
@@ -272,7 +272,7 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
             }
 
             // One reading of the block's exits serves both the run of track across it and the step
-            // off it, which is the whole of the per-block cost of the walk.
+            // off it — the whole per-block cost of the walk.
             Vec3 movement = direction(previous, current);
             BlockPos[] around = neighbours(level, current, movement, Switches.JOINED);
             BlockPos onward = exitTaken(around, current, movement);

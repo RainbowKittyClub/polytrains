@@ -9,8 +9,8 @@ import net.minecraft.world.level.block.PoweredRailBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
-import club.rainbowkitty.minecarttweaks.init.MTAttachments;
-import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
+import club.rainbowkitty.minecarttweaks.init.EntityAttachments;
+import club.rainbowkitty.minecarttweaks.rule.ModGameRules;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /**
@@ -26,9 +26,9 @@ public final class RailBrake {
     // with TrainCoupling, which shares it out over a train the way vanilla cannot.
     public static final double LAUNCH_SPEED = 0.2;
 
-    // What vanilla adds each tick to a cart already rolling over a lit rail, as against the launch
-    // above, which it assigns to one that is not. Two branches of one method and two kinds of
-    // quantity, which is why a train takes them differently.
+    // What vanilla adds each tick to a cart already rolling over a lit rail, unlike the launch
+    // above, which it assigns to one that is not — two branches of one method, two different
+    // quantities a train treats differently.
     public static final double BOOST_SPEED = 0.06;
 
     // Above this a cart is still rolling, so it is not waiting on anything. Vanilla's own figure
@@ -73,15 +73,15 @@ public final class RailBrake {
      */
     public static void tick(ServerLevel level, AbstractMinecart cart) {
         // A furnace cart keeps its heading in vanilla's own impulse, which the parking brake
-        // suspends rather than clears, so it already leaves on that — and on any re-aim it was
-        // given while it waited, which a heading remembered here would overrule.
+        // suspends rather than clears — it already leaves on that, or on any re-aim given while
+        // it waited, and remembering a heading here would overrule either.
         if (cart instanceof MinecartFurnace) {
             return;
         }
 
         // Read before anything is recorded, so the rule is a live switch: turned off, the mod both
         // stops holding headings and drops any a cart is still carrying from when it was on.
-        if (!level.getGameRules().get(MTGameRules.CARTS_RESUME_FROM_BRAKES)) {
+        if (!level.getGameRules().get(ModGameRules.CARTS_RESUME_FROM_BRAKES)) {
             forget(cart);
             return;
         }
@@ -115,8 +115,8 @@ public final class RailBrake {
 
         // Written only on a change: this runs every tick of a cart's approach, and an attachment
         // rewritten each time would mark the entity dirty for nothing.
-        if (MTAttachments.getHeldHeading(cart) != heading) {
-            MTAttachments.setHeldHeading(cart, heading);
+        if (EntityAttachments.getHeldHeading(cart) != heading) {
+            EntityAttachments.setHeldHeading(cart, heading);
         }
     }
 
@@ -125,7 +125,7 @@ public final class RailBrake {
     // only the car vanilla drives is launched on it — a placed car's movement is written over
     // before it carries the launch anywhere.
     private static void release(AbstractMinecart cart) {
-        Direction heading = MTAttachments.getHeldHeading(cart);
+        Direction heading = EntityAttachments.getHeldHeading(cart);
 
         // A train with a brake still under any of its cars is not leaving, whatever the rail under
         // this one is doing; it would only be stopped again in the same tick.
@@ -149,8 +149,8 @@ public final class RailBrake {
 
     // Drops a remembered heading, if there is one.
     private static void forget(AbstractMinecart cart) {
-        if (MTAttachments.getHeldHeading(cart) != null) {
-            MTAttachments.setHeldHeading(cart, null);
+        if (EntityAttachments.getHeldHeading(cart) != null) {
+            EntityAttachments.setHeldHeading(cart, null);
         }
     }
 }

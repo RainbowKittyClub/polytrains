@@ -34,8 +34,8 @@ public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccess
         }
     }
 
-    // Vanilla pulls one cart downhill by one cart's worth of gravity, which was right while every
-    // car of a train reached this for itself. Only the leading car does now, so the pull is worked
+    // Vanilla pulls one cart downhill by one cart's worth of gravity, right while every car of a
+    // train reached this for itself. Only the leading car does now, so the pull is worked
     // out for the whole train instead — see TrainCoupling.slopePull, which also answers where
     // vanilla found no slope at all because that one car had reached the level.
     @Inject(method = "calculateSlopeSpeed", at = @At("RETURN"), cancellable = true)

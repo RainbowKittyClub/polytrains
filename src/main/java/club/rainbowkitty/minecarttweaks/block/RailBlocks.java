@@ -1,4 +1,4 @@
-package club.rainbowkitty.minecarttweaks.init;
+package club.rainbowkitty.minecarttweaks.block;
 
 import java.util.function.Function;
 
@@ -17,11 +17,9 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
-import club.rainbowkitty.minecarttweaks.block.JunctionRailBlock;
-import club.rainbowkitty.minecarttweaks.block.SwitchedRailBlock;
 
 /** Block and block-item registrations. */
-public final class MTBlocks {
+public final class RailBlocks {
 
     /** The junction rail block instance. */
     public static final JunctionRailBlock JUNCTION_RAIL =
@@ -38,7 +36,7 @@ public final class MTBlocks {
     public static final BlockItem SWITCHED_RAIL_ITEM = railItem("switch_rail", SWITCHED_RAIL);
 
     // Static-only; blocks instantiation.
-    private MTBlocks() {}
+    private RailBlocks() {}
 
     /** Registers all blocks and their corresponding items into the vanilla registries. */
     public static void init() {

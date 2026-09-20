@@ -9,7 +9,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
-import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
+import club.rainbowkitty.minecarttweaks.rule.PhysicsGameRules;
 
 /**
  * Which set of force laws a cart runs on, chosen by {@code realistic_physics}. Every decision the
@@ -22,14 +22,14 @@ import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
  * — forces divided by what a cart weighs, a flat retarding term that brings a cart to a dead stop,
  * and a charge for every kink the track turns through.
  *
- * <p>"Exactly vanilla" is only well defined for a single unlinked cart, because vanilla has no
- * trains. So the default is bit-exact for one cart and reproduces the <em>ensemble</em> for a
- * train: what those same carts would do in vanilla if a player were pushing them along in
- * formation. Several of this mod's scalings exist to rebuild that ensemble rather than to depart
- * from it — the placer leaves one car running vanilla's pipeline and writes the rest — and those
- * are not gated, because turning them off yields neither model.
+ * <p>"Exactly vanilla" is only well defined for a single unlinked cart, since vanilla has no
+ * trains. The default is bit-exact for one cart and reproduces the <em>ensemble</em> for a train:
+ * what those same carts would do in vanilla if a player were pushing them along in formation.
+ * Several of this mod's scalings exist to rebuild that ensemble rather than depart from it — the
+ * placer leaves one car running vanilla's pipeline and writes the rest — so those stay ungated;
+ * turning them off would yield neither model.
  *
- * <p>{@link #cartMass} is the whole of how mass is gated. Everything that divides by a mass reads
+ * <p>{@link #cartMass} is the whole of how mass is gated: everything that divides by a mass reads
  * it from here, and at a uniform 1.0 those divisions are the car counts they were before this
  * existed, so the drive divisor and the slope weighting need no model of their own.
  */
@@ -172,13 +172,12 @@ public enum RailForces {
     private static final double ENGINE_FORCE = 6.0 * RailDrag.SLOPE_PULL;
 
     // Speed at which the engine leaves its constant-torque region, in blocks per tick — 1.54 blocks
-    // a second. Derived rather than picked, from the balance a powered train actually settles at:
-    // the flat rolling term is suppressed under power, so effort meets only the proportional loss
-    // and mass cancels out of both sides, leaving one car's top speed at the square root of
-    // ENGINE_FORCE times this over the drag rate. This is the value that puts a lone engine at 7.6
-    // blocks a second, just under the default ceiling, so the curve limits a furnace cart and the
-    // clamp is only a backstop. Train length divides it: n cars top out at one car's speed over
-    // the square root of n.
+    // a second. Derived from the balance a powered train settles at: the flat rolling term is
+    // suppressed under power, so effort meets only the proportional loss and mass cancels out of
+    // both sides, leaving one car's top speed at the square root of ENGINE_FORCE times this over
+    // the drag rate — 7.6 blocks a second for a lone engine, just under the default ceiling, so
+    // the curve limits a furnace cart and the clamp is only a backstop. Train length divides it:
+    // n cars top out at one car's speed over the square root of n.
     private static final double BASE_SPEED = 0.077;
 
     // What one braked car takes out of a train per tick under the physical model, before the
@@ -201,24 +200,24 @@ public enum RailForces {
      */
     public static RailForces of(Level level) {
         return level instanceof ServerLevel serverLevel
-                && serverLevel.getGameRules().get(MTGameRules.REALISTIC_PHYSICS)
+                && serverLevel.getGameRules().get(PhysicsGameRules.REALISTIC_PHYSICS)
                 ? PHYSICAL
                 : VANILLA;
     }
 
     /**
-     * What one cart weighs, in empty minecarts. A uniform 1.0 under {@link #VANILLA}, which is what
-     * keeps a lone cart bit-exact: {@code TrainCoupling.mass} answers 1 for an unlinked cart today,
-     * and that 1 is what makes the shove divided by mass indistinguishable from vanilla's.
+     * What one cart weighs, in empty minecarts. A uniform 1.0 under {@link #VANILLA} keeps a lone
+     * cart bit-exact: {@code TrainCoupling.mass} answers 1 for an unlinked cart today, making the
+     * shove divided by mass indistinguishable from vanilla's.
      */
     public abstract double cartMass(AbstractMinecart cart);
 
     /**
      * This model's whole retarding law, given the {@code movement} the cart arrived with and what
-     * vanilla's own slowdown {@code applied} to it. Each model takes the one it is built on and
-     * discards the other, which is why both are passed rather than composed: the vanilla model
-     * rescales vanilla's figure to the train's mean, while the physical model throws that figure
-     * away and works from the raw movement — see {@link RailDrag}.
+     * vanilla's own slowdown {@code applied} to it. Both are passed rather than composed because
+     * each model takes the one it's built on and discards the other: the vanilla model rescales
+     * vanilla's figure to the train's mean, while the physical model throws that figure away and
+     * works from the raw movement — see {@link RailDrag}.
      */
     public abstract Vec3 retarded(AbstractMinecart cart, Vec3 movement, Vec3 applied);
 
@@ -239,19 +238,18 @@ public enum RailForces {
      * What one lit engine puts out per tick at {@code speed}, in blocks per tick, before a train's
      * mass divides it down.
      *
-     * <p>Asked even under the model that does not drive the engine, because a train whose leading
-     * car is not itself an engine has to be given the drive somewhere — and vanilla, having no
-     * trains, states no figure for that. So this is the one quantity the vanilla model has to
-     * synthesise rather than read: what vanilla's own impulse amounts to per tick, handed to
-     * whichever car is carrying the train.
+     * <p>Asked even under the model that does not drive the engine: a train whose leading car is
+     * not itself an engine still needs the drive given somewhere, and vanilla, having no trains,
+     * states no figure for that. This is the one quantity the vanilla model has to synthesise
+     * rather than read — what vanilla's own impulse amounts to per tick, handed to whichever car
+     * is carrying the train.
      *
      * <p>The vanilla model ignores {@code speed} by construction, not by omission: vanilla re-adds
      * its whole impulse every tick whatever the cart is doing, against a decay, so its output is
      * flat and the curve it produces comes from the decay instead. The physical model is a traction
-     * curve — flat to {@link #BASE_SPEED}, then falling as {@code 1/v} so that power stays at the
-     * rating the flat region ends on. That flat region is a guard as much as a choice: it is what
-     * starts a heavy train, what the grade figures rest on, and what stops the falling branch ever
-     * dividing by a speed near zero.
+     * curve — flat to {@link #BASE_SPEED}, then falling as {@code 1/v} so power stays at the rating
+     * the flat region ends on. That flat region is also a guard: it starts a heavy train, the grade
+     * figures rest on it, and it stops the falling branch ever dividing by a speed near zero.
      *
      * <p>Because effort falls, this is a reading and not a property, and a test of it is not a test
      * of whether the engine is lit — see {@code minecarttweaks$driving}.
@@ -263,12 +261,12 @@ public enum RailForces {
      * {@code kick} vanilla gives one cart.
      *
      * <p>The one track force the two models answer differently rather than differing only through
-     * {@link #cartMass}, because vanilla's launch is a velocity it <em>assigns</em> rather than an
-     * impulse it adds, and a velocity has no mass to be divided by. So there is no arithmetic that
-     * settles it and the two models are free to disagree, which they do: the default hands a train
-     * the whole of vanilla's kick off any one lit rail, keeping a railway built on a single starter
-     * rail working; the physical model shares it as momentum, so a long or loaded train wants
-     * proportionally more rail beneath it before it will start.
+     * {@link #cartMass}: vanilla's launch is a velocity it <em>assigns</em> rather than an impulse
+     * it adds, and a velocity has no mass to divide by, so no arithmetic settles it and the two
+     * models disagree outright. The default hands a train the whole of vanilla's kick off any one
+     * lit rail, keeping a railway built on a single starter rail working; the physical model shares
+     * it as momentum, so a long or loaded train wants proportionally more rail beneath it before it
+     * will start.
      */
     public abstract double launch(double kick, double share);
 
@@ -278,14 +276,14 @@ public enum RailForces {
      *
      * <p>The other half of {@link #launch}: vanilla writes the brake as a fraction of the speed,
      * which no mass divides and whose integral does not survive being spread along a train. The
-     * default keeps that fraction, because reproducing vanilla is what it is for — with the
-     * consequence, measured, that a longer train sheds less over the same rail, an eight-car train
-     * losing about a third less to one brake rail than a single cart does.
+     * default keeps that fraction, since reproducing vanilla is its whole purpose — measured
+     * consequence: a longer train sheds less over the same rail, an eight-car train losing about a
+     * third less to one brake rail than a single cart does.
      *
-     * <p>The physical model replaces it with a retarding force over the train's mass, which is the
-     * same shape the boost already has and the same shape gravity and the engine have. That is what
-     * makes a loaded train harder to stop than an empty one, and it is the only form under which
-     * accelerating and braking answer to a load the same way.
+     * <p>The physical model replaces it with a retarding force over the train's mass — the same
+     * shape the boost, gravity and the engine already have. That makes a loaded train harder to
+     * stop than an empty one, and it is the only form under which accelerating and braking answer
+     * to a load the same way.
      */
     public abstract Vec3 halted(Vec3 movement, double share);
 
@@ -298,9 +296,9 @@ public enum RailForces {
 
     /**
      * Whether two carts meeting hard enough destroy each other, rather than stopping or shunting
-     * each other along. Wrecking goes with the model rather than staying on a rule of its own: it
-     * is the one place this mod's forces break a player's property, and a world that asked for
-     * vanilla motion has not asked for that.
+     * each other along. Wrecking goes with the model rather than a rule of its own, since it is
+     * the one place this mod's forces break a player's property, and a world that asked for
+     * vanilla motion hasn't asked for that.
      */
     public abstract boolean wrecks();
 

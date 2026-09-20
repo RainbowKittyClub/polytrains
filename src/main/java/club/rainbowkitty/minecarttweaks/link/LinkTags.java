@@ -1,4 +1,4 @@
-package club.rainbowkitty.minecarttweaks.init;
+package club.rainbowkitty.minecarttweaks.link;
 
 import net.minecraft.core.registries.Registries;
 import net.minecraft.tags.TagKey;
@@ -7,10 +7,10 @@ import net.minecraft.world.item.Item;
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 
 /** Tag keys this mod defines. */
-public final class MTTags {
+public final class LinkTags {
 
     // Static-only; blocks instantiation.
-    private MTTags() {}
+    private LinkTags() {}
 
     /** Item tag keys. */
     public static final class Items {

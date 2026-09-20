@@ -4,11 +4,11 @@ import java.util.List;
 
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 
-import club.rainbowkitty.minecarttweaks.init.MTAttachments;
+import club.rainbowkitty.minecarttweaks.init.EntityAttachments;
 
 /**
- * Interface injected onto {@link AbstractMinecart} to facilitate linking carts together. Links are
- * symmetric: each cart holds up to two unordered neighbour slots. Use the static {@link #link} and
+ * Interface injected onto {@link AbstractMinecart} to link carts together. Links are symmetric:
+ * each cart holds up to two unordered neighbour slots. Use the static {@link #link} and
  * {@link #unlink} methods to modify the graph; never write neighbour slots directly.
  */
 public interface Linkable {
@@ -52,7 +52,7 @@ public interface Linkable {
      * these one vehicle" by comparing trains will say no about two carts that are chained together.
      */
     public static boolean coupled(AbstractMinecart a, AbstractMinecart b) {
-        return MTAttachments.getLink(a).holds(b.getUUID());
+        return EntityAttachments.getLink(a).holds(b.getUUID());
     }
 
     /**

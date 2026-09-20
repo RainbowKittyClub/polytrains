@@ -26,10 +26,10 @@ import net.minecraft.world.level.block.state.BlockState;
 import club.rainbowkitty.kalic0re.common.aim.Crosshair;
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 import club.rainbowkitty.minecarttweaks.block.SwitchedRailBlock;
-import club.rainbowkitty.minecarttweaks.init.MTAttachments;
-import club.rainbowkitty.minecarttweaks.init.WrenchMode;
-import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
-import club.rainbowkitty.minecarttweaks.visual.LinkTargeting;
+import club.rainbowkitty.minecarttweaks.init.EntityAttachments;
+import club.rainbowkitty.minecarttweaks.link.LinkAction;
+import club.rainbowkitty.minecarttweaks.link.LinkTargeting;
+import club.rainbowkitty.minecarttweaks.link.WrenchMode;
 
 /** A tool that throws a right-clicked switched rail to its other branch while it is idle. */
 public class WrenchItem extends Item implements PolymerItem {
@@ -59,20 +59,20 @@ public class WrenchItem extends Item implements PolymerItem {
 
         // A click reaches the server once per hand, and a wrench in both would switch twice over,
         // leaving the mode where it started.
-        if (MTAttachments.answeredUseAt(viewer, serverLevel.getGameTime())
+        if (EntityAttachments.answeredUseAt(viewer, serverLevel.getGameTime())
                 || !Crosshair.onNothing(viewer)) {
             return InteractionResult.PASS;
         }
 
-        MTAttachments.setAnsweredUseAt(viewer, serverLevel.getGameTime());
+        EntityAttachments.setAnsweredUseAt(viewer, serverLevel.getGameTime());
 
-        WrenchMode mode = MTAttachments.getWrenchMode(viewer).next();
-        MTAttachments.setWrenchMode(viewer, mode);
+        WrenchMode mode = EntityAttachments.getWrenchMode(viewer).next();
+        EntityAttachments.setWrenchMode(viewer, mode);
 
         // A pair half made under one job means nothing under the other.
-        MTAttachments.setLinkSelection(viewer, null);
+        EntityAttachments.setLinkSelection(viewer, null);
 
-        LinkTargeting.notice(viewer, MinecartHelper.modeLabel(mode));
+        LinkTargeting.notice(viewer, LinkAction.modeLabel(mode));
 
         // Sent straight to the one player: Player.playSound excludes the player it is called on,
         // and the level's own would tell everyone nearby that somebody flipped a tool.
@@ -85,6 +85,7 @@ public class WrenchItem extends Item implements PolymerItem {
         return InteractionResult.SUCCESS_SERVER;
     }
 
+    /** Throws the switched rail under the click, or PASSes for anything else. */
     @Override
     public InteractionResult useOn(UseOnContext context) {
         Level level = context.getLevel();

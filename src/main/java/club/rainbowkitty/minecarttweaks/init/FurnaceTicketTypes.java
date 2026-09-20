@@ -7,7 +7,7 @@ import net.minecraft.server.level.TicketType;
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 
 /** Chunk ticket types registered by this mod. */
-public final class MTTicketTypes {
+public final class FurnaceTicketTypes {
 
     // How long a ticket outlives its last refresh, in ticks.
     private static final long TIMEOUT = 20L;
@@ -22,7 +22,7 @@ public final class MTTicketTypes {
                     | TicketType.FLAG_KEEP_DIMENSION_ACTIVE));
 
     // Static-only; blocks instantiation.
-    private MTTicketTypes() {}
+    private FurnaceTicketTypes() {}
 
     /** Forces class initialization so the type lands in the registry before it freezes. */
     public static void init() {}

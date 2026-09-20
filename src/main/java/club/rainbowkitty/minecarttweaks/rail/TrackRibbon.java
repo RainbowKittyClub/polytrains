@@ -35,7 +35,7 @@ import club.rainbowkitty.minecarttweaks.block.SwitchedRailBlock;
  * drops the height before measuring.
  *
  * <p>Derived state, never saved: a ribbon is rebuilt by running, and a train that loses its own
- * simply builds another. Nothing here moves a cart.
+ * builds another. Nothing here moves a cart.
  */
 public final class TrackRibbon {
 
@@ -135,8 +135,8 @@ public final class TrackRibbon {
      * along it something sits, or which way along it something points — is only good for the
      * numbering it was taken against, and every reset starts a new one.
      *
-     * <p>Two ribbons answer the same only when one was copied from the other, which makes the
-     * numbering shared rather than merely alike.
+     * <p>Two ribbons answer the same only when one was copied from the other — shared numbering,
+     * not merely alike.
      */
     public int frame() {
         return frame;
@@ -748,8 +748,8 @@ public final class TrackRibbon {
 
         Node end = nearEnd ? nodes.getFirst() : nodes.getLast();
 
-        // Out through the edge the ribbon ends on, which is the heading the builders read a
-        // crossing by; prepend turns the near end's result back round into ribbon order.
+        // Out through the edge the ribbon ends on — the heading the builders read a crossing by;
+        // prepend turns the near end's result back round into ribbon order.
         Vec3 out = outward(end, nearEnd);
         BlockPos next = out == null ? null : onward(level, end.block(), out);
 

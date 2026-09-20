@@ -19,13 +19,13 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
+import club.rainbowkitty.minecarttweaks.link.LinkAction;
 import club.rainbowkitty.minecarttweaks.rail.RailBrake;
 import club.rainbowkitty.minecarttweaks.rail.RailDrag;
 import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
-import club.rainbowkitty.minecarttweaks.rule.MTGameRules;
-import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
+import club.rainbowkitty.minecarttweaks.rule.ModGameRules;
 
 /**
  * What holds a train together: its trailing cars are placed along the track its leading car
@@ -105,7 +105,7 @@ public final class TrainCoupling {
     public static @Nullable AbstractMinecart tickTrain(ServerLevel level, AbstractMinecart cart) {
         // Links themselves are left alone while trains are off, so turning them back on picks up
         // where it left off; only the following and the chain stop.
-        if (!MTGameRules.trainsEnabled(level)) {
+        if (!ModGameRules.trainsEnabled(level)) {
             return null;
         }
 
@@ -132,10 +132,10 @@ public final class TrainCoupling {
      * outside the ticking radius stays loaded, stays linked and stays the car this train is
      * measured from, while the cars behind it go on ticking without anything to hold them. So any
      * car may lay the train out once a whole tick has passed without one — see {@link
-     * Train#unheld}, which is also where the reason for waiting that tick out is written down.
+     * Train#unheld}.
      */
     public static void holdAfterMove(ServerLevel level, AbstractMinecart cart) {
-        if (!MTGameRules.trainsEnabled(level) || !cart.hasLink()) {
+        if (!ModGameRules.trainsEnabled(level) || !cart.hasLink()) {
             return;
         }
 
@@ -155,7 +155,7 @@ public final class TrainCoupling {
         // test rather than a scan — this is asked per collision candidate per movement step.
         return other instanceof AbstractMinecart car
                 && cart.hasLink()
-                && MTGameRules.trainsEnabled(cart.level())
+                && ModGameRules.trainsEnabled(cart.level())
                 && Train.of(cart) == Train.of(car);
     }
 
@@ -184,7 +184,7 @@ public final class TrainCoupling {
      */
     public static Vec3 hauled(AbstractMinecart cart, Vec3 resisted) {
         if (!cart.hasLink()
-                || !MTGameRules.trainsEnabled(cart.level())
+                || !ModGameRules.trainsEnabled(cart.level())
                 || cart.minecarttweaks$driving()
                 || held(cart)) {
             return resisted;
@@ -300,7 +300,7 @@ public final class TrainCoupling {
      * middle, which the ribbon cannot tell from a jump and would answer by starting over.
      */
     public static void recordTrack(AbstractMinecart cart, BlockPos pos) {
-        if (!MTGameRules.trainsEnabled(cart.level()) || !cart.hasLink()) {
+        if (!ModGameRules.trainsEnabled(cart.level()) || !cart.hasLink()) {
             return;
         }
 
@@ -316,11 +316,11 @@ public final class TrainCoupling {
 
         ribbon.record(cart.level(), pos, movement);
 
-        // A ribbon started over numbers itself off the movement just handed to it, which is the
-        // one moment anything knows which way round the train lies on it without having to measure
-        // two cars that may be standing on top of each other. Taken here rather than left to the
-        // placer to read back, and only on a movement there is a direction in — a reading off no
-        // movement would settle the lie on whichever way the rail happened to be walked.
+        // A ribbon started over numbers itself off the movement just handed to it — the one moment
+        // anything knows which way round the train lies without measuring two cars that may be
+        // standing on top of each other. Taken here rather than left to the placer to read back,
+        // and only on a movement there is a direction in — a reading off no movement would settle
+        // the lie on whichever way the rail happened to be walked.
         if (ribbon.frame() != was && movement.lengthSqr() > EPSILON * EPSILON) {
             train.relaidOn(cart);
         }
@@ -350,7 +350,7 @@ public final class TrainCoupling {
      * actually pushed standing.
      */
     public static boolean carried(AbstractMinecart cart) {
-        if (!MTGameRules.trainsEnabled(cart.level()) || !cart.hasLink()) {
+        if (!ModGameRules.trainsEnabled(cart.level()) || !cart.hasLink()) {
             return false;
         }
 
@@ -368,7 +368,7 @@ public final class TrainCoupling {
      * was written rather than measuring anything.
      */
     public static double drivenSpeed(AbstractMinecart cart) {
-        if (!cart.hasLink() || !MTGameRules.trainsEnabled(cart.level())) {
+        if (!cart.hasLink() || !ModGameRules.trainsEnabled(cart.level())) {
             return cart.getDeltaMovement().length();
         }
 
@@ -398,7 +398,7 @@ public final class TrainCoupling {
      * is borrowed, which is where the water case and the speed term still come from.
      */
     public static @Nullable Vec3 slopePull(AbstractMinecart cart, Vec3 movement, Vec3 pull) {
-        if (!cart.hasLink() || !MTGameRules.trainsEnabled(cart.level())) {
+        if (!cart.hasLink() || !ModGameRules.trainsEnabled(cart.level())) {
             return null;
         }
 
@@ -564,7 +564,7 @@ public final class TrainCoupling {
 
     /** Whether a brake has hold of any car of {@code cart}'s train, or of {@code cart} alone. */
     public static boolean held(AbstractMinecart cart) {
-        return cart.hasLink() && MTGameRules.trainsEnabled(cart.level())
+        return cart.hasLink() && ModGameRules.trainsEnabled(cart.level())
                 ? braking(Train.of(cart).cars())
                 : RailBrake.brakes(cart);
     }
@@ -598,7 +598,7 @@ public final class TrainCoupling {
     // Asked through driven rather than the leading end, because a train that has never moved has no
     // leading end and is exactly the train a launch is for.
     private static @Nullable List<AbstractMinecart> drivenCars(AbstractMinecart cart) {
-        if (!cart.hasLink() || !MTGameRules.trainsEnabled(cart.level())) {
+        if (!cart.hasLink() || !ModGameRules.trainsEnabled(cart.level())) {
             return List.of(cart);
         }
 
@@ -712,7 +712,7 @@ public final class TrainCoupling {
      * leading, and which end that is outlives a reversal.
      */
     public static AbstractMinecart driven(AbstractMinecart cart) {
-        if (!cart.hasLink() || !MTGameRules.trainsEnabled(cart.level())) {
+        if (!cart.hasLink() || !ModGameRules.trainsEnabled(cart.level())) {
             return cart;
         }
 
@@ -739,7 +739,7 @@ public final class TrainCoupling {
      * whole length at once.
      */
     public static boolean crossedByTrain(Level level, BlockPos pos) {
-        if (!MTGameRules.trainsEnabled(level)) {
+        if (!ModGameRules.trainsEnabled(level)) {
             return false;
         }
 
@@ -791,7 +791,7 @@ public final class TrainCoupling {
      * one walk per car.
      */
     public static double trainCeiling(AbstractMinecart cart, ServerLevel level, double own) {
-        if (!cart.hasLink() || !MTGameRules.trainsEnabled(level) || driven(cart) != cart) {
+        if (!cart.hasLink() || !ModGameRules.trainsEnabled(level) || driven(cart) != cart) {
             return own;
         }
 
@@ -808,8 +808,7 @@ public final class TrainCoupling {
 
     /**
      * What one car of {@code cart}'s train weighs on average, in empty minecarts, or what
-     * {@code cart}
-     * itself weighs when it is coupled to nothing.
+     * {@code cart} itself weighs when it is coupled to nothing.
      *
      * <p>The figure a retarding force divides by, as against {@link #mass}, which is the whole
      * train and is what a shove or an impact is shared over. Both come to one per car under the
@@ -925,8 +924,8 @@ public final class TrainCoupling {
     // by whatever else is crossing it, and by this train's own leading car when it reverses onto
     // track it has already recorded — so a single tick's disagreement between the rail and the
     // record is the normal state of a shared switch, not a train being taken apart. Only a
-    // disagreement that outlasts the traffic causing it means anything, which is why this answers
-    // a question and leaves the deciding to the same held count every other fault goes through.
+    // disagreement that outlasts the traffic causing it means anything, so this answers a question
+    // and leaves the deciding to the same held count every other fault goes through.
     private static int divertedCar(ServerLevel level, Train train) {
         AbstractMinecart leader = train.leader();
         TrackRibbon ribbon = train.ribbon();
@@ -965,7 +964,7 @@ public final class TrainCoupling {
         AbstractMinecart to = cars.get(keep);
 
         Linkable.unlink(from, to);
-        MinecartHelper.dropChain(level, from, to);
+        LinkAction.dropChain(level, from, to);
     }
 
     // Whether the run of ribbon between a train's two end cars takes in the block at pos. Read off

@@ -1,4 +1,4 @@
-package club.rainbowkitty.minecarttweaks.init;
+package club.rainbowkitty.minecarttweaks.item;
 
 import net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTabOutput;
 
@@ -7,13 +7,13 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
-import club.rainbowkitty.minecarttweaks.item.WrenchItem;
 
 /** Non-block item registrations. */
-public final class MTItems {
+public final class WrenchItems {
 
     // Registry key the wrench is registered and given its settings under.
     private static final ResourceKey<Item> WRENCH_KEY =
@@ -24,7 +24,7 @@ public final class MTItems {
             new WrenchItem(new Item.Properties().stacksTo(1).setId(WRENCH_KEY));
 
     // Static-only; blocks instantiation.
-    private MTItems() {}
+    private WrenchItems() {}
 
     /** Registers all non-block items into the vanilla registry. */
     public static void init() {
@@ -34,5 +34,10 @@ public final class MTItems {
     /** Adds this mod's non-block items to the given creative-tab entry builder. */
     public static void addCreativeTabEntries(FabricCreativeModeTabOutput output) {
         output.insertAfter(Items.ACTIVATOR_RAIL, WRENCH);
+    }
+
+    /** Whether this stack is the wrench. */
+    public static boolean isWrench(ItemStack stack) {
+        return stack.is(WRENCH);
     }
 }

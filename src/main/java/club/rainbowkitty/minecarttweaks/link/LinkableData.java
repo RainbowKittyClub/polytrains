@@ -1,4 +1,4 @@
-package club.rainbowkitty.minecarttweaks.init;
+package club.rainbowkitty.minecarttweaks.link;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -46,7 +46,7 @@ public record LinkableData(Optional<UUID> first, Optional<UUID> second) {
 
     /**
      * Returns a copy holding the given UUID, unchanged if it is already held or both slots are
-     * occupied. Idempotent so that a slot can never end up holding the same cart twice.
+     * occupied. Idempotent so a slot can never end up holding the same cart twice.
      */
     public LinkableData withNeighbour(UUID id) {
         if (holds(id)) {

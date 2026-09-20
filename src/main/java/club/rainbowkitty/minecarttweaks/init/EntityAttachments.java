@@ -12,15 +12,13 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
+import club.rainbowkitty.minecarttweaks.link.LinkableData;
+import club.rainbowkitty.minecarttweaks.link.WrenchMode;
 
 /**
- * This mod's entity attachments. None are synced — the chain between linked carts is drawn
- * server-side, so the client never needs the value. A client-drawn chain would, which is what
- * {@code docs/plan/client-mod-support.md} S2 is for. The cart's own state persists; a player's
- * half-made link does not, so a relog starts the next pair fresh rather than resuming one whose
- * other end may be gone.
+ * This mod's entity data attachments.
  */
-public final class MTAttachments {
+public final class EntityAttachments {
 
     /** The link-state attachment carried by every linked cart. */
     public static final AttachmentType<LinkableData> LINK =
@@ -35,7 +33,7 @@ public final class MTAttachments {
 
     /**
      * The cart a player has picked as one end of the link being built. Held by the player rather
-     * than by the chain offering it, so that it is the same selection whichever hand a click names
+     * than by the chain offering it, so it is the same selection whichever hand a click names
      * and it outlives the stack that started it being spent.
      */
     public static final AttachmentType<UUID> LINK_SELECTION =
@@ -49,14 +47,13 @@ public final class MTAttachments {
             AttachmentRegistry.create(MinecartTweaks.id("use_answered_at"));
 
     /**
-     * Which job a player's wrench is doing. Persistent, unlike the selection: a tool's setting is
-     * something the player chose, not something one session happened to be part-way through.
+     * Which job a player's wrench is doing. Persistent, unlike the selection.
      */
     public static final AttachmentType<WrenchMode> WRENCH_MODE = AttachmentRegistry
             .createPersistent(MinecartTweaks.id("wrench_mode"), WrenchMode.CODEC);
 
     // Static-only; blocks instantiation.
-    private MTAttachments() {}
+    private EntityAttachments() {}
 
     /** Forces class initialization so the type is registered before the first world loads. */
     public static void init() {}

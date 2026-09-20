@@ -62,7 +62,6 @@ public final class TrainPlacer {
     // standing beside it — a cosine, so about sixty degrees either side of the rail.
     private static final double SHOVE_ARC = 0.5;
 
-
     /**
      * Why a train could not be seated. The tag is the finite part, so an intermittent fault is read
      * by what kind it is rather than by a detail line that differs every tick; the detail carries
@@ -397,14 +396,13 @@ public final class TrainPlacer {
         // Nothing is laid where another train already lies. A seat is applied outright rather than
         // moved into, so the ground between a car and its seat is crossed without anything standing
         // in it being touched — and at the speeds this allows that ground is a whole train, passed
-        // through cleanly and noticed by neither. Refused as a train waiting rather than a train in
-        // trouble: it names no car, so it costs nothing towards a sever, and vanilla drives the
-        // cars until the way is clear, which is the one state in which they are solid to each
-        // other.
-        // Refused for as long as it takes, with no allowance that runs out. Seating a train into
-        // another once one did is not a smaller failure than leaving it loose: a seat is applied
-        // outright, so the two trains end up inside each other, and neither of them moves again
-        // under its own power to work its way out.
+        // through cleanly and noticed by neither. Applying it anyway would leave the two trains
+        // inside each other, neither able to move out under its own power again.
+        //
+        // Refused as a train waiting rather than a train in trouble, and for as long as it takes:
+        // it names no car, so it costs nothing towards a sever and gets no allowance that runs out.
+        // Vanilla drives the cars until the way is clear, the one state in which they are solid to
+        // each other.
         Foul foul = fouled(train, cars, seats);
 
         // Still named against no car. Which car is fouled is wanted for its own seat and nothing
