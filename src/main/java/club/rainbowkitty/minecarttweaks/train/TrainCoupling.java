@@ -939,8 +939,11 @@ public final class TrainCoupling {
 
         for (int i = 0; i < cars.size(); i++) {
             AbstractMinecart car = cars.get(i);
+            Double seatArc = car.minecarttweaks$seatArc(ribbon.arcEpoch());
 
-            if (car != leader && ribbon.diverted(level, car.minecarttweaks$seatArc())) {
+            // A seat arc from a numbering the ribbon has since left says nothing about where this
+            // car sits now, so it is no evidence of a switch having moved under it.
+            if (car != leader && seatArc != null && ribbon.diverted(level, seatArc)) {
                 return i;
             }
         }

@@ -625,7 +625,11 @@ public final class TrainPlacer {
 
         // The car's own last recorded arc, so a car covering several blocks in one tick still
         // fires every activator rail between there and here rather than only the one it lands on.
-        double from = seated(car) ? ext.minecarttweaks$seatArc() : arc;
+        // Null once a reset has renumbered the arcs: the ground covered is then unknown, not zero,
+        // and sweeping from this seat alone still fires the rail the car is standing on.
+        Double recorded = seated(car)
+                ? ext.minecarttweaks$seatArc(train.ribbon().arcEpoch()) : null;
+        double from = recorded == null ? arc : recorded;
 
         train.ribbon().blocksBetween(from, arc, block -> {
             BlockState crossed = level.getBlockState(block);
@@ -636,7 +640,7 @@ public final class TrainPlacer {
             }
         });
 
-        ext.minecarttweaks$setSeatArc(arc);
+        ext.minecarttweaks$setSeatArc(arc, train.ribbon().arcEpoch());
         ext.minecarttweaks$setSeatedAt(level.getGameTime());
     }
 

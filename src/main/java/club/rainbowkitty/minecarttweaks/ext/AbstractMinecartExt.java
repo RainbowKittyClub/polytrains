@@ -84,11 +84,18 @@ public interface AbstractMinecartExt extends Linkable {
     /** Records that the placer seated this cart at {@code gameTime}. */
     public void minecarttweaks$setSeatedAt(long gameTime);
 
-    /** The arc along its train's ribbon this cart was last seated at. */
-    public double minecarttweaks$seatArc();
+    /**
+     * The arc along its train's ribbon this cart was last seated at, or null if that arc was
+     * recorded against a different numbering than {@code arcEpoch} — a reset since renumbered it,
+     * and an arc from the old frame describes nothing in the new one.
+     */
+    public @Nullable Double minecarttweaks$seatArc(int arcEpoch);
 
-    /** Records the arc this cart has just been seated at, for the next sweep to start from. */
-    public void minecarttweaks$setSeatArc(double arc);
+    /**
+     * Records the arc this cart has just been seated at, against the arc numbering it was measured
+     * in, for the next sweep to start from.
+     */
+    public void minecarttweaks$setSeatArc(double arc, int arcEpoch);
 
     /**
      * Which way this cart's nose points, as a heading in the world, or null if it has never been

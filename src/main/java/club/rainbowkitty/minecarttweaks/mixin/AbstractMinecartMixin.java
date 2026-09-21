@@ -89,6 +89,11 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     @Unique
     private long minecarttweaks$seatedTick;
 
+    // Which arc numbering the seat arc above was measured in. Zero works as "never stamped" on its
+    // own: epochs are handed out from a counter that starts at one, so no ribbon ever answers zero.
+    @Unique
+    private int minecarttweaks$seatedArcEpoch;
+
     // Which way this cart's nose points, in the world. Null until it has been read once. A
     // heading rather than a sign along the ribbon, so that re-recording the track does not take
     // this with it — see AbstractMinecartExt.
@@ -219,8 +224,8 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     }
 
     @Override
-    public double minecarttweaks$seatArc() {
-        return minecarttweaks$seatedArc;
+    public @Nullable Double minecarttweaks$seatArc(int arcEpoch) {
+        return minecarttweaks$seatedArcEpoch == arcEpoch ? minecarttweaks$seatedArc : null;
     }
 
     @Override
@@ -234,8 +239,9 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     }
 
     @Override
-    public void minecarttweaks$setSeatArc(double arc) {
+    public void minecarttweaks$setSeatArc(double arc, int arcEpoch) {
         minecarttweaks$seatedArc = arc;
+        minecarttweaks$seatedArcEpoch = arcEpoch;
     }
 
     @Override
