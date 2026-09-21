@@ -43,7 +43,7 @@ public final class TrackRibbon {
 
     // Hands every arc numbering, on every ribbon, a number of its own. Atomic because a ribbon
     // is built on whichever thread a cart ticks on.
-    private static final AtomicInteger FRAMES = new AtomicInteger();
+    private static final AtomicInteger EPOCH_COUNTER = new AtomicInteger();
 
     // A ribbon only has to span the train plus room to grow at the leading end. A cap that a
     // correct trim never reaches, so a trim that stops being called leaks a bounded amount.
@@ -80,7 +80,7 @@ public final class TrackRibbon {
     // Which arc numbering this ribbon is on. Handed out from a counter shared by every ribbon,
     // so state a car holds against one numbering is never mistaken for state against another —
     // which the reset count alone cannot manage, two ribbons on their first both answering it.
-    private int frame = FRAMES.incrementAndGet();
+    private int arcEpoch = EPOCH_COUNTER.incrementAndGet();
 
     /** A ribbon with no track on it. */
     public TrackRibbon() {
@@ -101,7 +101,7 @@ public final class TrackRibbon {
         leaderArc = other.leaderArc;
         resets = other.resets;
         revisits = other.revisits;
-        frame = other.frame;
+        arcEpoch = other.arcEpoch;
     }
 
     /** Whether this ribbon has any track recorded yet. */
@@ -115,12 +115,12 @@ public final class TrackRibbon {
     }
 
     /** The arc length at the near end of the recorded track. */
-    public double from() {
+    public double nearArc() {
         return nodes.isEmpty() ? 0.0 : nodes.getFirst().arc();
     }
 
     /** The arc length at the far end of the recorded track. */
-    public double to() {
+    public double farArc() {
         Node last = nodes.peekLast();
         return last == null ? 0.0 : last.arc() + last.span();
     }
@@ -138,8 +138,8 @@ public final class TrackRibbon {
      * <p>Two ribbons answer the same only when one was copied from the other — shared numbering,
      * not merely alike.
      */
-    public int frame() {
-        return frame;
+    public int arcEpoch() {
+        return arcEpoch;
     }
 
     /** How many times a car has reported track this ribbon already holds, away from both ends. */
@@ -159,11 +159,11 @@ public final class TrackRibbon {
         if (!nodes.isEmpty()) {
             // Where the leading car just was is the only thing that separates a lap later from a
             // reversal, so it is asked before either end of the ribbon is.
-            Double near = occurrenceNear(pos, leaderArc);
+            Double nearArc = occurrenceNear(pos, leaderArc);
 
-            if (near != null) {
+            if (nearArc != null) {
                 revisits++;
-                leaderArc = near;
+                leaderArc = nearArc;
                 return;
             }
 
@@ -191,7 +191,7 @@ public final class TrackRibbon {
             }
 
             resets++;
-            frame = FRAMES.incrementAndGet();
+            arcEpoch = EPOCH_COUNTER.incrementAndGet();
             LOGGER.debug("ribbon reset at {}: unknown to its {} nodes, running {} to {}",
                     pos, nodes.size(), nodes.getFirst().block(), nodes.getLast().block());
             nodes.clear();
@@ -236,8 +236,8 @@ public final class TrackRibbon {
     }
 
     // Where along this ribbon the occurrence of pos nearest the leading car's last arc puts a car
-    // standing at at, or null if this ribbon does not record that block at all.
-    private @Nullable Double occurrenceUnder(BlockPos pos, Vec3 at) {
+    // standing at position, or null if this ribbon does not record that block at all.
+    private @Nullable Double occurrenceUnder(BlockPos pos, Vec3 position) {
         Double best = null;
         double nearest = Double.MAX_VALUE;
 
@@ -246,11 +246,11 @@ public final class TrackRibbon {
                 continue;
             }
 
-            double arc = node.arc() + along(node, at) * node.span();
-            double away = Math.abs(arc - leaderArc);
+            double arc = node.arc() + chordFraction(node, position) * node.span();
+            double arcGap = Math.abs(arc - leaderArc);
 
-            if (away < nearest) {
-                nearest = away;
+            if (arcGap < nearest) {
+                nearest = arcGap;
                 best = arc;
             }
         }
@@ -267,25 +267,26 @@ public final class TrackRibbon {
     //
     // Ranked as arcOf ranks: nearest in space, and where two are the same point — which the two
     // occurrences of a lap are — whichever lies nearer the arc the leading car was last at.
-    private @Nullable Double nearestTrack(Vec3 at, double reach) {
+    private @Nullable Double nearestTrack(Vec3 position, double reach) {
         double limit = reach * reach;
         Double best = null;
         double nearest = Double.MAX_VALUE;
         double apart = Double.MAX_VALUE;
 
         for (Node node : nodes) {
-            double along = along(node, at);
-            double away = node.entry().lerp(node.exit(), along).distanceToSqr(at);
+            double fraction = chordFraction(node, position);
+            double distanceSqr = node.entry().lerp(node.exit(), fraction).distanceToSqr(position);
 
-            if (away > limit) {
+            if (distanceSqr > limit) {
                 continue;
             }
 
-            double arc = node.arc() + along * node.span();
+            double arc = node.arc() + fraction * node.span();
             double lap = Math.abs(arc - leaderArc);
 
-            if (away < nearest - EPSILON || (away < nearest + EPSILON && lap < apart)) {
-                nearest = away;
+            if (distanceSqr < nearest - EPSILON
+                    || (distanceSqr < nearest + EPSILON && lap < apart)) {
+                nearest = distanceSqr;
                 apart = lap;
                 best = arc;
             }
@@ -336,8 +337,8 @@ public final class TrackRibbon {
             return null;
         }
 
-        double along = node.span() < EPSILON ? 0.0 : (arc - node.arc()) / node.span();
-        return node.entry().lerp(node.exit(), along);
+        double fraction = node.span() < EPSILON ? 0.0 : (arc - node.arc()) / node.span();
+        return node.entry().lerp(node.exit(), fraction);
     }
 
     /**
@@ -410,7 +411,7 @@ public final class TrackRibbon {
      */
     public @Nullable Double arcOf(AbstractMinecart car) {
         BlockPos pos = car.getCurrentBlockPosOrRailBelow();
-        Vec3 at = car.position().horizontal();
+        Vec3 position = car.position().horizontal();
         Double best = null;
         double nearest = Double.MAX_VALUE;
         double apart = Double.MAX_VALUE;
@@ -420,15 +421,17 @@ public final class TrackRibbon {
                 continue;
             }
 
-            double along = along(node, at);
-            double arc = node.arc() + along * node.span();
-            double away = node.entry().lerp(node.exit(), along).horizontal().distanceToSqr(at);
+            double fraction = chordFraction(node, position);
+            double arc = node.arc() + fraction * node.span();
+            double distanceSqr = node.entry().lerp(node.exit(), fraction)
+                    .horizontal().distanceToSqr(position);
             double lap = Math.abs(arc - leaderArc);
 
             // A lap's two occurrences are one point, so they score identically and the ranking
             // falls through to which of them the train is actually running on.
-            if (away < nearest - EPSILON || (away < nearest + EPSILON && lap < apart)) {
-                nearest = away;
+            if (distanceSqr < nearest - EPSILON
+                    || (distanceSqr < nearest + EPSILON && lap < apart)) {
+                nearest = distanceSqr;
                 apart = lap;
                 best = arc;
             }
@@ -458,38 +461,38 @@ public final class TrackRibbon {
         }
 
         Vec3 centre = Vec3.atCenterOf(node.block()).horizontal();
-        Direction in = edge(node.entry(), centre);
-        Direction out = edge(node.exit(), centre);
+        Direction inEdge = edge(node.entry(), centre);
+        Direction outEdge = edge(node.exit(), centre);
 
-        if (in == null || out == null) {
+        if (inEdge == null || outEdge == null) {
             return false;
         }
 
         // The cart arrives heading away from the edge it came in by, which is the approach the
         // switch reads to decide where it sends one.
-        var exits = AbstractMinecart.exits(SwitchedRailBlock.shapeFor(state, in.getOpposite()));
+        var exits = AbstractMinecart.exits(SwitchedRailBlock.shapeFor(state, inEdge.getOpposite()));
 
-        return !(joins(exits.getFirst(), in) && joins(exits.getSecond(), out))
-                && !(joins(exits.getFirst(), out) && joins(exits.getSecond(), in));
+        return !(joins(exits.getFirst(), inEdge) && joins(exits.getSecond(), outEdge))
+                && !(joins(exits.getFirst(), outEdge) && joins(exits.getSecond(), inEdge));
     }
 
     // Which edge of its block a recorded edge midpoint lies on, or null if it reads as neither.
     private static @Nullable Direction edge(Vec3 point, Vec3 centre) {
-        Vec3 away = point.horizontal().subtract(centre);
+        Vec3 offsetDirection = point.horizontal().subtract(centre);
 
-        return away.lengthSqr() < EPSILON ? null
-                : Direction.getApproximateNearest(away.x, 0.0, away.z);
+        return offsetDirection.lengthSqr() < EPSILON ? null
+                : Direction.getApproximateNearest(offsetDirection.x, 0.0, offsetDirection.z);
     }
 
     // Whether a rail shape's exit marker points along an edge. Its Y marks the high end of a slope
     // rather than an offset, so only the horizontal part names a direction.
-    private static boolean joins(Vec3i exit, Direction edge) {
-        return exit.getX() == edge.getStepX() && exit.getZ() == edge.getStepZ();
+    private static boolean joins(Vec3i exitMarker, Direction edge) {
+        return exitMarker.getX() == edge.getStepX() && exitMarker.getZ() == edge.getStepZ();
     }
 
     /** Whether arc length {@code arc} lies on the recorded track rather than off either end. */
     public boolean reaches(double arc) {
-        return !nodes.isEmpty() && arc >= from() - EPSILON && arc <= to() + EPSILON;
+        return !nodes.isEmpty() && arc >= nearArc() - EPSILON && arc <= farArc() + EPSILON;
     }
 
     /**
@@ -503,8 +506,9 @@ public final class TrackRibbon {
         }
 
         Node end = farEnd ? nodes.getLast() : nodes.getFirst();
-        Vec3 out = outward(end, !farEnd);
-        BlockPos beyond = out == null ? null : onward(level, end.block(), out);
+        Vec3 outwardDirection = outward(end, !farEnd);
+        BlockPos beyond = outwardDirection == null
+                ? null : onward(level, end.block(), outwardDirection);
 
         if (beyond == null) {
             return false;
@@ -547,11 +551,11 @@ public final class TrackRibbon {
      * a dead end, or a block that is not rail.
      */
     public void extendTo(Level level, double from, double to) {
-        while (from() > from + EPSILON && grow(level, true)) {
+        while (nearArc() > from + EPSILON && grow(level, true)) {
             continue;
         }
 
-        while (to() < to - EPSILON && grow(level, false)) {
+        while (farArc() < to - EPSILON && grow(level, false)) {
             continue;
         }
     }
@@ -606,7 +610,7 @@ public final class TrackRibbon {
     // How far along a node's chord a point projects, clamped to the block. Flat on both sides: arc
     // is a horizontal measure, and a grade would otherwise lengthen the chord a car is measured
     // against without lengthening the arc it is measured into.
-    private static double along(Node node, Vec3 at) {
+    private static double chordFraction(Node node, Vec3 position) {
         Vec3 chord = node.exit().subtract(node.entry()).horizontal();
         double length = chord.length();
 
@@ -615,7 +619,8 @@ public final class TrackRibbon {
         }
 
         return Math.clamp(
-                at.horizontal().subtract(node.entry().horizontal()).dot(chord) / (length * length),
+                position.horizontal().subtract(node.entry().horizontal()).dot(chord)
+                        / (length * length),
                 0.0, 1.0);
     }
 
@@ -627,16 +632,17 @@ public final class TrackRibbon {
      * it has been scaled by this. Without it a spacing holds its ground plan up a hill and stands
      * the cars half again as far apart as they are on the flat.
      */
-    public double levelAt(double arc) {
+    public double flatnessAt(double arc) {
         Node node = nodeAt(arc);
 
-        return node == null ? 1.0 : level(node);
+        return node == null ? 1.0 : flatness(node);
     }
 
     /**
-     * How much arc it takes to cover {@code along} of track measured along the rails, starting at
-     * {@code arc} and running the way {@code sign} points. The same number on the level, and less
-     * than {@code along} wherever the track between the two ends is tilted.
+     * How much arc it takes to cover {@code trackDistance} of track measured along the rails,
+     * starting at {@code arc} and running the way {@code sign} points. The same number on the
+     * level, and less than {@code trackDistance} wherever the track between the two ends is
+     * tilted.
      *
      * <p>Walked node by node rather than scaled by one reading, because the thing being measured
      * is usually longer than the thing that would be read. A gap standing one car at the foot of a
@@ -646,20 +652,20 @@ public final class TrackRibbon {
      * <p>Track the ribbon does not hold is taken flat, an unrecorded stretch being worth no
      * particular grade. The caller finds out it asked past the end through {@link #reaches}.
      */
-    public double arcAlong(double arc, double along, double sign) {
-        if (!(along > EPSILON)) {
+    public double arcAlong(double arc, double trackDistance, double sign) {
+        if (!(trackDistance > EPSILON)) {
             return 0.0;
         }
 
         Iterator<Node> walk = sign < 0.0 ? nodes.descendingIterator() : nodes.iterator();
-        double at = arc;
-        double left = along;
+        double cursorArc = arc;
+        double left = trackDistance;
 
         while (walk.hasNext() && left > EPSILON) {
             Node node = walk.next();
             double low = node.arc();
             double high = low + node.span();
-            double room = Math.min(sign < 0.0 ? at - low : high - at, node.span());
+            double room = Math.min(sign < 0.0 ? cursorArc - low : high - cursorArc, node.span());
 
             // Track on the far side of where this started, which the walk reaches only after
             // spending its way there.
@@ -667,18 +673,18 @@ public final class TrackRibbon {
                 continue;
             }
 
-            double level = level(node);
-            double takes = left * level;
+            double flatFraction = flatness(node);
+            double takes = left * flatFraction;
 
             if (takes <= room) {
-                return Math.abs(at + sign * takes - arc);
+                return Math.abs(cursorArc + sign * takes - arc);
             }
 
-            at += sign * room;
-            left -= room / level;
+            cursorArc += sign * room;
+            left -= room / flatFraction;
         }
 
-        return Math.abs(at + sign * left - arc);
+        return Math.abs(cursorArc + sign * left - arc);
     }
 
     /**
@@ -693,8 +699,8 @@ public final class TrackRibbon {
     public double trackBetween(double from, double to) {
         double low = Math.min(from, to);
         double high = Math.max(from, to);
-        double along = 0.0;
-        double inside = 0.0;
+        double trackDistance = 0.0;
+        double coveredArc = 0.0;
 
         for (Node node : nodes) {
             double lo = Math.max(low, node.arc());
@@ -704,16 +710,16 @@ public final class TrackRibbon {
                 continue;
             }
 
-            along += (hi - lo) / level(node);
-            inside += hi - lo;
+            trackDistance += (hi - lo) / flatness(node);
+            coveredArc += hi - lo;
         }
 
         // Track the ribbon does not hold, taken flat, as arcAlong takes it.
-        return along + (high - low - inside);
+        return trackDistance + (high - low - coveredArc);
     }
 
     // How much of one node's track lies flat: its chord's ground plan over its chord.
-    private static double level(Node node) {
+    private static double flatness(Node node) {
         double run = node.exit().subtract(node.entry()).length();
 
         return run < EPSILON ? 1.0 : node.span() / run;
@@ -750,8 +756,9 @@ public final class TrackRibbon {
 
         // Out through the edge the ribbon ends on — the heading the builders read a crossing by;
         // prepend turns the near end's result back round into ribbon order.
-        Vec3 out = outward(end, nearEnd);
-        BlockPos next = out == null ? null : onward(level, end.block(), out);
+        Vec3 outwardDirection = outward(end, nearEnd);
+        BlockPos next = outwardDirection == null
+                ? null : onward(level, end.block(), outwardDirection);
 
         // Not stopped by track this ribbon already holds: a circuit re-enters its own blocks a lap
         // on, and refusing to walk there leaves a looping train with no arc to sit at. A switch
@@ -765,9 +772,9 @@ public final class TrackRibbon {
         int before = nodes.size();
 
         if (nearEnd) {
-            prepend(level, next, out);
+            prepend(level, next, outwardDirection);
         } else {
-            append(level, next, out);
+            append(level, next, outwardDirection);
         }
 
         return nodes.size() > before;
@@ -776,32 +783,34 @@ public final class TrackRibbon {
     // The flat unit axis out of a node through its entry edge or its exit edge, or null where the
     // two coincide. Read off the edge itself: on a corner the entry is square to the exit, so the
     // reverse of the way out is not the way in.
-    private static @Nullable Vec3 outward(Node node, boolean entry) {
-        Direction edge = edge(entry ? node.entry() : node.exit(),
+    private static @Nullable Vec3 outward(Node node, boolean atEntry) {
+        Direction outwardEdge = edge(atEntry ? node.entry() : node.exit(),
                 Vec3.atCenterOf(node.block()).horizontal());
 
-        return edge == null ? null : new Vec3(edge.getStepX(), 0.0, edge.getStepZ());
+        return outwardEdge == null ? null
+                : new Vec3(outwardEdge.getStepX(), 0.0, outwardEdge.getStepZ());
     }
 
-    // Whichever rail the block at from exits onto in the direction of out, or null where the track
-    // does not carry on that way. Only a strictly forward exit counts, so the walk cannot double
-    // back on the block it came from.
-    private static @Nullable BlockPos onward(Level level, BlockPos from, Vec3 out) {
+    // Whichever rail the block at fromBlock exits onto in the direction of outwardDirection, or
+    // null where the track does not carry on that way. Only a strictly forward exit counts, so
+    // the walk cannot double back on the block it came from.
+    private static @Nullable BlockPos onward(
+            Level level, BlockPos fromBlock, Vec3 outwardDirection) {
         // A recorded block is a position, not a promise: rail mined out from under the ribbon
         // reads as air here, and asking air for its exits casts it to a rail.
-        if (!BaseRailBlock.isRail(level.getBlockState(from))) {
+        if (!BaseRailBlock.isRail(level.getBlockState(fromBlock))) {
             return null;
         }
 
         BlockPos best = null;
         double nearest = 0.0;
 
-        for (BlockPos candidate : RailPath.neighbours(level, from, out)) {
-            double along = (candidate.getX() - from.getX()) * out.x
-                    + (candidate.getZ() - from.getZ()) * out.z;
+        for (BlockPos candidate : RailPath.neighbours(level, fromBlock, outwardDirection)) {
+            double forwardComponent = (candidate.getX() - fromBlock.getX()) * outwardDirection.x
+                    + (candidate.getZ() - fromBlock.getZ()) * outwardDirection.z;
 
-            if (along > nearest) {
-                nearest = along;
+            if (forwardComponent > nearest) {
+                nearest = forwardComponent;
                 best = candidate;
             }
         }

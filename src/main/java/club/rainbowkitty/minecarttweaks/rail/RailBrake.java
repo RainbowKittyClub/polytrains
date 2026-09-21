@@ -130,7 +130,7 @@ public final class RailBrake {
         // A train with a brake still under any of its cars is not leaving, whatever the rail under
         // this one is doing; it would only be stopped again in the same tick.
         if (heading == null
-                || TrainCoupling.driven(cart) != cart
+                || TrainCoupling.drivenCar(cart) != cart
                 || TrainCoupling.held(cart)
                 || cart.getDeltaMovement().horizontalDistanceSqr()
                         > ROLLING_SPEED * ROLLING_SPEED) {

@@ -110,7 +110,7 @@ public final class RailDrag {
      * cancels on both sides of that.
      */
     public static void bend(AbstractMinecart cart, double turn) {
-        double lost = turn <= 0.0 ? 0.0 : RailForces.of(cart.level()).bendLoss(turn);
+        double lost = turn <= 0.0 ? 0.0 : RailForces.forLevel(cart.level()).bendLoss(turn);
 
         if (lost <= 0.0) {
             return;
@@ -191,20 +191,20 @@ public final class RailDrag {
 
         Train train = Train.of(cart);
         long tick = cart.level().getGameTime();
-        double mean = train.rolling(tick);
+        double mean = train.rollingFriction(tick);
 
         if (mean <= 0.0) {
             mean = meanKeep(train.cars());
-            train.setRolling(tick, mean);
+            train.setRollingFriction(tick, mean);
         }
 
-        double own = keepOf(cart);
+        double ownKeep = keepOf(cart);
 
-        if (own <= 0.0) {
+        if (ownKeep <= 0.0) {
             return applied;
         }
 
-        double scale = mean / own;
+        double scale = mean / ownKeep;
 
         return applied.multiply(scale, 1.0, scale);
     }

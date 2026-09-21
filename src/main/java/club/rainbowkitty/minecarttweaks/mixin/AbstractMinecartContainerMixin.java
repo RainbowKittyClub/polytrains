@@ -34,6 +34,6 @@ public abstract class AbstractMinecartContainerMixin {
         // a furnace train is the only car that can carry it, and this override is the only
         // slowdown it ever reaches. Resistance first, then the drive.
         cir.setReturnValue(TrainCoupling.hauled(self,
-                RailForces.of(self.level()).retarded(self, movement, cir.getReturnValue())));
+                RailForces.forLevel(self.level()).retarded(self, movement, cir.getReturnValue())));
     }
 }

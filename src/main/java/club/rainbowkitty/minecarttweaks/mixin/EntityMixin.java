@@ -66,7 +66,7 @@ public abstract class EntityMixin {
     // to the leading car would leave the car it was meant for standing.
     @Inject(method = "push(DDD)V", at = @At("HEAD"), cancellable = true)
     private void minecarttweaks$shoveTrain(
-            double xa, double ya, double za, CallbackInfo info) {
+            double pushX, double pushY, double pushZ, CallbackInfo info) {
         if (!((Object) this instanceof AbstractMinecart cart)
                 || !TrainCoupling.carried(cart)) {
             return;
@@ -78,17 +78,19 @@ public abstract class EntityMixin {
             return;
         }
 
-        double share = 1.0 / TrainCoupling.mass(cart);
+        double massShare = 1.0 / TrainCoupling.mass(cart);
 
         // Onto the car vanilla drives rather than the one leaned on: a placed car's movement is
         // written by the placer, so a shove left on it is overwritten before it moves anything. The
         // two cars only point the same way while the track between them is straight, so what
         // carries over is the push along the rails rather than the push through the world.
-        AbstractMinecart driven = TrainCoupling.driven(cart);
-        Vec3 push = TrainCoupling.alongTrack(cart, driven, new Vec3(xa, ya, za));
+        AbstractMinecart driven = TrainCoupling.drivenCar(cart);
+        Vec3 alongTrackPush = TrainCoupling.alongTrack(
+                cart, driven, new Vec3(pushX, pushY, pushZ));
 
         driven.setDeltaMovement(driven.getDeltaMovement()
-                .add(push.x() * share, push.y() * share, push.z() * share));
+                .add(alongTrackPush.x() * massShare, alongTrackPush.y() * massShare,
+                        alongTrackPush.z() * massShare));
 
         if (driven == (Object) this) {
             needsSync = true;

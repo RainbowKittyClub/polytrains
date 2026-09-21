@@ -202,7 +202,7 @@ public final class TrainCoupling {
             return resisted;
         }
 
-        double drive = train.drive();
+        double drive = train.driveAcceleration();
 
         if (drive <= 0.0) {
             return resisted;
@@ -211,14 +211,14 @@ public final class TrainCoupling {
         // A standing train has no movement to read a heading off, so it leaves on the aim of its
         // powered carts. Without that only those carts move and the train never gets going — and
         // they are the carts the placer is not moving, so it never gets going at all.
-        Vec3 heading = resisted.horizontal();
+        Vec3 headingDirection = resisted.horizontal();
 
-        if (heading.lengthSqr() <= ANY_MOVEMENT) {
-            heading = driveHeading(cart);
+        if (headingDirection.lengthSqr() <= ANY_MOVEMENT) {
+            headingDirection = driveHeading(cart);
         }
 
-        return heading.lengthSqr() > ANY_MOVEMENT
-                ? resisted.add(heading.normalize().scale(drive))
+        return headingDirection.lengthSqr() > ANY_MOVEMENT
+                ? resisted.add(headingDirection.normalize().scale(drive))
                 : resisted;
     }
 
@@ -267,13 +267,13 @@ public final class TrainCoupling {
      * a car has no movement of its own to read a heading off.
      */
     public static Vec3 driveHeading(AbstractMinecart cart) {
-        Vec3 heading = Vec3.ZERO;
+        Vec3 headingDirection = Vec3.ZERO;
 
         for (AbstractMinecart member : Train.of(cart).cars()) {
-            heading = heading.add(member.minecarttweaks$driveHeading());
+            headingDirection = headingDirection.add(member.minecarttweaks$driveHeading());
         }
 
-        return heading.lengthSqr() > EPSILON ? heading.normalize() : Vec3.ZERO;
+        return headingDirection.lengthSqr() > EPSILON ? headingDirection.normalize() : Vec3.ZERO;
     }
 
     /** The furthest centre-to-centre distance at which two carts may be linked. */
@@ -312,7 +312,7 @@ public final class TrainCoupling {
 
         TrackRibbon ribbon = train.ribbon();
         Vec3 movement = cart.getDeltaMovement().horizontal();
-        int was = ribbon.frame();
+        int previousFrame = ribbon.arcEpoch();
 
         ribbon.record(cart.level(), pos, movement);
 
@@ -321,7 +321,7 @@ public final class TrainCoupling {
         // standing on top of each other. Taken here rather than left to the placer to read back,
         // and only on a movement there is a direction in — a reading off no movement would settle
         // the lie on whichever way the rail happened to be walked.
-        if (ribbon.frame() != was && movement.lengthSqr() > EPSILON * EPSILON) {
+        if (ribbon.arcEpoch() != previousFrame && movement.lengthSqr() > EPSILON * EPSILON) {
             train.relaidOn(cart);
         }
     }
@@ -423,21 +423,22 @@ public final class TrainCoupling {
 
         // Laid along the rail rather than along that chord, so a pull taken through a corner stays
         // on the track; the chord only has to say which of the block's two ends is the front.
-        RailPath.Crossing under = RailPath.crossing(
+        RailPath.Crossing crossing = RailPath.crossing(
                 cart.level(), cart.getCurrentBlockPosOrRailBelow(), chord);
 
-        if (under == null) {
+        if (crossing == null) {
             return null;
         }
 
-        double share = downhillShare(cars, RailForces.of(cart.level()), headLeads);
-        boolean level = pull.lengthSqr() == 0.0;
+        double share = downhillShare(cars, RailForces.forLevel(cart.level()), headLeads);
+        boolean flatTrack = pull.lengthSqr() == 0.0;
 
         if (share == 0.0) {
-            return level ? null : Vec3.ZERO;
+            return flatTrack ? null : Vec3.ZERO;
         }
 
-        return under.forward().scale(share * (level ? slideSpeed(cart, movement) : pull.length()));
+        return crossing.forward()
+                .scale(share * (flatTrack ? slideSpeed(cart, movement) : pull.length()));
     }
 
     // How much of one car's worth of downhill pull a train is owed in the direction its leading end
@@ -511,7 +512,7 @@ public final class TrainCoupling {
             return movement;
         }
 
-        RailForces forces = RailForces.of(cart.level());
+        RailForces forces = RailForces.forLevel(cart.level());
         double share = railShare(cars, forces, RailBrake::boosts);
 
         if (share <= 0.0) {
@@ -526,7 +527,7 @@ public final class TrainCoupling {
 
         // Vanilla's kick carries whatever speed the cart already had, which is under the rolling
         // threshold but need not be nothing, so the whole of its figure is what gets shared.
-        return launched(
+        return launchVelocity(
                 cart, cars, forces.launch(movement.length() + RailBrake.LAUNCH_SPEED, share));
     }
 
@@ -551,7 +552,7 @@ public final class TrainCoupling {
             return null;
         }
 
-        double share = railShare(cars, RailForces.of(cart.level()), RailBrake::brakes);
+        double share = railShare(cars, RailForces.forLevel(cart.level()), RailBrake::brakes);
 
         if (share <= 0.0) {
             return null;
@@ -559,7 +560,7 @@ public final class TrainCoupling {
 
         return movement.length() < RailBrake.HALT_FLOOR
                 ? Vec3.ZERO
-                : RailForces.of(cart.level()).halted(movement, share);
+                : RailForces.forLevel(cart.level()).halted(movement, share);
     }
 
     /** Whether a brake has hold of any car of {@code cart}'s train, or of {@code cart} alone. */
@@ -580,7 +581,7 @@ public final class TrainCoupling {
             return RailBrake.LAUNCH_SPEED;
         }
 
-        RailForces forces = RailForces.of(cart.level());
+        RailForces forces = RailForces.forLevel(cart.level());
 
         return forces.launch(RailBrake.LAUNCH_SPEED, railShare(cars, forces, RailBrake::boosts));
     }
@@ -602,7 +603,7 @@ public final class TrainCoupling {
             return List.of(cart);
         }
 
-        if (driven(cart) != cart) {
+        if (drivenCar(cart) != cart) {
             return null;
         }
 
@@ -614,25 +615,27 @@ public final class TrainCoupling {
     // Which way a standing train leaves, read at each car that is over a lit rail and carried up to
     // the driven one along the track. The rail need not be anywhere near the car vanilla drives,
     // and two cars round a bend do not agree on a direction; lit rails that disagree cancel.
-    private static @Nullable Vec3 launched(
+    private static @Nullable Vec3 launchVelocity(
             AbstractMinecart cart, List<AbstractMinecart> cars, double speed) {
         if (speed <= 0.0) {
             return null;
         }
 
-        Vec3 heading = Vec3.ZERO;
+        Vec3 headingDirection = Vec3.ZERO;
 
         for (AbstractMinecart car : cars) {
-            Vec3 way = RailBrake.boosts(car)
+            Vec3 railDirection = RailBrake.boosts(car)
                     ? car.getRedstoneDirection(car.getCurrentBlockPosOrRailBelow())
                     : Vec3.ZERO;
 
-            if (way.lengthSqr() > 0.0) {
-                heading = heading.add(alongTrack(car, cart, way));
+            if (railDirection.lengthSqr() > 0.0) {
+                headingDirection = headingDirection.add(alongTrack(car, cart, railDirection));
             }
         }
 
-        return heading.lengthSqr() <= ANY_MOVEMENT ? null : heading.normalize().scale(speed);
+        return headingDirection.lengthSqr() <= ANY_MOVEMENT
+                ? null
+                : headingDirection.normalize().scale(speed);
     }
 
     // How much of one car's worth of track force a train is owed, from nought to one: the cars
@@ -686,20 +689,21 @@ public final class TrainCoupling {
      */
     public static Vec3 alongTrack(AbstractMinecart shoved, AbstractMinecart driven, Vec3 push) {
         TrackRibbon ribbon = Train.of(shoved).ribbon();
-        Double at = ribbon.arcOf(shoved);
-        Double to = shoved == driven ? at : ribbon.arcOf(driven);
-        Vec3 here = at == null ? null : ribbon.tangentAt(at);
-        Vec3 there = to == null ? null : ribbon.tangentAt(to);
+        Double shovedArc = ribbon.arcOf(shoved);
+        Double drivenArc = shoved == driven ? shovedArc : ribbon.arcOf(driven);
+        Vec3 shovedTangent = shovedArc == null ? null : ribbon.tangentAt(shovedArc);
+        Vec3 drivenTangent = drivenArc == null ? null : ribbon.tangentAt(drivenArc);
 
         // A train the ribbon cannot place is one whose shape it cannot speak for either, so the
         // shove goes on as it arrived rather than being projected onto a guess.
-        if (here == null || there == null) {
+        if (shovedTangent == null || drivenTangent == null) {
             return push;
         }
 
-        double along = push.horizontal().dot(here);
+        double travelComponent = push.horizontal().dot(shovedTangent);
 
-        return new Vec3(there.x() * along, push.y(), there.z() * along);
+        return new Vec3(drivenTangent.x() * travelComponent, push.y(),
+                drivenTangent.z() * travelComponent);
     }
 
     /**
@@ -711,7 +715,7 @@ public final class TrainCoupling {
      * moved anything: leaning on a train did nothing unless that end happened to be the one
      * leading, and which end that is outlives a reversal.
      */
-    public static AbstractMinecart driven(AbstractMinecart cart) {
+    public static AbstractMinecart drivenCar(AbstractMinecart cart) {
         if (!cart.hasLink() || !ModGameRules.trainsEnabled(cart.level())) {
             return cart;
         }
@@ -764,7 +768,7 @@ public final class TrainCoupling {
      * place rather than at each of them.
      */
     public static double mass(AbstractMinecart cart) {
-        RailForces forces = RailForces.of(cart.level());
+        RailForces forces = RailForces.forLevel(cart.level());
 
         // Short-circuited rather than walked: this is asked of every cart every tick, and most
         // carts on a server are not linked to anything.
@@ -774,8 +778,8 @@ public final class TrainCoupling {
     }
 
     /**
-     * The lowest speed ceiling any car of {@code cart}'s train will accept, given {@code own} as
-     * the ceiling of the car asking. Just {@code own} for a lone cart.
+     * The lowest speed ceiling any car of {@code cart}'s train will accept, given
+     * {@code ownCeiling} as the ceiling of the car asking. Just {@code ownCeiling} for a lone cart.
      *
      * <p>A repair, not a departure, and it runs under both force models. Vanilla has no trains, so
      * the ensemble is the answer: a line of carts being pushed along cannot outrun whatever is
@@ -790,12 +794,12 @@ public final class TrainCoupling {
      * hook stands down, so walking the train to ask each one costs one figure per car rather than
      * one walk per car.
      */
-    public static double trainCeiling(AbstractMinecart cart, ServerLevel level, double own) {
-        if (!cart.hasLink() || !ModGameRules.trainsEnabled(level) || driven(cart) != cart) {
-            return own;
+    public static double trainCeiling(AbstractMinecart cart, ServerLevel level, double ownCeiling) {
+        if (!cart.hasLink() || !ModGameRules.trainsEnabled(level) || drivenCar(cart) != cart) {
+            return ownCeiling;
         }
 
-        double lowest = own;
+        double lowest = ownCeiling;
 
         for (AbstractMinecart car : Train.of(cart).cars()) {
             if (car != cart) {
@@ -815,7 +819,7 @@ public final class TrainCoupling {
      * vanilla model.
      */
     public static double meanCarMass(AbstractMinecart cart) {
-        RailForces forces = RailForces.of(cart.level());
+        RailForces forces = RailForces.forLevel(cart.level());
 
         return cart.hasLink()
                 ? Train.of(cart).meanCarMass(forces, cart.level().getGameTime())
@@ -830,14 +834,15 @@ public final class TrainCoupling {
      * which keeps a loaded train hitting a parked cart on the parked cart's scale, not the train's.
      */
     public static double closingMomentum(AbstractMinecart a, AbstractMinecart b) {
-        Vec3 between = b.position().subtract(a.position()).horizontal();
+        Vec3 betweenVector = b.position().subtract(a.position()).horizontal();
 
-        if (between.lengthSqr() < EPSILON) {
+        if (betweenVector.lengthSqr() < EPSILON) {
             return 0.0;
         }
 
-        Vec3 line = between.normalize();
-        double closing = a.getDeltaMovement().dot(line) - b.getDeltaMovement().dot(line);
+        Vec3 lineDirection = betweenVector.normalize();
+        double closing = a.getDeltaMovement().dot(lineDirection)
+                - b.getDeltaMovement().dot(lineDirection);
 
         if (closing <= 0.0) {
             return 0.0;
@@ -874,12 +879,13 @@ public final class TrainCoupling {
         // One fault reading a tick, whichever kind it is, so the two cannot clear each other's
         // count. A train cut here is two trains from the next tick, so there is nothing left to
         // trim or measure against: both halves go on from where they now are.
-        int diverted = divertedCar(level, train);
+        int divertedIndex = divertedCarIndex(level, train);
 
-        if (train.faultHeld(diverted, SEVER_TICKS) && diverted != TrainPlacer.Refusal.NONE) {
+        if (train.faultHeld(divertedIndex, SEVER_TICKS)
+                && divertedIndex != TrainPlacer.Refusal.NONE) {
             LOGGER.debug("train of {} severing at car {}: a switch has diverted its track for"
-                    + " {} ticks", train.size(), diverted, SEVER_TICKS);
-            sever(level, train, diverted);
+                    + " {} ticks", train.size(), divertedIndex, SEVER_TICKS);
+            sever(level, train, divertedIndex);
             return;
         }
 
@@ -926,7 +932,7 @@ public final class TrainCoupling {
     // record is the normal state of a shared switch, not a train being taken apart. Only a
     // disagreement that outlasts the traffic causing it means anything, so this answers a question
     // and leaves the deciding to the same held count every other fault goes through.
-    private static int divertedCar(ServerLevel level, Train train) {
+    private static int divertedCarIndex(ServerLevel level, Train train) {
         AbstractMinecart leader = train.leader();
         TrackRibbon ribbon = train.ribbon();
         List<AbstractMinecart> cars = train.cars();
@@ -946,22 +952,22 @@ public final class TrainCoupling {
     // what stays coupled to the leader is the part still on track the ribbon can answer for and
     // what goes free is the part being taken somewhere else. A leading car that is itself the fault
     // is cut from the one neighbour it has.
-    private static void sever(ServerLevel level, Train train, int car) {
+    private static void sever(ServerLevel level, Train train, int carIndex) {
         List<AbstractMinecart> cars = train.cars();
         AbstractMinecart leader = train.leader();
-        int lead = leader == null ? 0 : cars.indexOf(leader);
+        int leadIndex = leader == null ? 0 : cars.indexOf(leader);
         // Which way the leading car lies up the list, and so which neighbour to keep: the one
         // towards it, or for the leading car itself the one neighbour it has.
-        int fromHead = lead == 0 ? 1 : -1;
-        int towards = car == lead ? fromHead : -fromHead;
-        int keep = car + towards;
+        int fromHead = leadIndex == 0 ? 1 : -1;
+        int towardsSign = carIndex == leadIndex ? fromHead : -fromHead;
+        int keepIndex = carIndex + towardsSign;
 
-        if (keep < 0 || keep >= cars.size()) {
+        if (keepIndex < 0 || keepIndex >= cars.size()) {
             return;
         }
 
-        AbstractMinecart from = cars.get(car);
-        AbstractMinecart to = cars.get(keep);
+        AbstractMinecart from = cars.get(carIndex);
+        AbstractMinecart to = cars.get(keepIndex);
 
         Linkable.unlink(from, to);
         LinkAction.dropChain(level, from, to);
@@ -1010,13 +1016,13 @@ public final class TrainCoupling {
         // what is there when it can and starts over when it cannot, which is the same judgement it
         // makes for every other block the car steps onto.
         if (ribbon.isEmpty() || ribbon.arcOfLeader(leader) == null) {
-            BlockPos under = leader.getCurrentBlockPosOrRailBelow();
+            BlockPos underPos = leader.getCurrentBlockPosOrRailBelow();
 
-            if (!BaseRailBlock.isRail(level.getBlockState(under))) {
+            if (!BaseRailBlock.isRail(level.getBlockState(underPos))) {
                 return;
             }
 
-            ribbon.record(level, under, leader.getDeltaMovement().horizontal());
+            ribbon.record(level, underPos, leader.getDeltaMovement().horizontal());
         }
 
         Double arc = ribbon.arcOfLeader(leader);
@@ -1031,9 +1037,9 @@ public final class TrainCoupling {
         // tick has no intervals recorded and its cars may stand a whole link apart. Asking for less
         // would leave the seating wanting track the ribbon was never sent for, bail, and so never
         // record the intervals that would have made the ask smaller.
-        double span = train.length(MAX_LINK_DISTANCE) + 1.0;
+        double reach = train.length(MAX_LINK_DISTANCE) + 1.0;
 
-        ribbon.extendTo(level, arc - span, arc + span);
+        ribbon.extendTo(level, arc - reach, arc + reach);
     }
 
     // Keeps the ribbon to the train's own span plus a margin, measured out from the leading car

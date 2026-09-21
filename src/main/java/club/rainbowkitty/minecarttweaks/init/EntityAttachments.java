@@ -66,8 +66,8 @@ public final class EntityAttachments {
     }
 
     /** Replaces the cart's link state. */
-    public static void setLink(AbstractMinecart minecart, LinkableData data) {
-        ((AttachmentTarget) minecart).setAttached(LINK, data);
+    public static void setLink(AbstractMinecart minecart, LinkableData linkData) {
+        ((AttachmentTarget) minecart).setAttached(LINK, linkData);
     }
 
     /** The cart the player has picked as one end of a link, or null if the next click picks one. */
@@ -76,8 +76,8 @@ public final class EntityAttachments {
     }
 
     /** Records the cart the player has picked, or null to forget it. */
-    public static void setLinkSelection(Player player, @Nullable UUID cart) {
-        ((AttachmentTarget) player).setAttached(LINK_SELECTION, cart);
+    public static void setLinkSelection(Player player, @Nullable UUID cartId) {
+        ((AttachmentTarget) player).setAttached(LINK_SELECTION, cartId);
     }
 
     /** Whether this player's use of a cart has already been answered on {@code tick}. */

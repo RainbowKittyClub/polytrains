@@ -86,17 +86,17 @@ public final class Train {
     // zero until that has been settled. Owned rather than measured, because measuring it means
     // resolving a car's block back to a node, and a circuit records every one of its blocks twice.
     // A reversal changes which end leads; it does not change which end is where.
-    private int order;
+    private int orderSign;
 
     // The ribbon arc frame this order was settled against. A reset renumbers the arcs, so an
     // order taken before one says nothing about the frame that came after it.
-    private int orderAt = -1;
+    private int orderSignAt = -1;
 
     // This train's mean rolling friction, held for the tick that worked it out. Read once for every
     // rail block the leading car crosses, and working it out walks every car's inventory.
-    private double rolling;
+    private double rollingFriction;
     // The tick when rolling friction was last calculated.
-    private long rollingTick = Long.MIN_VALUE;
+    private long rollingFrictionTick = Long.MIN_VALUE;
 
     // This train's total mass, held the same way and for the same reason: the friction, drive and
     // shove paths all ask for it, and a container car's own mass is a walk of its inventory.
@@ -224,15 +224,17 @@ public final class Train {
         long tick = cars.getFirst().level().getGameTime();
 
         if (tick != leaderTick) {
-            AbstractMinecart was = leader;
+            AbstractMinecart previousLeader = leader;
 
             leaderTick = tick;
             leader = settledLeader();
 
             // Which end leads decides what the ribbon records and which way the cars are laid, so
             // a train that changes its mind about that is a train about to look very strange.
-            if (was != null && leader != null && was != leader && LOGGER.isDebugEnabled()) {
-                LOGGER.debug("train of {} changed leading end, order {}", cars.size(), order());
+            if (previousLeader != null && leader != null && previousLeader != leader
+                    && LOGGER.isDebugEnabled()) {
+                LOGGER.debug("train of {} changed leading end, order {}", cars.size(),
+                        orderSign());
             }
         }
 
@@ -240,9 +242,9 @@ public final class Train {
     }
 
     /**
-     * Records that the ribbon could not place car {@code car} this tick — or, with a negative
-     * {@code car}, that it placed all of them — and answers whether the same car has failed for
-     * {@code ticks} in a row.
+     * Records that the ribbon could not place car {@code carIndex} this tick — or, with a negative
+     * {@code carIndex}, that it placed all of them — and answers whether the same car has failed
+     * for {@code ticks} in a row.
      *
      * <p>A sever is irreversible and the fault behind it is not: a car crossing a junction,
      * catching air, or waiting on a ribbon that has not grown to reach it is unplaceable for a
@@ -250,7 +252,7 @@ public final class Train {
      * trouble, so the reading has to hold before it costs anything. Every other car is cleared by
      * the same call, so a fault that moves from car to car never accumulates anywhere.
      */
-    public boolean faultHeld(int car, int ticks) {
+    public boolean faultHeld(int carIndex, int ticks) {
         if (faults == null || faults.length != cars.size()) {
             faults = new int[cars.size()];
         }
@@ -258,8 +260,8 @@ public final class Train {
         boolean held = false;
 
         for (int i = 0; i < faults.length; i++) {
-            faults[i] = i == car ? faults[i] + 1 : 0;
-            held |= i == car && faults[i] >= ticks;
+            faults[i] = i == carIndex ? faults[i] + 1 : 0;
+            held |= i == carIndex && faults[i] >= ticks;
         }
 
         return held;
@@ -274,11 +276,11 @@ public final class Train {
      * <p>Compared on the reason and not on the line reporting it, since that line carries arcs and
      * block positions that differ every tick and would report a steady fault as a new one.
      */
-    public boolean seatingChanged(TrainPlacer.@Nullable Bail now) {
-        boolean changed = bail != now || !attempted;
+    public boolean seatingChanged(TrainPlacer.@Nullable Bail reason) {
+        boolean changed = bail != reason || !attempted;
 
         attempted = true;
-        bail = now;
+        bail = reason;
 
         return changed;
     }
@@ -360,26 +362,27 @@ public final class Train {
      * nothing. Narrowing draws a pair together, which needs no room made for it and so is not
      * gated on that car having moved at all.
      *
-     * @param widest the most two coupled cars can stand apart; a wider reading is a car that has
-     *     drifted off this ribbon rather than a gap, and is not started from
+     * @param maxLinkDistance the most two coupled cars can stand apart; a wider reading is a car
+     *     that has drifted off this ribbon rather than a gap, and is not started from
      * @param advance how far the leading car moved this tick, which is all the room there is
      */
-    public double[] nextGaps(double target, double widest, double advance) {
+    public double[] nextGaps(double target, double maxLinkDistance, double advance) {
         int count = cars.size() - 1;
         double[] next = new double[count];
-        double floor = floor(target);
-        double[] arcs = arcs();
-        double[] held = gaps != null && gaps.length == count ? gaps : null;
+        double pitchFloor = floor(target);
+        double[] carArcs = arcs();
+        double[] previousGaps = gaps != null && gaps.length == count ? gaps : null;
 
         for (int i = 0; i < count; i++) {
             // Along the rails, not in arc. An interval is a distance on the track and arc is its
             // ground plan, so on a hill a correctly seated pair reads as standing closer than its
             // interval — and clamping to that walks the interval down a little further every tick.
-            double stood = Math.min(ribbon.trackBetween(arcs[i], arcs[i + 1]), widest);
-            double at = held != null ? held[i] : target;
+            double stood = Math.min(
+                    ribbon.trackBetween(carArcs[i], carArcs[i + 1]), maxLinkDistance);
+            double interval = previousGaps != null ? previousGaps[i] : target;
 
-            if (held == null && stood > 0.0) {
-                at = stood;
+            if (previousGaps == null && stood > 0.0) {
+                interval = stood;
             }
 
             // Never wider than the pair actually stands. A seated pair stands exactly at its
@@ -389,12 +392,12 @@ public final class Train {
             // a car either: closer than that is two cars inside each other, which vanilla's own
             // shove is left to separate.
             if (stood > 0.0) {
-                at = Math.max(Math.min(at, stood), floor);
+                interval = Math.max(Math.min(interval, stood), pitchFloor);
             }
 
-            next[i] = at > target
-                    ? at - Math.min(at - target, PITCH_STEP)
-                    : at + Math.min(target - at, advance / count);
+            next[i] = interval > target
+                    ? interval - Math.min(interval - target, PITCH_STEP)
+                    : interval + Math.min(target - interval, advance / count);
         }
 
         return next;
@@ -415,21 +418,21 @@ public final class Train {
      */
     public double compress(
             double[] intervals, double target, double amount, boolean fromLast, int reach) {
-        double floor = floor(target);
-        double left = amount;
-        int last = Math.min(reach, intervals.length);
+        double pitchFloor = floor(target);
+        double remaining = amount;
+        int limit = Math.min(reach, intervals.length);
 
-        for (int step = 0; step < last && left > 0.0; step++) {
-            int i = fromLast ? intervals.length - 1 - step : step;
-            double give = Math.min(intervals[i] - floor, left);
+        for (int pass = 0; pass < limit && remaining > 0.0; pass++) {
+            int i = fromLast ? intervals.length - 1 - pass : pass;
+            double give = Math.min(intervals[i] - pitchFloor, remaining);
 
             if (give > 0.0) {
                 intervals[i] -= give;
-                left -= give;
+                remaining -= give;
             }
         }
 
-        return left;
+        return remaining;
     }
 
     /**
@@ -486,18 +489,18 @@ public final class Train {
     }
 
     /**
-     * How much track this train's cars are spread over, counting every gap at least {@code floor}
-     * wide.
+     * How much track this train's cars are spread over, counting every gap at least
+     * {@code gapFloor} wide.
      *
-     * @param floor the least a gap counts for, so that a train with nothing recorded yet is still
-     *     given room for cars standing as far apart as a coupling leaves them
+     * @param gapFloor the least a gap counts for, so that a train with nothing recorded yet is
+     *     still given room for cars standing as far apart as a coupling leaves them
      */
-    public double length(double floor) {
+    public double length(double gapFloor) {
         double total = 0.0;
 
         for (int i = 0; i < cars.size() - 1; i++) {
             total += Math.max(gaps == null || gaps.length != cars.size() - 1 ? 0.0 : gaps[i],
-                    floor);
+                    gapFloor);
         }
 
         return total;
@@ -511,15 +514,15 @@ public final class Train {
     // Where each car sits along the ribbon, NaN for one the ribbon cannot place. Read in one pass
     // because every gap wants both of its cars and each lookup is a walk of the recorded track.
     private double[] arcs() {
-        double[] at = new double[cars.size()];
+        double[] arcPositions = new double[cars.size()];
 
         for (int i = 0; i < cars.size(); i++) {
             Double arc = ribbon.arcOf(cars.get(i));
 
-            at[i] = arc == null ? Double.NaN : arc;
+            arcPositions[i] = arc == null ? Double.NaN : arc;
         }
 
-        return at;
+        return arcPositions;
     }
 
     /** Whether any car of this train is driving it, whatever that car is currently putting out. */
@@ -548,20 +551,20 @@ public final class Train {
      * by the mean and length drops out; a single engine's output is not per car, so it divides by
      * the total and length is exactly what it is up against.
      */
-    public double drive() {
-        double drive = 0.0;
+    public double driveAcceleration() {
+        double totalDriveAcceleration = 0.0;
 
         for (AbstractMinecart car : cars) {
-            drive += car.minecarttweaks$driveAcceleration();
+            totalDriveAcceleration += car.minecarttweaks$driveAcceleration();
         }
 
-        if (drive <= 0.0) {
+        if (totalDriveAcceleration <= 0.0) {
             return 0.0;
         }
 
         Level level = cars.getFirst().level();
 
-        return drive / mass(RailForces.of(level), level.getGameTime());
+        return totalDriveAcceleration / mass(RailForces.forLevel(level), level.getGameTime());
     }
 
     /**
@@ -604,14 +607,14 @@ public final class Train {
      * This train's mean rolling friction as worked out on {@code tick}, or zero if it has not been
      * worked out on that tick. A real mean is never zero, so zero is the whole of "ask again".
      */
-    public double rolling(long tick) {
-        return rollingTick == tick ? rolling : 0.0;
+    public double rollingFriction(long tick) {
+        return rollingFrictionTick == tick ? rollingFriction : 0.0;
     }
 
     /** Holds this train's mean rolling friction for the rest of {@code tick}. */
-    public void setRolling(long tick, double mean) {
-        rolling = mean;
-        rollingTick = tick;
+    public void setRollingFriction(long tick, double mean) {
+        rollingFriction = mean;
+        rollingFrictionTick = tick;
     }
 
     /**
@@ -619,7 +622,7 @@ public final class Train {
      * ribbon's current arc frame — never seated, or seated before a reset renumbered the arcs.
      */
     public @Nullable Double headArc() {
-        return headArcAt == ribbon.frame() ? headArc : null;
+        return headArcAt == ribbon.arcEpoch() ? headArc : null;
     }
 
     /**
@@ -629,7 +632,7 @@ public final class Train {
      */
     public void setHeadArc(@Nullable Double arc) {
         headArc = arc == null ? 0.0 : arc;
-        headArcAt = arc == null ? -1 : ribbon.frame();
+        headArcAt = arc == null ? -1 : ribbon.arcEpoch();
     }
 
     /** How far this train's head turned on its last seating, in right angles. */
@@ -646,18 +649,19 @@ public final class Train {
      * Which way round this train lies on its ribbon — +1 when its head sits at the higher arc — or
      * zero if that has not been settled against the ribbon's current numbering.
      */
-    public int order() {
-        return ribbon.frame() == orderAt ? order : 0;
+    public int orderSign() {
+        return ribbon.arcEpoch() == orderSignAt ? orderSign : 0;
     }
 
     /** Settles which way round this train lies, for as long as the ribbon keeps its arc frame. */
-    public void setOrder(int sign) {
-        if (order != 0 && order != sign && LOGGER.isDebugEnabled()) {
-            LOGGER.debug("train of {} now lies {} on its ribbon, was {}", cars.size(), sign, order);
+    public void setOrderSign(int sign) {
+        if (orderSign != 0 && orderSign != sign && LOGGER.isDebugEnabled()) {
+            LOGGER.debug("train of {} now lies {} on its ribbon, was {}",
+                    cars.size(), sign, orderSign);
         }
 
-        order = sign;
-        orderAt = ribbon.frame();
+        orderSign = sign;
+        orderSignAt = ribbon.arcEpoch();
     }
 
     /**
@@ -678,13 +682,13 @@ public final class Train {
      * <p>Only at the reset. The frame's numbering is fixed from here, but which car leads is not —
      * a train reverses routinely, and after one the leading car is at the <i>lowest</i> arc, so the
      * same comparison made later gives the opposite answer. That is why this cannot be deferred
-     * into {@link #order()} and asked lazily.
+     * into {@link #orderSign()} and asked lazily.
      */
     public void relaidOn(AbstractMinecart leading) {
-        int lead = cars.indexOf(leading);
+        int leadIndex = cars.indexOf(leading);
 
-        if (lead >= 0) {
-            setOrder(lead == 0 ? 1 : -1);
+        if (leadIndex >= 0) {
+            setOrderSign(leadIndex == 0 ? 1 : -1);
         }
     }
 
@@ -714,11 +718,12 @@ public final class Train {
     // resets, the placer bails and every car is moved by vanilla instead, so one car's velocity can
     // confidently name the wrong end for exactly as long as it takes to lay the train backwards.
     private @Nullable AbstractMinecart settledLeader() {
-        AbstractMinecart read = decideLeader();
+        AbstractMinecart candidateLeader = decideLeader();
 
-        if (read == null || leader == null || read == leader || !cars.contains(leader)) {
+        if (candidateLeader == null || leader == null || candidateLeader == leader
+                || !cars.contains(leader)) {
             flipHeld = 0;
-            return read;
+            return candidateLeader;
         }
 
         // A train the placer is not holding is loose carts, each driven by vanilla, and a car of
@@ -734,21 +739,21 @@ public final class Train {
             return leader;
         }
 
-        if (read != flipTo) {
-            flipTo = read;
+        if (candidateLeader != flipTo) {
+            flipTo = candidateLeader;
             flipHeld = 0;
         }
 
-        return ++flipHeld >= LEADER_FLIP_TICKS ? read : leader;
+        return ++flipHeld >= LEADER_FLIP_TICKS ? candidateLeader : leader;
     }
 
     // Which end the train is running towards, judged along the ribbon rather than through space. A
     // single car has nothing to measure against and is its own leading end.
     private @Nullable AbstractMinecart decideLeader() {
         AbstractMinecart head = cars.getFirst();
-        Vec3 heading = head.getDeltaMovement().horizontal();
-        double speed = heading.length();
-        AbstractMinecart held = heldLeader();
+        Vec3 headingDirection = head.getDeltaMovement().horizontal();
+        double speed = headingDirection.length();
+        AbstractMinecart heldEnd = heldLeader();
 
         if (cars.size() == 1) {
             return speed < EPSILON ? null : head;
@@ -763,33 +768,33 @@ public final class Train {
         // ribbon it starts lets the next reading correct the end. It does not answer for which way
         // the cars face, so the placer declines to turn a train it cannot read a heading from.
         if (speed < EPSILON) {
-            return held != null ? held : head;
+            return heldEnd != null ? heldEnd : head;
         }
 
-        Double headArc = ribbon.arcOf(head);
+        Double headCarArc = ribbon.arcOf(head);
         Double nextArc = ribbon.arcOf(cars.get(1));
-        Vec3 tangent = headArc == null ? null : ribbon.tangentAt(headArc);
+        Vec3 tangent = headCarArc == null ? null : ribbon.tangentAt(headCarArc);
 
-        if (headArc == null || nextArc == null || tangent == null) {
-            return held != null ? held : head;
+        if (headCarArc == null || nextArc == null || tangent == null) {
+            return heldEnd != null ? heldEnd : head;
         }
 
         // Which way the head end lies along the ribbon, against which way the train is running
         // along it. Both are arc, because a chord through space says nothing about track that
         // doubles back on itself: round a tight turn the car behind sits level with or ahead of the
         // one in front, so a chord reads the train as running the other way and lays it backwards.
-        double outward = headArc - nextArc;
-        double along = heading.dot(tangent) / speed;
+        double outward = headCarArc - nextArc;
+        double headingAlongTangent = headingDirection.dot(tangent) / speed;
 
         // A reading too weak to name an end keeps the one already named, and names the head when
         // there is none. Not null: every train of two or more has a leading end, because one car of
         // it has to speak for the whole when the per-car tick comes round, and the head answers
         // that as well as either end would.
-        if (Math.abs(outward) < EPSILON || Math.abs(along) < LEADER_HOLD) {
-            return held != null ? held : head;
+        if (Math.abs(outward) < EPSILON || Math.abs(headingAlongTangent) < LEADER_HOLD) {
+            return heldEnd != null ? heldEnd : head;
         }
 
-        return along * outward > 0.0 ? head : cars.getLast();
+        return headingAlongTangent * outward > 0.0 ? head : cars.getLast();
     }
 
     // The end that was leading, so long as it is still an end of ours — a train rebuilt around a
@@ -829,7 +834,7 @@ public final class Train {
     // are compared: a car in the middle cannot head a train however low its own UUID.
     private static Train build(AbstractMinecart car, long tick,
             @Nullable TrackRibbon inherited) {
-        List<AbstractMinecart> order = new ArrayList<>();
+        List<AbstractMinecart> walked = new ArrayList<>();
         AbstractMinecart end = walk(car, null);
 
         // A link graph that comes back on itself is corruption, not a kind of train. Coupling two
@@ -838,25 +843,25 @@ public final class Train {
         // list starts, and go on as an ordinary train — the links are not touched, so this decides
         // nothing but the ordering.
         if (end == null) {
-            walk(car, order);
+            walk(car, walked);
 
-            AbstractMinecart from = lowest(order);
+            AbstractMinecart from = lowest(walked);
 
             LOGGER.warn("train of {} links back on itself, reading it from {}",
-                    order.size(), from == null ? car.getUUID() : from.getUUID());
-            order.clear();
-            walk(from == null ? car : from, order);
+                    walked.size(), from == null ? car.getUUID() : from.getUUID());
+            walked.clear();
+            walk(from == null ? car : from, walked);
 
-            return new Train(order, tick, inherited);
+            return new Train(walked, tick, inherited);
         }
 
-        walk(end, order);
+        walk(end, walked);
 
-        if (order.size() > 1 && sortsFirst(order.getLast(), order.getFirst())) {
-            Collections.reverse(order);
+        if (walked.size() > 1 && sortsFirst(walked.getLast(), walked.getFirst())) {
+            Collections.reverse(walked);
         }
 
-        return new Train(order, tick, inherited);
+        return new Train(walked, tick, inherited);
     }
 
     // Follows the links away from start, collecting into sink when one is given. Returns the car
@@ -871,18 +876,18 @@ public final class Train {
                 sink.add(current);
             }
 
-            AbstractMinecart onward = onward(current, previous);
+            AbstractMinecart nextCar = onward(current, previous);
 
-            if (onward == null) {
+            if (nextCar == null) {
                 return current;
             }
 
-            if (onward == start) {
+            if (nextCar == start) {
                 return null;
             }
 
             previous = current;
-            current = onward;
+            current = nextCar;
         }
 
         return null;

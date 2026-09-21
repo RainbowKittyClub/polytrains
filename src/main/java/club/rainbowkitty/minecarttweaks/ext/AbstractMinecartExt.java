@@ -94,10 +94,10 @@ public interface AbstractMinecartExt extends Linkable {
      * Which way this cart's nose points, as a heading in the world, or null if it has never been
      * recorded.
      */
-    public @Nullable Vec3 minecarttweaks$nose();
+    public @Nullable Vec3 minecarttweaks$noseVector();
 
     /** Records which way this cart's nose points. */
-    public void minecarttweaks$setNose(Vec3 heading);
+    public void minecarttweaks$setNoseVector(Vec3 heading);
 
     /** The game time this cart's tracker withholds position updates until, or zero for none. */
     public long minecarttweaks$resyncAt();

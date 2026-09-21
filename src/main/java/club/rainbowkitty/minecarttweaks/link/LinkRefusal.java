@@ -83,9 +83,9 @@ public enum LinkRefusal {
         // Inclusive of the limit: a cart sits at its rail block's centre, so a pair placed a whole
         // number of blocks apart lands exactly on the limit — excluding it would cost the reach
         // its last block.
-        double linkLimit = TrainCoupling.maxLinkDistance();
+        double maxLinkDistance = TrainCoupling.maxLinkDistance();
 
-        if (first.distanceTo(target) > linkLimit + EPSILON) {
+        if (first.distanceTo(target) > maxLinkDistance + EPSILON) {
             return TOO_FAR;
         }
 
@@ -93,13 +93,14 @@ public enum LinkRefusal {
         // chord that long can hide behind. Nothing else asks this: canUseFreeExit walks the
         // rails, but answers yes outright for a cart with no existing link — true of both carts
         // the first time a pair is made.
-        double reach = TrainCoupling.maxLinkWalk();
+        double maxLinkWalk = TrainCoupling.maxLinkWalk();
 
-        if (RailPath.between(first, target, reach) == null) {
+        if (RailPath.between(first, target, maxLinkWalk) == null) {
             return TOO_FAR;
         }
 
-        if (!canUseFreeExit(first, target, reach) || !canUseFreeExit(target, first, reach)) {
+        if (!canUseFreeExit(first, target, maxLinkWalk)
+                || !canUseFreeExit(target, first, maxLinkWalk)) {
             return BLOCKED;
         }
 
@@ -160,10 +161,10 @@ public enum LinkRefusal {
     }
 
     // Whether candidate lies beyond middle's unoccupied rail exit, or neither exit is occupied.
-    // The reach is how much track to walk, not how far apart the two may be — that is the chord,
-    // and it has been answered before this is asked.
+    // The maxLinkWalk is how much track to walk, not how far apart the two may be — that is the
+    // chord, and it has been answered before this is asked.
     private static boolean canUseFreeExit(
-            AbstractMinecart middle, AbstractMinecart candidate, double reach) {
+            AbstractMinecart middle, AbstractMinecart candidate, double maxLinkWalk) {
         if (!middle.hasLink()) {
             return true;
         }
@@ -173,8 +174,8 @@ public enum LinkRefusal {
             return false;
         }
 
-        RailPath held = RailPath.between(neighbours.getFirst(), middle, reach);
-        RailPath offered = RailPath.between(middle, candidate, reach);
+        RailPath held = RailPath.between(neighbours.getFirst(), middle, maxLinkWalk);
+        RailPath offered = RailPath.between(middle, candidate, maxLinkWalk);
 
         return held != null
                 && offered != null
@@ -185,11 +186,12 @@ public enum LinkRefusal {
     // whose carts pass through each other.
     private static boolean isObstructed(
             ServerLevel serverLevel, AbstractMinecart first, AbstractMinecart target) {
-        var from = first.getBoundingBox().getCenter();
-        var to = target.getBoundingBox().getCenter();
+        var fromPosition = first.getBoundingBox().getCenter();
+        var toPosition = target.getBoundingBox().getCenter();
+        var bounds = new AABB(fromPosition, toPosition).inflate(1);
 
         return ProjectileUtil.getEntityHitResult(
-                serverLevel, first, from, to, new AABB(from, to).inflate(1),
+                serverLevel, first, fromPosition, toPosition, bounds,
                 entity -> entity instanceof AbstractMinecart && entity != target, 0) != null;
     }
 }

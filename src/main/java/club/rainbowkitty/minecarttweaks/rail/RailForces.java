@@ -198,7 +198,7 @@ public enum RailForces {
      * Which model {@code level} runs. Vanilla wherever no rule can be read, the client included:
      * nothing in this model is the client's to apply.
      */
-    public static RailForces of(Level level) {
+    public static RailForces forLevel(Level level) {
         return level instanceof ServerLevel serverLevel
                 && serverLevel.getGameRules().get(PhysicsGameRules.REALISTIC_PHYSICS)
                 ? PHYSICAL
@@ -305,25 +305,25 @@ public enum RailForces {
     // What one cart weighs under the physical model. Read per tick rather than cached, since a
     // hopper cart's mass changes continuously and a comparator read is a short loop.
     private static double weigh(AbstractMinecart cart) {
-        return loaded(cart) + cart.getPassengers().size() * RIDER_MASS;
+        return carriedMass(cart) + cart.getPassengers().size() * RIDER_MASS;
     }
 
     // What the cart and whatever it holds come to. Each kind of container carries its own pair of
     // endpoints rather than a shared cargo term, because what a cart weighs before it holds
     // anything and how much it can hold both differ by kind.
-    private static double loaded(AbstractMinecart cart) {
+    private static double carriedMass(AbstractMinecart cart) {
         if (cart instanceof MinecartFurnace) {
             return ENGINE_MASS;
         }
 
         if (cart instanceof MinecartHopper hopper) {
-            return between(hopper, HOPPER_MASS, HOPPER_LADEN);
+            return interpolatedMass(hopper, HOPPER_MASS, HOPPER_LADEN);
         }
 
         // A chest cart, and anything else with an inventory: a box of goods on a cart is what that
         // pair describes, and there is nothing else to measure a modded container cart by.
         if (cart instanceof AbstractMinecartContainer container) {
-            return between(container, CHEST_MASS, CHEST_LADEN);
+            return interpolatedMass(container, CHEST_MASS, CHEST_LADEN);
         }
 
         return EMPTY_MASS;
@@ -333,11 +333,12 @@ public enum RailForces {
     // reading vanilla's friction is built from, so neither model has to measure a cart twice. An
     // unopened loot cart reads as full, which is vanilla's own choice at
     // AbstractMinecartContainer:102.
-    private static double between(AbstractMinecartContainer container, double empty, double full) {
-        double fill = container.getContainerLootTable() != null
+    private static double interpolatedMass(
+            AbstractMinecartContainer container, double empty, double full) {
+        double fillSignal = container.getContainerLootTable() != null
                 ? FULL_SIGNAL
                 : AbstractContainerMenu.getRedstoneSignalFromContainer(container);
 
-        return empty + (full - empty) * fill / FULL_SIGNAL;
+        return empty + (full - empty) * fillSignal / FULL_SIGNAL;
     }
 }

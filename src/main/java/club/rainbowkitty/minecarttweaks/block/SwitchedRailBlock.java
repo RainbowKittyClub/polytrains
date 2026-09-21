@@ -84,9 +84,9 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
 
     static {
         for (Direction facing : Direction.Plane.HORIZONTAL) {
-            int y = ((int) facing.toYRot() + 180) % 360;
-            BRANCH_BACK.put(facing, borrow("switch_rail_unpowered", y));
-            BRANCH_FORWARD.put(facing, borrow("switch_rail_powered", y));
+            int yRotation = ((int) facing.toYRot() + 180) % 360;
+            BRANCH_BACK.put(facing, borrow("switch_rail_unpowered", yRotation));
+            BRANCH_FORWARD.put(facing, borrow("switch_rail_powered", yRotation));
         }
     }
 
@@ -172,17 +172,18 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
      * once the step is under way — so a switch just past a bend used to be read the pre-bend way.
      */
     public static void steerAhead(ServerLevel level, AbstractMinecart cart, BlockPos pos) {
-        BlockPos next = RailPath.ahead(level, pos, cart.getDeltaMovement());
+        BlockPos nextPos = RailPath.ahead(level, pos, cart.getDeltaMovement());
 
-        if (next == null) {
+        if (nextPos == null) {
             return;
         }
 
-        int east = next.getX() - pos.getX();
-        int south = next.getZ() - pos.getZ();
+        int eastDelta = nextPos.getX() - pos.getX();
+        int southDelta = nextPos.getZ() - pos.getZ();
 
-        if (east != 0 || south != 0) {
-            orient(level, next, Direction.getApproximateNearest(east, 0.0, south), cart);
+        if (eastDelta != 0 || southDelta != 0) {
+            orient(level, nextPos,
+                    Direction.getApproximateNearest(eastDelta, 0.0, southDelta), cart);
         }
     }
 
@@ -250,24 +251,24 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         return forward ? facing.getOpposite() : facing;
     }
 
-    // The flat rail shape whose two ends are a and b.
-    private static RailShape curve(Direction a, Direction b) {
-        boolean n = a == Direction.NORTH || b == Direction.NORTH;
-        boolean s = a == Direction.SOUTH || b == Direction.SOUTH;
-        boolean e = a == Direction.EAST || b == Direction.EAST;
-        if (n && s) {
+    // The flat rail shape whose two ends are endA and endB.
+    private static RailShape curve(Direction endA, Direction endB) {
+        boolean hasNorth = endA == Direction.NORTH || endB == Direction.NORTH;
+        boolean hasSouth = endA == Direction.SOUTH || endB == Direction.SOUTH;
+        boolean hasEast = endA == Direction.EAST || endB == Direction.EAST;
+        if (hasNorth && hasSouth) {
             return RailShape.NORTH_SOUTH;
         }
-        if (e && (a == Direction.WEST || b == Direction.WEST)) {
+        if (hasEast && (endA == Direction.WEST || endB == Direction.WEST)) {
             return RailShape.EAST_WEST;
         }
-        if (s && e) {
+        if (hasSouth && hasEast) {
             return RailShape.SOUTH_EAST;
         }
-        if (s) {
+        if (hasSouth) {
             return RailShape.SOUTH_WEST;
         }
-        return e ? RailShape.NORTH_EAST : RailShape.NORTH_WEST;
+        return hasEast ? RailShape.NORTH_EAST : RailShape.NORTH_WEST;
     }
 
     // Points one switch at a car travelling the given way; any other block at pos is left alone. A
@@ -404,10 +405,11 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
     }
 
     // Reserves one Polymer block state showing the named model at the given yaw.
-    private static BlockState borrow(String model, int yRotation) {
+    private static BlockState borrow(String modelName, int yRotation) {
         return PolymerBlockResourceUtils.requestBlock(
                 BlockModelType.TRIPWIRE_FLAT,
                 MultiPolymerBlockModel.of().with(
-                        PolymerBlockModel.of(MinecartTweaks.id("block/" + model), 0, yRotation)));
+                        PolymerBlockModel.of(
+                                MinecartTweaks.id("block/" + modelName), 0, yRotation)));
     }
 }

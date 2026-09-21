@@ -108,7 +108,7 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     @Override
     public double minecarttweaks$driveAcceleration() {
         return minecarttweaks$driving()
-                ? RailForces.of(level()).engineOutput(TrainCoupling.drivenSpeed(this))
+                ? RailForces.forLevel(level()).engineOutput(TrainCoupling.drivenSpeed(this))
                 : 0.0;
     }
 
@@ -128,15 +128,15 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         // together do not each fire their own turn on the same tick and undo one another.
         minecarttweaks$stalled = 0;
 
-        BlockPos on = getCurrentBlockPosOrRailBelow();
-        BlockPos exit = RailPath.ahead(level(), on, heading.horizontal());
+        BlockPos railPos = getCurrentBlockPosOrRailBelow();
+        BlockPos exitRailPos = RailPath.ahead(level(), railPos, heading.horizontal());
 
-        if (exit == null) {
+        if (exitRailPos == null) {
             return;
         }
 
-        push = Vec3.atLowerCornerOf(exit.subtract(on)).horizontal().normalize();
-        minecarttweaks$headingRail = on;
+        push = minecarttweaks$railHeading(railPos, exitRailPos);
+        minecarttweaks$headingRail = railPos;
     }
 
     // Vanilla halves a furnace cart's ceiling, leaving the engine slower than the carts it tows
@@ -151,9 +151,10 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         // it heads, so the halving has to be settled before the lowest figure is looked for. This
         // is the outermost override for a furnace cart, so the generic hook stands down and both
         // happen here.
-        double own = RailForces.of(level).topSpeed(cir.getReturnValueD(), super.getMaxSpeed(level));
+        double ownTopSpeed = RailForces.forLevel(level)
+                .topSpeed(cir.getReturnValueD(), super.getMaxSpeed(level));
 
-        cir.setReturnValue(TrainCoupling.trainCeiling(this, level, own));
+        cir.setReturnValue(TrainCoupling.trainCeiling(this, level, ownTopSpeed));
     }
 
     // Vanilla's powered branch decays the cart's own speed and re-adds the impulse each tick, so
@@ -170,7 +171,7 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
             // Cancelling here means the return hook below never sees this cart, so the retarding
             // law is asked for on the spot. The super call no longer applies one of its own — the
             // generic hook skips a furnace cart precisely so this is the only place it lands.
-            cir.setReturnValue(RailForces.of(level()).retarded(this, deltaMovement,
+            cir.setReturnValue(RailForces.forLevel(level()).retarded(this, deltaMovement,
                     super.applyNaturalSlowdown(deltaMovement.multiply(0.98, 0.0, 0.98))));
             return;
         }
@@ -192,14 +193,14 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         // U-turn swings the cart ninety degrees in one step, so that is ordinary track, not an
         // edge case. Aiming first sidesteps this: the heading is already parallel to the
         // movement, so vanilla's own projection becomes a no-op.
-        double floor = hasLink() ? IMPULSE_EPSILON : MOVING_EPSILON;
+        double movementFloorSqr = hasLink() ? IMPULSE_EPSILON : MOVING_EPSILON;
 
-        if (deltaMovement.horizontalDistanceSqr() > floor) {
+        if (deltaMovement.horizontalDistanceSqr() > movementFloorSqr) {
             minecarttweaks$aimAlong(deltaMovement.horizontal().normalize());
         }
 
         // Vanilla's engine, when the model keeps it: its own branch supplies the force from here.
-        if (!RailForces.of(level()).drivesEngine()) {
+        if (!RailForces.forLevel(level()).drivesEngine()) {
             return;
         }
 
@@ -214,7 +215,7 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         // so the clamp did the limiting — but the curve is meant to limit an engine, and needs
         // something to balance against.
         cir.setReturnValue(
-                RailForces.of(level()).retarded(this, deltaMovement, deltaMovement)
+                RailForces.forLevel(level()).retarded(this, deltaMovement, deltaMovement)
                         .add(push.scale(minecarttweaks$sharedAcceleration())));
     }
 
@@ -227,7 +228,7 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     private void minecarttweaks$furnaceFriction(
             Vec3 deltaMovement, CallbackInfoReturnable<Vec3> cir) {
         cir.setReturnValue(
-                RailForces.of(level()).retarded(this, deltaMovement, cir.getReturnValue()));
+                RailForces.forLevel(level()).retarded(this, deltaMovement, cir.getReturnValue()));
     }
 
     // Aims the engine along a heading read off the cart's movement. A reversal without leaving the
@@ -248,6 +249,11 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         minecarttweaks$headingRail = rail;
     }
 
+    @Unique
+    private Vec3 minecarttweaks$railHeading(BlockPos from, BlockPos to) {
+        return Vec3.atLowerCornerOf(to.subtract(from)).horizontal().normalize();
+    }
+
     // Force over mass either way: its own output over its own weight alone, or its train's whole
     // output over the train's weight coupled — engines behind it counted in, since only the
     // leading car reaches this and answers for all of them. Dividing the solo case too keeps a
@@ -265,7 +271,7 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         // train's figure already counts every firebox in it, so a second engine spending it again
         // on its own account spends it twice. Nothing while the placer holds the train, where only
         // this car's movement survives anyway; everything while it does not.
-        return train.leader() == this ? train.drive() : 0.0;
+        return train.leader() == this ? train.driveAcceleration() : 0.0;
     }
 
     // Reads the brake, holds chunks, and idles the fuel burn while parked.
@@ -334,10 +340,10 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         // its leading car is driven by vanilla while the rest are placed — so engines left to turn
         // one at a time end up pushing against each other. Two that do sum to nothing, and a train
         // whose engines sum to nothing cannot start itself again at all.
-        Vec3 turned = push.scale(-1.0);
+        Vec3 reversedHeading = push.scale(-1.0);
 
         for (AbstractMinecart car : Train.of(this).cars()) {
-            car.minecarttweaks$turnEngine(turned);
+            car.minecarttweaks$turnEngine(reversedHeading);
         }
     }
 
@@ -364,45 +370,46 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     // cart is safe — the brake ignores the impulse — and aims it for when the rail powers up.
     @Unique
     private void minecarttweaks$setImpulse(Vec3 direction) {
-        Vec3 along = minecarttweaks$alongRail(direction);
+        Vec3 railHeading = minecarttweaks$alongRail(direction);
 
-        if (along == null) {
+        if (railHeading == null) {
             return;
         }
 
-        push = along;
+        push = railHeading;
 
         // Stamped so that aiming a cart back the way it came holds: the movement it still carries
         // reads as a reversal next tick, and only a stamp on this rail has that refused.
         minecarttweaks$headingRail = getCurrentBlockPosOrRailBelow();
     }
 
-    // The rail's own direction nearest {@code want}, or null to keep the heading the cart has.
-    // Every impulse but the one read off the cart's own movement starts as a direction to the
-    // player, and a track is as often square to that as along it. Left unprojected that drives a
-    // standing cart at the rail rather than along it, and vanilla's stepper breaks the tie between
-    // two exits it agrees with equally — out of whichever end rounding favours, flipping the cart.
+    // The rail's own direction nearest {@code wantedHeading}, or null to keep the heading the
+    // cart has. Every impulse but the one read off the cart's own movement starts as a direction
+    // to the player, and a track is as often square to that as along it. Left unprojected that
+    // drives a standing cart at the rail rather than along it, and vanilla's stepper breaks the
+    // tie between two exits it agrees with equally — out of whichever end rounding favours,
+    // flipping the cart.
     @Unique
-    private @Nullable Vec3 minecarttweaks$alongRail(Vec3 want) {
-        Vec3 heading = want.horizontal();
+    private @Nullable Vec3 minecarttweaks$alongRail(Vec3 wantedHeading) {
+        Vec3 heading = wantedHeading.horizontal();
 
         if (heading.lengthSqr() <= IMPULSE_EPSILON) {
             return null;
         }
 
-        BlockPos on = getCurrentBlockPosOrRailBelow();
-        BlockPos exit = RailPath.ahead(level(), on, heading);
+        BlockPos railPos = getCurrentBlockPosOrRailBelow();
+        BlockPos exitRailPos = RailPath.ahead(level(), railPos, heading);
 
-        if (exit == null) {
+        if (exitRailPos == null) {
             return null;
         }
 
-        Vec3 along = Vec3.atLowerCornerOf(exit.subtract(on)).horizontal().normalize();
+        Vec3 railHeading = minecarttweaks$railHeading(railPos, exitRailPos);
 
         // Square across the track names neither end, so a cart that has a heading already keeps
         // it rather than being turned round by a top-up offered from the wrong side.
-        return heading.normalize().dot(along) > AIM_DOT || push.lengthSqr() <= IMPULSE_EPSILON
-                ? along
+        return heading.normalize().dot(railHeading) > AIM_DOT || push.lengthSqr() <= IMPULSE_EPSILON
+                ? railHeading
                 : null;
     }
 
@@ -423,11 +430,11 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     // Aims a standing cart where the player is looking.
     @Unique
     private void minecarttweaks$aimAlongLook(Player player) {
-        Vec3 look = player.getLookAngle().horizontal();
+        Vec3 lookDirection = player.getLookAngle().horizontal();
 
         if (getDeltaMovement().horizontalDistanceSqr() <= MOVING_EPSILON
-                && look.lengthSqr() > IMPULSE_EPSILON) {
-            minecarttweaks$setImpulse(look);
+                && lookDirection.lengthSqr() > IMPULSE_EPSILON) {
+            minecarttweaks$setImpulse(lookDirection);
         }
     }
 

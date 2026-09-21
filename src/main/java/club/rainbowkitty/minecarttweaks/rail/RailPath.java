@@ -81,22 +81,23 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         }
 
         if (start.equals(goal)) {
-            Vec3 direct = to.position().subtract(from.position()).horizontal();
+            Vec3 displacement = to.position().subtract(from.position()).horizontal();
 
-            if (direct.lengthSqr() < EPSILON * EPSILON) {
+            if (displacement.lengthSqr() < EPSILON * EPSILON) {
                 return null;
             }
 
-            Vec3 back = direct.reverse().normalize();
-            return new RailPath(direct.length(), back, back);
+            Vec3 backDirection = displacement.reverse().normalize();
+            return new RailPath(displacement.length(), backDirection, backDirection);
         }
 
         // On a circuit short enough that both ways round come in under the limit, the nearer one is
         // the gap; whichever was walked first would sometimes be the long way round.
         RailPath nearest = null;
 
-        for (BlockPos first : neighbours(level, start, from.getDeltaMovement(), Switches.JOINED)) {
-            RailPath path = walk(level, from, to, start, first, goal, limit);
+        for (BlockPos firstStep
+                : neighbours(level, start, from.getDeltaMovement(), Switches.JOINED)) {
+            RailPath path = walk(level, from, to, start, firstStep, goal, limit);
 
             if (path != null && (nearest == null || path.distance() < nearest.distance())) {
                 nearest = path;
@@ -109,21 +110,21 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
 
     /**
      * Whether the rail {@code cart} stands on climbs, drops or runs level in the direction of
-     * {@code towards}: 1, -1 or 0.
+     * {@code towardsDirection}: 1, -1 or 0.
      *
      * <p>The direction is an argument rather than the cart's own movement, which a cart standing
      * still has none of. A train stalled on a hill is exactly when its grade has to be legible,
      * and the direction is then the line its cars lie along rather than anything they are doing.
      */
-    public static int grade(AbstractMinecart cart, Vec3 towards) {
+    public static int grade(AbstractMinecart cart, Vec3 towardsDirection) {
         BlockState state = cart.level().getBlockState(cart.getCurrentBlockPosOrRailBelow());
-        Vec3 along = towards.horizontal();
+        Vec3 alongDirection = towardsDirection.horizontal();
 
-        if (!BaseRailBlock.isRail(state) || along.lengthSqr() < EPSILON * EPSILON) {
+        if (!BaseRailBlock.isRail(state) || alongDirection.lengthSqr() < EPSILON * EPSILON) {
             return 0;
         }
 
-        return grade(state, along);
+        return grade(state, alongDirection);
     }
 
     /**
@@ -136,16 +137,18 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         }
 
         BlockPos[] around = neighbours(level, pos, movement);
-        Vec3 out = direction(pos, exitTaken(around, pos, movement));
-        Vec3 in = otherExit(around, pos, out);
+        Vec3 exitDirection = direction(pos, exitTaken(around, pos, movement));
+        Vec3 entryDirection = otherExit(around, pos, exitDirection);
         BlockState state = level.getBlockState(pos);
-        Vec3 floor = Vec3.atBottomCenterOf(pos);
+        Vec3 floorPosition = Vec3.atBottomCenterOf(pos);
 
         return new Crossing(
-                floor.add(in.scale(0.5)).add(0.0, edgeHeight(state, in, movement), 0.0),
-                floor.add(out.scale(0.5)).add(0.0, edgeHeight(state, out, movement), 0.0),
-                out,
-                span(around, pos, out));
+                floorPosition.add(entryDirection.scale(0.5))
+                        .add(0.0, edgeHeight(state, entryDirection, movement), 0.0),
+                floorPosition.add(exitDirection.scale(0.5))
+                        .add(0.0, edgeHeight(state, exitDirection, movement), 0.0),
+                exitDirection,
+                span(around, pos, exitDirection));
     }
 
     /**
@@ -178,13 +181,13 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
             Level level, BlockPos pos, Vec3 movement, Switches switches) {
         BlockState state = level.getBlockState(pos);
         var exits = AbstractMinecart.exits(shape(state, movement, switches));
-        Vec3i first = exits.getFirst();
-        Vec3i second = exits.getSecond();
-        boolean sloped = first.getY() != second.getY();
+        Vec3i firstExit = exits.getFirst();
+        Vec3i secondExit = exits.getSecond();
+        boolean sloped = firstExit.getY() != secondExit.getY();
 
         return new BlockPos[] {
-                neighbour(level, pos, first, sloped && first.getY() == 0),
-                neighbour(level, pos, second, sloped && second.getY() == 0)};
+                neighbour(level, pos, firstExit, sloped && firstExit.getY() == 0),
+                neighbour(level, pos, secondExit, sloped && secondExit.getY() == 0)};
     }
 
     // How high above its own block the rail runs at the edge in the direction of edge. Level track
@@ -193,32 +196,33 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     // a placed car and a car vanilla stepped agree about where the rail is.
     private static double edgeHeight(BlockState state, Vec3 edge, Vec3 movement) {
         var exits = AbstractMinecart.exits(shape(state, movement, Switches.LAID));
-        Vec3i first = exits.getFirst();
-        Vec3i second = exits.getSecond();
+        Vec3i firstExit = exits.getFirst();
+        Vec3i secondExit = exits.getSecond();
 
-        if (first.getY() == second.getY()) {
+        if (firstExit.getY() == secondExit.getY()) {
             return RAIL_LIFT;
         }
 
         // The exit marked level is the one the rail climbs towards; the other marks the low end.
-        Vec3i high = first.getY() == 0 ? first : second;
+        Vec3i high = firstExit.getY() == 0 ? firstExit : secondExit;
 
-        return towards(high, edge) > 0.0 ? 1.0 + RAIL_LIFT : RAIL_LIFT;
+        return outwardComponent(high, edge) > 0.0 ? 1.0 + RAIL_LIFT : RAIL_LIFT;
     }
 
-    // Whether the rail climbs, drops or runs level in the direction of out.
-    private static int grade(BlockState state, Vec3 out) {
-        var exits = AbstractMinecart.exits(shape(state, out, Switches.LAID));
-        Vec3i first = exits.getFirst();
-        Vec3i second = exits.getSecond();
+    // Whether the rail climbs, drops or runs level in the direction of alongDirection.
+    private static int grade(BlockState state, Vec3 alongDirection) {
+        var exits = AbstractMinecart.exits(shape(state, alongDirection, Switches.LAID));
+        Vec3i firstExit = exits.getFirst();
+        Vec3i secondExit = exits.getSecond();
 
-        if (first.getY() == second.getY()) {
+        if (firstExit.getY() == secondExit.getY()) {
             return 0;
         }
 
         // On a slope the exit marked level is the one the rail climbs towards, and the other is
         // marked a block down; it is a label for which end is which, not an offset to travel by.
-        double climb = towards(first.getY() == 0 ? first : second, out);
+        double climb = outwardComponent(
+                firstExit.getY() == 0 ? firstExit : secondExit, alongDirection);
 
         // A direction across the slope rather than along it climbs neither way. Cannot arise from
         // an exit, which is always on the axis, but a chord between two carts can lie anywhere.
@@ -227,40 +231,40 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
 
     // Whichever of the block's two exits the movement is heading closest to.
     private static BlockPos exitTaken(BlockPos[] around, BlockPos pos, Vec3 movement) {
-        double first = direction(pos, around[0]).dot(movement);
-        double second = direction(pos, around[1]).dot(movement);
+        double firstAlignment = direction(pos, around[0]).dot(movement);
+        double secondAlignment = direction(pos, around[1]).dot(movement);
 
-        return first >= second ? around[0] : around[1];
+        return firstAlignment >= secondAlignment ? around[0] : around[1];
     }
 
     // How much of forward points out of the block by exit.
-    private static double towards(Vec3i exit, Vec3 forward) {
+    private static double outwardComponent(Vec3i exit, Vec3 forward) {
         return forward.x * exit.getX() + forward.z * exit.getZ();
     }
 
-    // Walks the track from start out through first, returning the path to goal or null if the walk
-    // runs off the rails, dead-ends or passes the limit.
+    // Walks the track from start out through firstStep, returning the path to goal or null if the
+    // walk runs off the rails, dead-ends or passes the limit.
     private static @Nullable RailPath walk(Level level, Entity from, Entity to,
-            BlockPos start, BlockPos first, BlockPos goal, double limit) {
-        Vec3 fromExit = direction(start, first);
+            BlockPos start, BlockPos firstStep, BlockPos goal, double limit) {
+        Vec3 fromExit = direction(start, firstStep);
         BlockPos previous = start;
-        BlockPos current = first;
-        double between = 0.0;
+        BlockPos current = firstStep;
+        double walkedDistance = 0.0;
 
         // Bounded by the track walked, not the blocks it took: a corner is worth seven tenths of a
         // block, so spending the limit one block per step left a link round a bend barely two
         // thirds the reach a straight one got. The cap only guards a circuit short enough to loop.
         int maxSteps = (int) Math.ceil(limit / MIN_BLOCK_SPAN) + 1;
 
-        for (int steps = 1; steps <= maxSteps && between <= limit; steps++) {
+        for (int steps = 1; steps <= maxSteps && walkedDistance <= limit; steps++) {
             if (current.equals(goal)) {
                 Vec3 toEntry = direction(current, previous);
 
                 // Each block is worth the run of track across it, not a flat one: a corner is only
                 // the chord between two adjacent edges, about seven tenths of a block.
-                double distance = crossing(level, from.position(), start, fromExit)
-                        + between
-                        + crossing(level, to.position(), goal, toEntry);
+                double distance = distanceToExit(level, from.position(), start, fromExit)
+                        + walkedDistance
+                        + distanceToExit(level, to.position(), goal, toEntry);
 
                 return new RailPath(distance,
                         otherExit(neighbours(level, start, fromExit, Switches.JOINED), start,
@@ -276,7 +280,7 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
             Vec3 movement = direction(previous, current);
             BlockPos[] around = neighbours(level, current, movement, Switches.JOINED);
             BlockPos onward = exitTaken(around, current, movement);
-            between += span(around, current, direction(current, onward));
+            walkedDistance += span(around, current, direction(current, onward));
 
             previous = current;
             current = onward;
@@ -286,19 +290,19 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     }
 
     // How much of block a cart at position has left to cross before its exit.
-    private static double crossing(Level level, Vec3 position, BlockPos block, Vec3 exit) {
-        Vec3 leaving = Vec3.atCenterOf(block).horizontal().add(exit.scale(0.5));
+    private static double distanceToExit(Level level, Vec3 position, BlockPos block, Vec3 exit) {
+        Vec3 leavingPosition = Vec3.atCenterOf(block).horizontal().add(exit.scale(0.5));
 
-        return Math.min(position.horizontal().distanceTo(leaving),
+        return Math.min(position.horizontal().distanceTo(leavingPosition),
                 span(neighbours(level, block, exit, Switches.JOINED), block, exit));
     }
 
     // The run of track across block, between the midpoints of its two edges.
     private static double span(BlockPos[] around, BlockPos block, Vec3 exit) {
-        Vec3 centre = Vec3.atCenterOf(block).horizontal();
+        Vec3 centrePosition = Vec3.atCenterOf(block).horizontal();
 
-        return centre.add(otherExit(around, block, exit).scale(0.5))
-                .distanceTo(centre.add(exit.scale(0.5)));
+        return centrePosition.add(otherExit(around, block, exit).scale(0.5))
+                .distanceTo(centrePosition.add(exit.scale(0.5)));
     }
 
     // The exit a cart entering through exit would leave by.
@@ -344,16 +348,16 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     // A rail's exits are orthogonal, so the answer is always one of four unit vectors: looked up
     // rather than built, since the walk asks this several times per block per link per tick.
     private static Vec3 direction(BlockPos from, BlockPos to) {
-        int x = Integer.signum(to.getX() - from.getX());
+        int xSign = Integer.signum(to.getX() - from.getX());
 
-        if (x != 0) {
-            return x > 0 ? EAST : WEST;
+        if (xSign != 0) {
+            return xSign > 0 ? EAST : WEST;
         }
 
-        int z = Integer.signum(to.getZ() - from.getZ());
+        int zSign = Integer.signum(to.getZ() - from.getZ());
 
-        if (z != 0) {
-            return z > 0 ? SOUTH : NORTH;
+        if (zSign != 0) {
+            return zSign > 0 ? SOUTH : NORTH;
         }
 
         return Vec3.ZERO;

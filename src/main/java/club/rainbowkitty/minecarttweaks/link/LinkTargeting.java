@@ -93,16 +93,16 @@ public final class LinkTargeting {
         }
 
         AbstractMinecart aimed = Crosshair.entity(player, AbstractMinecart.class);
-        boolean phase = (level.getGameTime() % (BLINK_TICKS * 2L)) < BLINK_TICKS;
+        boolean blinkOn = (level.getGameTime() % (BLINK_TICKS * 2L)) < BLINK_TICKS;
         List<Outline> wanted = new ArrayList<>(2);
 
         if (selected != null) {
-            wanted.add(new Outline(selected.getId(), TeamColor.YELLOW, phase));
+            wanted.add(new Outline(selected.getId(), TeamColor.YELLOW, blinkOn));
         }
 
         if (aimed != null && aimed != selected) {
             wanted.add(new Outline(aimed.getId(),
-                    LinkAction.canUse(player, level, selected, aimed)
+                    LinkAction.wouldAct(player, level, selected, aimed)
                             ? TeamColor.GREEN
                             : TeamColor.RED,
                     true));

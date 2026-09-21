@@ -145,10 +145,10 @@ public enum CartInteraction {
      * the same for a lone cart and for the head of a train of fifty.
      */
     public static boolean injures(AbstractMinecart cart) {
-        double limit = threshold(cart, ModGameRules.CART_IMPACT_SPEED, Double.MAX_VALUE);
+        double speedLimit = threshold(cart, ModGameRules.CART_IMPACT_SPEED, Double.MAX_VALUE);
 
         // Squared: this is on the per-candidate path, where impactSpeed's sqrt is not worth taking.
-        return cart.getDeltaMovement().lengthSqr() > limit * limit;
+        return cart.getDeltaMovement().lengthSqr() > speedLimit * speedLimit;
     }
 
     /**
@@ -158,10 +158,10 @@ public enum CartInteraction {
      * is the whole of what the pickup site has to ask.
      */
     public static boolean gathers(AbstractMinecart cart) {
-        double limit = threshold(cart, ModGameRules.CART_PICKUP_SPEED, 0.0);
+        double speedLimit = threshold(cart, ModGameRules.CART_PICKUP_SPEED, 0.0);
 
         return cart.isRideable() && !cart.isVehicle()
-                && cart.getDeltaMovement().lengthSqr() < limit * limit;
+                && cart.getDeltaMovement().lengthSqr() < speedLimit * speedLimit;
     }
 
     /** Whether the cart's movement is stopped by it — what {@code canCollideWith} answers. */
@@ -182,30 +182,31 @@ public enum CartInteraction {
     // Both boxes are the held (already-computed) ones, so the answer doesn't depend on which cart
     // of the pair asks first, or how much of the tick either has already spent.
     private static boolean crossing(AbstractMinecart cart, AbstractMinecart other) {
-        AABB mine = cart.minecarttweaks$sweptBox();
-        AABB theirs = other.minecarttweaks$sweptBox();
+        AABB cartBox = cart.minecarttweaks$sweptBox();
+        AABB otherBox = other.minecarttweaks$sweptBox();
 
-        if (!mine.intersects(theirs)) {
+        if (!cartBox.intersects(otherBox)) {
             return false;
         }
 
         // Boxes are world space, and track that doubles back inside a block or two lays two carts'
         // boxes across each other that the rails run yards apart — either side of a tight turn is
-        // not about to meet, however close the two read. Settled along the track instead: the run
-        // between them has to be inside the ground the two of them cover between them.
+        // not about to meet, however close the two read. Settled along the track instead: the
+        // combined reach between them has to be inside the ground the two of them cover between
+        // them.
         //
         // Asked both ways round and taken if either answers, which is what keeps it symmetric: the
         // walk starts from the cart it is asked of, and erring towards a collision is the side to
         // err on.
-        double run = reach(mine) + reach(theirs);
+        double combinedReach = reach(cartBox) + reach(otherBox);
 
-        return RailPath.between(cart, other, run) != null
-                || RailPath.between(other, cart, run) != null;
+        return RailPath.between(cart, other, combinedReach) != null
+                || RailPath.between(other, cart, combinedReach) != null;
     }
 
     // How far one swept box reaches, as the longer of its horizontal sides.
-    private static double reach(AABB swept) {
-        return Math.max(swept.getXsize(), swept.getZsize());
+    private static double reach(AABB sweptBox) {
+        return Math.max(sweptBox.getXsize(), sweptBox.getZsize());
     }
 
     // Whether the placer is holding this pair at fixed offsets, in which case neither is solid to
@@ -227,13 +228,13 @@ public enum CartInteraction {
     // on the model instead of its own rule because it's the one place this mod's forces break
     // something the player built.
     private static boolean wrecks(AbstractMinecart cart, AbstractMinecart other) {
-        if (!RailForces.of(cart.level()).wrecks()) {
+        if (!RailForces.forLevel(cart.level()).wrecks()) {
             return false;
         }
 
-        double limit = threshold(cart, PhysicsGameRules.CART_WRECK_MOMENTUM, 0.0);
+        double momentumLimit = threshold(cart, PhysicsGameRules.CART_WRECK_MOMENTUM, 0.0);
 
-        return limit > 0 && TrainCoupling.closingMomentum(cart, other) > limit;
+        return momentumLimit > 0 && TrainCoupling.closingMomentum(cart, other) > momentumLimit;
     }
 
     // Vanilla's own pickup filter, plus a speed of its own: only a cart slow enough to stop for

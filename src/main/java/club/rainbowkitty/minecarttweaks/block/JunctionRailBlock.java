@@ -78,12 +78,12 @@ public class JunctionRailBlock extends BaseRailBlock implements PolymerTexturedB
      * only the leading car reading rails at all.
      */
     public static void steerAhead(Level level, AbstractMinecart cart, BlockPos pos) {
-        BlockPos next = RailPath.ahead(level, pos, cart.getDeltaMovement());
+        BlockPos nextPos = RailPath.ahead(level, pos, cart.getDeltaMovement());
 
-        if (next != null) {
+        if (nextPos != null) {
             // Along the step onto it rather than the cart's heading: vanilla turns the delta onto
             // the rail inside the step, so a junction just past a bend was laid on the old axis.
-            lay(level, next, Vec3.atLowerCornerOf(next.subtract(pos)).horizontal());
+            lay(level, nextPos, Vec3.atLowerCornerOf(nextPos.subtract(pos)).horizontal());
         }
     }
 

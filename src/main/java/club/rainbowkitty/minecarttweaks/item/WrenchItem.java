@@ -35,7 +35,7 @@ import club.rainbowkitty.minecarttweaks.link.WrenchMode;
 public class WrenchItem extends Item implements PolymerItem {
 
     // Shown when the switch will not throw because a cart is standing on it.
-    private static final Component OCCUPIED =
+    private static final Component OCCUPIED_MESSAGE =
             Component.translatable(MinecartTweaks.MOD_ID + ".switch.occupied")
                     .withStyle(ChatFormatting.RED);
 
@@ -123,7 +123,7 @@ public class WrenchItem extends Item implements PolymerItem {
         level.playSound(null, pos, SoundEvents.DISPENSER_FAIL, SoundSource.BLOCKS, 0.6F, 1.0F);
 
         if (player != null) {
-            player.sendOverlayMessage(OCCUPIED);
+            player.sendOverlayMessage(OCCUPIED_MESSAGE);
         }
     }
 }

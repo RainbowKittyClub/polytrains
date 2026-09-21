@@ -11,10 +11,10 @@ import net.minecraft.core.UUIDUtil;
 /**
  * A cart's link state: two unordered neighbour slots, each holding a linked cart's UUID.
  *
- * @param first one neighbour slot
- * @param second the other neighbour slot
+ * @param slotA one neighbour slot
+ * @param slotB the other neighbour slot
  */
-public record LinkableData(Optional<UUID> first, Optional<UUID> second) {
+public record LinkableData(Optional<UUID> slotA, Optional<UUID> slotB) {
 
     /** The link state with neither slot occupied. */
     public static final LinkableData EMPTY = new LinkableData(Optional.empty(), Optional.empty());
@@ -22,18 +22,18 @@ public record LinkableData(Optional<UUID> first, Optional<UUID> second) {
     /** Persistence codec for this record. */
     public static final Codec<LinkableData> CODEC = RecordCodecBuilder.create(instance ->
             instance.group(
-                    UUIDUtil.CODEC.optionalFieldOf("first").forGetter(LinkableData::first),
-                    UUIDUtil.CODEC.optionalFieldOf("second").forGetter(LinkableData::second)
+                    UUIDUtil.CODEC.optionalFieldOf("slotA").forGetter(LinkableData::slotA),
+                    UUIDUtil.CODEC.optionalFieldOf("slotB").forGetter(LinkableData::slotB)
             ).apply(instance, LinkableData::new));
 
     /** Returns whether either slot is in use. */
     public boolean hasLink() {
-        return first.isPresent() || second.isPresent();
+        return slotA.isPresent() || slotB.isPresent();
     }
 
     /** Returns whether either slot is free. */
     public boolean hasFreeSlot() {
-        return first.isEmpty() || second.isEmpty();
+        return slotA.isEmpty() || slotB.isEmpty();
     }
 
     /**
@@ -41,7 +41,7 @@ public record LinkableData(Optional<UUID> first, Optional<UUID> second) {
      * resolves to, so it still answers for a neighbour that is not currently loaded.
      */
     public boolean holds(UUID id) {
-        return first.filter(id::equals).isPresent() || second.filter(id::equals).isPresent();
+        return slotA.filter(id::equals).isPresent() || slotB.filter(id::equals).isPresent();
     }
 
     /**
@@ -52,11 +52,11 @@ public record LinkableData(Optional<UUID> first, Optional<UUID> second) {
         if (holds(id)) {
             return this;
         }
-        if (first.isEmpty()) {
-            return new LinkableData(Optional.of(id), second);
+        if (slotA.isEmpty()) {
+            return new LinkableData(Optional.of(id), slotB);
         }
-        if (second.isEmpty()) {
-            return new LinkableData(first, Optional.of(id));
+        if (slotB.isEmpty()) {
+            return new LinkableData(slotA, Optional.of(id));
         }
         return this;
     }
@@ -64,7 +64,7 @@ public record LinkableData(Optional<UUID> first, Optional<UUID> second) {
     /** Returns a copy with the given UUID cleared from both slots. */
     public LinkableData withoutNeighbour(UUID id) {
         return new LinkableData(
-                first.filter(held -> !held.equals(id)),
-                second.filter(held -> !held.equals(id)));
+                slotA.filter(held -> !held.equals(id)),
+                slotB.filter(held -> !held.equals(id)));
     }
 }

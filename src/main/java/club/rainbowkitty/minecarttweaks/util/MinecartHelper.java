@@ -47,8 +47,8 @@ public final class MinecartHelper {
         // was answered, not on which hand holds what, so swapping hands mid-click can't change the
         // outcome.
         if (hand == InteractionHand.OFF_HAND
-                && level instanceof ServerLevel answered
-                && EntityAttachments.answeredUseAt(player, answered.getGameTime())) {
+                && level instanceof ServerLevel serverLevel
+                && EntityAttachments.answeredUseAt(player, serverLevel.getGameTime())) {
             return InteractionResult.PASS;
         }
 
@@ -65,18 +65,18 @@ public final class MinecartHelper {
             // The client answers its own click so its hand swings without waiting on the server;
             // everything the link itself needs is server-side.
             if (!(level instanceof ServerLevel serverLevel)
-                    || !(player instanceof ServerPlayer viewer)) {
+                    || !(player instanceof ServerPlayer serverPlayer)) {
                 return InteractionResult.SUCCESS;
             }
 
             EntityAttachments.setAnsweredUseAt(player, serverLevel.getGameTime());
 
             if (!ModGameRules.trainsEnabled(serverLevel)) {
-                LinkTargeting.notice(viewer, LinkRefusal.DISABLED.message());
+                LinkTargeting.notice(serverPlayer, LinkRefusal.DISABLED.message());
                 return InteractionResult.FAIL;
             }
 
-            LinkAction.useWrench(viewer, serverLevel, minecart);
+            LinkAction.useWrench(serverPlayer, serverLevel, minecart);
             return InteractionResult.SUCCESS;
         }
 
@@ -92,8 +92,8 @@ public final class MinecartHelper {
     }
 
     /**
-     * Points the cart {@code behavior} drives along the rail at {@code on}, whichever of that
-     * rail's two directions {@code look} agrees with.
+     * Points the cart {@code behavior} drives along the rail at {@code railPos}, whichever of that
+     * rail's two directions {@code lookDirection} agrees with.
      *
      * <p>Settled as the cart is placed, not read off its first movement — a cart has a front (its
      * chain hangs off one end), so one that later runs backward stays backward instead of turning
@@ -104,11 +104,11 @@ public final class MinecartHelper {
      * the cart end-for-end if it's the opposite.
      */
     public static void faceAlongRail(
-            Level level, BlockPos on, MinecartBehavior behavior, Vec3 look) {
-        BlockPos exit = RailPath.ahead(level, on, look.horizontal());
+            Level level, BlockPos railPos, MinecartBehavior behavior, Vec3 lookDirection) {
+        BlockPos exit = RailPath.ahead(level, railPos, lookDirection.horizontal());
 
         if (exit != null) {
-            behavior.setYRot(yawOf(Vec3.atLowerCornerOf(exit.subtract(on)).horizontal()));
+            behavior.setYRot(yawOf(Vec3.atLowerCornerOf(exit.subtract(railPos)).horizontal()));
         }
     }
 

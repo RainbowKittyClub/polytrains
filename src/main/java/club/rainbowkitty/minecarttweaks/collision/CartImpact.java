@@ -77,22 +77,22 @@ public final class CartImpact {
         // Both ways along the movement: back over the ground just swept, so a fast cart still
         // catches what it passed clean through in one tick, and forward over the ground about to
         // be, since this runs before the cart moves and what it is bearing down on is ahead of it.
-        AABB sweep = cart.getBoundingBox()
+        AABB sweepBox = cart.getBoundingBox()
                 .expandTowards(movement.reverse())
                 .expandTowards(movement)
                 .inflate(CONTACT_SHELL);
 
         List<Entity> inReach = level.getEntities(
-                cart, sweep, other -> CartInteraction.participates(cart, other));
+                cart, sweepBox, other -> CartInteraction.participates(cart, other));
         double drag = 0.0;
 
         for (Entity other : inReach) {
-            CartInteraction hit = CartInteraction.of(cart, other);
+            CartInteraction interaction = CartInteraction.of(cart, other);
 
             if (other instanceof AbstractMinecart struck) {
                 // Both carts run this in the same tick, so the second call finds the first gone.
                 // Whoever was riding is set down unhurt: losing the carts is the whole of the cost.
-                if (hit == CartInteraction.WRECK) {
+                if (interaction == CartInteraction.WRECK) {
                     writeOff(level, cart);
                     writeOff(level, struck);
                     return;
@@ -100,13 +100,13 @@ public final class CartImpact {
 
                 // The terms of CartInteraction.pushes that the interaction in hand does not settle;
                 // asking it outright would resolve the whole pair a second time.
-                if (hit.blocks() && !TrainCoupling.sameTrain(cart, struck)) {
+                if (interaction.blocks() && !TrainCoupling.sameTrain(cart, struck)) {
                     drag += shunt(cart, struck, movement);
                 }
             }
 
             if (other instanceof LivingEntity living
-                    && hit.strikes()
+                    && interaction.strikes()
                     && living.isAlive()
                     && !living.isPassenger()) {
                 // Billed for every shove, not only for a hit that lands: what slows the train is
@@ -150,25 +150,27 @@ public final class CartImpact {
 
         // Onto the car its train is driven by, for the reason slowTrain gives: a placed car's
         // movement is written from that one, so a push left anywhere else is overwritten unused.
-        AbstractMinecart pushed = TrainCoupling.driven(struck);
-        Vec3 own = pushed.getDeltaMovement();
-        double ahead = own.dot(heading);
-        double mine = TrainCoupling.mass(cart);
-        double theirs = TrainCoupling.mass(struck);
-        double shared = (mine * movement.dot(heading) + theirs * ahead) / (mine + theirs);
+        AbstractMinecart pushed = TrainCoupling.drivenCar(struck);
+        Vec3 pushedMovement = pushed.getDeltaMovement();
+        double aheadComponent = pushedMovement.dot(heading);
+        double cartMass = TrainCoupling.mass(cart);
+        double struckMass = TrainCoupling.mass(struck);
+        double sharedSpeed = (cartMass * movement.dot(heading) + struckMass * aheadComponent)
+                / (cartMass + struckMass);
 
         // Already running away faster than the meeting would leave it: not caught up with at all.
-        if (ahead >= shared) {
+        if (aheadComponent >= sharedSpeed) {
             return 0.0;
         }
 
-        Vec3 gained = heading.scale(shared - ahead);
+        Vec3 gainedMovement = heading.scale(sharedSpeed - aheadComponent);
 
-        pushed.setDeltaMovement(own.x() + gained.x(), own.y(), own.z() + gained.z());
+        pushed.setDeltaMovement(pushedMovement.x() + gainedMovement.x(), pushedMovement.y(),
+                pushedMovement.z() + gainedMovement.z());
 
         // In the units shove returns: the momentum handed over, which slowTrain then divides by
         // what this train weighs. So what one side gains the other loses, whatever their masses.
-        return (shared - ahead) * theirs;
+        return (sharedSpeed - aheadComponent) * struckMass;
     }
 
     // Breaks the cart into its item, unless something else already removed it this tick.
@@ -181,7 +183,8 @@ public final class CartImpact {
     // Throws what the cart hit clear of the rail, mostly sideways: a shove along the track only
     // sets it running ahead to be caught again next tick. Square-rooted, so the bounds on size
     // spread the throw fourfold, not sixteenfold. Returns what the shove costs one car.
-    private static double shove(AbstractMinecart cart, LivingEntity living, double sizeFactor) {
+    private static double shove(
+            AbstractMinecart cart, LivingEntity living, double livingSizeFactor) {
         Vec3 movement = cart.getDeltaMovement();
         Vec3 heading = movement.horizontal();
 
@@ -192,33 +195,36 @@ public final class CartImpact {
         heading = heading.normalize();
 
         // Thrown to the side it already leans to, so it leaves by the shorter way round the cart.
-        Vec3 side = heading.rotateClockwise90();
-        Vec3 clear = side.scale(
-                living.position().subtract(cart.position()).dot(side) < 0.0 ? -1.0 : 1.0);
+        Vec3 sideDirection = heading.rotateClockwise90();
+        Vec3 clearDirection = sideDirection.scale(
+                living.position().subtract(cart.position()).dot(sideDirection) < 0.0 ? -1.0 : 1.0);
 
-        double give = movement.length() / Math.sqrt(sizeFactor);
-        Vec3 thrown = clear.scale(give)
-                .add(heading.scale(give * KNOCKBACK_FORWARD))
-                .add(0.0, give * KNOCKBACK_VERTICAL, 0.0);
-        Vec3 own = living.getDeltaMovement();
-        Vec3 after = new Vec3(
-                carried(own.x(), thrown.x()),
-                Math.max(own.y(), thrown.y()),
-                carried(own.z(), thrown.z()));
+        double throwSpeed = movement.length() / Math.sqrt(livingSizeFactor);
+        Vec3 thrownMovement = clearDirection.scale(throwSpeed)
+                .add(heading.scale(throwSpeed * KNOCKBACK_FORWARD))
+                .add(0.0, throwSpeed * KNOCKBACK_VERTICAL, 0.0);
+        Vec3 livingMovement = living.getDeltaMovement();
+        Vec3 afterMovement = new Vec3(
+                carried(livingMovement.x(), thrownMovement.x()),
+                Math.max(livingMovement.y(), thrownMovement.y()),
+                carried(livingMovement.z(), thrownMovement.z()));
 
-        living.setDeltaMovement(after);
+        living.setDeltaMovement(afterMovement);
         living.hurtMarked = true;
 
         // Momentum conservation along the track only; the rails take the rest. Read off the speed
         // actually gained rather than the one aimed, so a mob already flung clear costs the train
         // nothing and a train cannot brake itself to a halt on one mob it keeps clipping through.
-        return Math.max(0.0, after.subtract(own).dot(heading)) * sizeFactor / CAR_MASS;
+        return Math.max(0.0, afterMovement.subtract(livingMovement).dot(heading))
+                * livingSizeFactor / CAR_MASS;
     }
 
     // The entity's own velocity or the cart's imparted push along one axis, whichever is greater in
     // the push's direction — so a mob already flung clear is neither slowed nor re-accelerated.
-    private static double carried(double own, double push) {
-        return push >= 0 ? Math.max(own, push) : Math.min(own, push);
+    private static double carried(double ownComponent, double pushComponent) {
+        return pushComponent >= 0
+                ? Math.max(ownComponent, pushComponent)
+                : Math.min(ownComponent, pushComponent);
     }
 
     // Bleeds the accumulated impact off the train: one car's worth of momentum loss spread over
@@ -231,7 +237,7 @@ public final class CartImpact {
         // the vanilla model, where every cart weighs one; under the physical model a loaded train
         // shrugs off an impact a light one of the same length would feel.
         double loss = Math.min(MAX_IMPACT_DRAG, drag / TrainCoupling.mass(cart));
-        AbstractMinecart driven = TrainCoupling.driven(cart);
+        AbstractMinecart driven = TrainCoupling.drivenCar(cart);
         Vec3 movement = driven.getDeltaMovement();
 
         driven.setDeltaMovement(

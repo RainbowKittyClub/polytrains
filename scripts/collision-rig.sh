@@ -261,9 +261,9 @@ def couple(rcon):
     for car, name in enumerate(names):
         slots = []
         if car > 0:
-            slots.append(f"first:{uuids[car - 1]}")
+            slots.append(f"slotA:{uuids[car - 1]}")
         if car < TRAIN - 1:
-            slots.append(f"{'second' if car > 0 else 'first'}:{uuids[car + 1]}")
+            slots.append(f"{'slotB' if car > 0 else 'slotA'}:{uuids[car + 1]}")
         rcon(f'data merge entity @e[tag={name},limit=1] '
              f'{{"fabric:attachments":{{"minecarttweaks:link":{{{",".join(slots)}}}}}}}')
 

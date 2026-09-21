@@ -86,7 +86,7 @@ public final class LinkAction {
      *
      * <p>The same questions the click itself asks, so what the display promises is what happens.
      */
-    public static boolean canUse(ServerPlayer player, ServerLevel serverLevel,
+    public static boolean wouldAct(ServerPlayer player, ServerLevel serverLevel,
             @Nullable AbstractMinecart first, AbstractMinecart target) {
         WrenchMode mode = EntityAttachments.getWrenchMode(player);
 
@@ -120,9 +120,9 @@ public final class LinkAction {
     public static void useWrench(
             ServerPlayer player, ServerLevel serverLevel, AbstractMinecart target) {
         WrenchMode mode = EntityAttachments.getWrenchMode(player);
-        UUID selected = EntityAttachments.getLinkSelection(player);
+        UUID selectedId = EntityAttachments.getLinkSelection(player);
 
-        if (selected == null) {
+        if (selectedId == null) {
             LinkRefusal refusal = LinkRefusal.startRefusal(player, mode, target);
 
             if (refusal != null) {
@@ -137,12 +137,12 @@ public final class LinkAction {
         }
 
         EntityAttachments.setLinkSelection(player, null);
-        Entity firstEntity = serverLevel.getEntity(selected);
+        Entity firstEntity = serverLevel.getEntity(selectedId);
 
         // Clicking the picked cart again calls the pair off, as does one whose other end has gone.
         // Said out loud: a click that silently undid the one before it reads as a click that did
         // nothing, and the answer to that is to click again, which undoes the next one too.
-        if (selected.equals(target.getUUID())
+        if (selectedId.equals(target.getUUID())
                 || !(firstEntity instanceof AbstractMinecart first)) {
             LinkTargeting.notice(player, Notice.CLEARED.message());
             target.playSound(SoundEvents.CHAIN_BREAK);

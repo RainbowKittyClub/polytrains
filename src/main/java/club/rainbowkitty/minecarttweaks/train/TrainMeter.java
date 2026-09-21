@@ -38,11 +38,11 @@ public final class TrainMeter {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     // Once a second. Per-tick output is unreadable and the numbers barely move between ticks.
-    private static final int PERIOD = 20;
+    private static final int LOG_PERIOD_TICKS = 20;
 
     // How far to walk before giving up on a pair. Past the breaking distance the coupling would
     // have severed them anyway, so a longer walk measures a train that no longer exists.
-    private static final double REACH = 2.0;
+    private static final double REACH_MULTIPLIER = 2.0;
 
     // Static-only; blocks instantiation.
     private TrainMeter() {}
@@ -53,20 +53,20 @@ public final class TrainMeter {
      * is on. Nothing here moves a cart or touches the ribbon.
      */
     public static void measure(ServerLevel level, Train train) {
-        if (!LOGGER.isDebugEnabled() || level.getGameTime() % PERIOD != 0
+        if (!LOGGER.isDebugEnabled() || level.getGameTime() % LOG_PERIOD_TICKS != 0
                 || train.size() < 2) {
             return;
         }
 
         double pitch = TrainCoupling.targetSpacing();
         List<AbstractMinecart> cars = train.cars();
-        double limit = TrainCoupling.maxLinkDistance() * REACH;
+        double pathLimit = TrainCoupling.maxLinkDistance() * REACH_MULTIPLIER;
         double worstGap = 0.0;
         double totalGap = 0.0;
-        int gaps = 0;
+        int gapCount = 0;
 
         for (int i = 1; i < cars.size(); i++) {
-            RailPath path = RailPath.between(cars.get(i - 1), cars.get(i), limit);
+            RailPath path = RailPath.between(cars.get(i - 1), cars.get(i), pathLimit);
 
             if (path == null) {
                 continue;
@@ -75,7 +75,7 @@ public final class TrainMeter {
             double error = path.distance() - pitch;
             worstGap = Math.max(worstGap, Math.abs(error));
             totalGap += error;
-            gaps++;
+            gapCount++;
         }
 
         // Not round(0.0): a train with every car off the rails measures no pair at all, and a
@@ -84,9 +84,9 @@ public final class TrainMeter {
                 "train cars={} mass={} spacing measured={}/{} worst={} mean={} "
                         + "| speed={} rail={} turn={} | {}",
                 cars.size(), round(TrainCoupling.mass(cars.getFirst())),
-                gaps, cars.size() - 1,
-                gaps == 0 ? "n/a" : round(worstGap),
-                gaps == 0 ? "n/a" : round(totalGap / gaps),
+                gapCount, cars.size() - 1,
+                gapCount == 0 ? "n/a" : round(worstGap),
+                gapCount == 0 ? "n/a" : round(totalGap / gapCount),
                 round(TrainCoupling.drivenSpeed(cars.getFirst())), underLeader(level, train),
                 round(train.turn()), ribbonReport(train, pitch));
     }
@@ -115,16 +115,16 @@ public final class TrainMeter {
         AbstractMinecart leader = train.leader();
 
         if (leader == null) {
-            return "ribbon nodes=" + ribbon.size() + " (no leading end)" + churn(ribbon);
+            return "ribbon nodes=" + ribbon.size() + " (no leading end)" + churnReport(ribbon);
         }
 
         Double leadArc = ribbon.arcOf(leader);
 
         if (leadArc == null) {
-            return "ribbon nodes=" + ribbon.size() + " (leader off ribbon)" + churn(ribbon);
+            return "ribbon nodes=" + ribbon.size() + " (leader off ribbon)" + churnReport(ribbon);
         }
 
-        double worst = 0.0;
+        double worstOffset = 0.0;
         int checked = 0;
 
         List<AbstractMinecart> behind = new ArrayList<>(train.cars());
@@ -138,30 +138,31 @@ public final class TrainMeter {
         // nearer one terminal without that saying anything about which way it is facing.
         Double nextArc = ribbon.arcOf(behind.get(1));
         double step = nextArc == null
-                ? (leadArc - ribbon.from() >= ribbon.to() - leadArc ? -pitch : pitch)
+                ? (leadArc - ribbon.nearArc() >= ribbon.farArc() - leadArc ? -pitch : pitch)
                 : Math.copySign(pitch, nextArc - leadArc);
 
         for (int i = 1; i < behind.size(); i++) {
-            Vec3 predicted = ribbon.positionAt(leadArc + i * step);
+            Vec3 predictedPosition = ribbon.positionAt(leadArc + i * step);
 
-            if (predicted == null) {
+            if (predictedPosition == null) {
                 continue;
             }
 
-            worst = Math.max(worst,
-                    predicted.horizontal().distanceTo(behind.get(i).position().horizontal()));
+            worstOffset = Math.max(worstOffset,
+                    predictedPosition.horizontal().distanceTo(
+                            behind.get(i).position().horizontal()));
             checked++;
         }
 
         return "ribbon nodes=" + ribbon.size()
-                + " span=" + round(ribbon.to() - ribbon.from())
-                + " checked=" + checked + " worst=" + round(worst) + churn(ribbon);
+                + " span=" + round(ribbon.farArc() - ribbon.nearArc())
+                + " checked=" + checked + " worst=" + round(worstOffset) + churnReport(ribbon);
     }
 
     // What the ribbon has been through to reach the state above. Resets stuck at zero is the whole
     // point of recording track by arc rather than rebuilding it; revisits climbing instead says the
     // cars are reporting from the middle, which is expected and costs nothing.
-    private static String churn(TrackRibbon ribbon) {
+    private static String churnReport(TrackRibbon ribbon) {
         return " resets=" + ribbon.resets() + " revisits=" + ribbon.revisits();
     }
 

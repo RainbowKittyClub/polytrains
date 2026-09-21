@@ -79,7 +79,7 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
 
     // The train this cart was last placed in, which knows for itself whether it is still good.
     @Unique
-    private @Nullable Train minecarttweaks$train;
+    private @Nullable Train minecarttweaks$ownTrain;
 
     // Where along its train's ribbon the placer last put this cart, and the tick it did. Zero
     // rather than a sentinel because the field starts at Java's default, so a cart's very first
@@ -93,7 +93,7 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     // heading rather than a sign along the ribbon, so that re-recording the track does not take
     // this with it — see AbstractMinecartExt.
     @Unique
-    private Vec3 minecarttweaks$nose;
+    private Vec3 minecarttweaks$ownNoseVector;
 
     // This cart's stretch of track, and the tick it was read on. The tick only matters once the
     // context is non-null, so its own zero never reads as fresh.
@@ -123,16 +123,16 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
 
     @Override
     public List<AbstractMinecart> getNeighbours() {
-        var data = EntityAttachments.getLink(minecarttweaks$self());
+        var link = EntityAttachments.getLink(minecarttweaks$self());
 
         // Walked once per car per tick, and most carts hold no links at all.
-        if (!data.hasLink()) {
+        if (!link.hasLink()) {
             return List.of();
         }
 
         var neighbours = new ArrayList<AbstractMinecart>(2);
-        minecarttweaks$collect(data.first(), neighbours);
-        minecarttweaks$collect(data.second(), neighbours);
+        minecarttweaks$collect(link.slotA(), neighbours);
+        minecarttweaks$collect(link.slotB(), neighbours);
         return neighbours;
     }
 
@@ -200,12 +200,12 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
 
     @Override
     public @Nullable Train minecarttweaks$train() {
-        return minecarttweaks$train;
+        return minecarttweaks$ownTrain;
     }
 
     @Override
     public void minecarttweaks$setTrain(Train train) {
-        minecarttweaks$train = train;
+        minecarttweaks$ownTrain = train;
     }
 
     @Override
@@ -224,13 +224,13 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     }
 
     @Override
-    public @Nullable Vec3 minecarttweaks$nose() {
-        return minecarttweaks$nose;
+    public @Nullable Vec3 minecarttweaks$noseVector() {
+        return minecarttweaks$ownNoseVector;
     }
 
     @Override
-    public void minecarttweaks$setNose(Vec3 heading) {
-        minecarttweaks$nose = heading;
+    public void minecarttweaks$setNoseVector(Vec3 heading) {
+        minecarttweaks$ownNoseVector = heading;
     }
 
     @Override
@@ -360,7 +360,7 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         // so this is the only car that can carry it, and a container cart asks for itself.
         // Resistance first and the drive on top.
         cir.setReturnValue(TrainCoupling.hauled(
-                self, RailForces.of(level()).retarded(self, movement, cir.getReturnValue())));
+                self, RailForces.forLevel(level()).retarded(self, movement, cir.getReturnValue())));
     }
 
     // This is the hook the whole resolver hangs off. Vanilla hands every pushable entity to
@@ -404,37 +404,37 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
             return;
         }
 
-        double xa = entity.getX() - getX();
-        double za = entity.getZ() - getZ();
-        double spread = xa * xa + za * za;
+        double deltaX = entity.getX() - getX();
+        double deltaZ = entity.getZ() - getZ();
+        double distanceSquared = deltaX * deltaX + deltaZ * deltaZ;
 
-        if (spread < SHOVE_EPSILON) {
+        if (distanceSquared < SHOVE_EPSILON) {
             return;
         }
 
         info.cancel();
 
-        double gap = Math.sqrt(spread);
-        Vec3 line = new Vec3(xa / gap, 0.0, za / gap);
+        double distance = Math.sqrt(distanceSquared);
+        Vec3 separationDirection = new Vec3(deltaX / distance, 0.0, deltaZ / distance);
 
         // The cart's half, vanilla's own: an impulse falling off with distance, capped at touching
         // range. Sent the ordinary way, so the Entity.push mixin divides it by the train's length.
-        Vec3 shove = line.scale(SHOVE_IMPULSE * Math.min(1.0, 1.0 / gap));
+        Vec3 shove = separationDirection.scale(SHOVE_IMPULSE * Math.min(1.0, 1.0 / distance));
         push(-shove.x(), 0.0, -shove.z());
 
         // The shover is then held to what the train has just become, by taking back all the speed
         // it is still closing at — which makes contact a wall rather than a bounce, since it can
         // never exceed the shover's own approach. Read off the car vanilla drives, where the push
         // above landed; every other car's movement is a copy the placer overwrites.
-        double closing = TrainCoupling.driven(self).getDeltaMovement().dot(line)
-                - entity.getKnownMovement().dot(line);
+        double closingSpeed = TrainCoupling.drivenCar(self).getDeltaMovement()
+                .dot(separationDirection) - entity.getKnownMovement().dot(separationDirection);
 
-        if (closing <= 0.0) {
+        if (closingSpeed <= 0.0) {
             return;
         }
 
-        Vec3 held = line.scale(closing);
-        entity.push(held.x(), 0.0, held.z());
+        Vec3 pushbackVelocity = separationDirection.scale(closingSpeed);
+        entity.push(pushbackVelocity.x(), 0.0, pushbackVelocity.z());
 
         // Player movement is client-authoritative: Entity.push only sets needsSync, which reaches
         // the entity's *trackers*, so without this their own client never hears the shove and the

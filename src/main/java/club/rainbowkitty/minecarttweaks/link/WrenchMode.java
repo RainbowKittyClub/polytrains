@@ -17,11 +17,11 @@ public enum WrenchMode implements StringRepresentable {
     public static final Codec<WrenchMode> CODEC = StringRepresentable.fromEnum(WrenchMode::values);
 
     // The string this mode (de)serializes as, independent of the enum constant's own name.
-    private final String name;
+    private final String serializedName;
 
     // Binds the serialized name to the constant.
-    WrenchMode(String name) {
-        this.name = name;
+    WrenchMode(String serializedName) {
+        this.serializedName = serializedName;
     }
 
     /** The job the wrench moves to when the player switches it. */
@@ -31,6 +31,6 @@ public enum WrenchMode implements StringRepresentable {
 
     @Override
     public String getSerializedName() {
-        return this.name;
+        return this.serializedName;
     }
 }
