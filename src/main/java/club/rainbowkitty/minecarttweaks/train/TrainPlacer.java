@@ -42,6 +42,10 @@ public final class TrainPlacer {
     // How far past flush against a blocked end still counts as touching it.
     private static final double CONTACT_SLACK = 0.2;
 
+    // How much further than a tick's travel two arcs may be and still be two ends of one move. One
+    // node's worth of track, since that is the grain a sweep is answered at.
+    private static final double SWEEP_SLACK = 1.5;
+
     // How far past a car's own box a player still counts as leaning on it.
     private static final double SHOVE_SHELL = 0.1;
 
@@ -577,7 +581,7 @@ public final class TrainPlacer {
         Vec3 forward = seat.tangent().scale(faceSign);
 
         // Fires activator rails and the like before the car's position changes underneath them.
-        sweep(train, car, arc);
+        sweep(train, car, arc, speed);
 
         car.setOldPosAndRot();
         car.setOnRails(true);
@@ -617,19 +621,20 @@ public final class TrainPlacer {
     }
 
     // Fires every activator rail a car crosses reaching its seat, then records where it ended up.
-    private static void sweep(Train train, AbstractMinecart car, double arc) {
+    private static void sweep(Train train, AbstractMinecart car, double arc, double speed) {
         if (!(car.level() instanceof ServerLevel level)
                 || !(car instanceof AbstractMinecartExt ext)) {
             return;
         }
 
-        // The car's own last recorded arc, so a car covering several blocks in one tick still
-        // fires every activator rail between there and here rather than only the one it lands on.
-        // Null once a reset has renumbered the arcs: the ground covered is then unknown, not zero,
-        // and sweeping from this seat alone still fires the rail the car is standing on.
-        Double recorded = seated(car)
-                ? ext.minecarttweaks$seatArc(train.ribbon().arcEpoch()) : null;
-        double from = recorded == null ? arc : recorded;
+        // Where the car still stands, nothing having moved it yet this tick. Read off the ribbon
+        // rather than remembered from the last sweep: a remembered arc is a figure from an older
+        // reckoning, and a change of leading end re-bases the arcs without moving a car an inch.
+        Double was = train.ribbon().arcOf(car, arc);
+
+        // Further apart than a tick's travel and the track between is not crossed ground but merely
+        // unaccounted for, so only the rail the car lands on is owed anything.
+        double from = was == null || Math.abs(was - arc) > speed + SWEEP_SLACK ? arc : was;
 
         train.ribbon().blocksBetween(from, arc, block -> {
             BlockState crossed = level.getBlockState(block);

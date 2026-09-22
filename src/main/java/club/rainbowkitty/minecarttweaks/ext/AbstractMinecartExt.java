@@ -93,7 +93,7 @@ public interface AbstractMinecartExt extends Linkable {
 
     /**
      * Records the arc this cart has just been seated at, against the arc numbering it was measured
-     * in, for the next sweep to start from.
+     * in, so that what put the cart there and what later asks where it sits cannot disagree.
      */
     public void minecarttweaks$setSeatArc(double arc, int arcEpoch);
 

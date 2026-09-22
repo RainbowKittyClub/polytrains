@@ -222,7 +222,8 @@ public final class TrackRibbon {
      * its track exactly. That answer costs the whole train, so it is worth a second question.
      */
     public @Nullable Double arcOfLeader(AbstractMinecart leader) {
-        Double best = occurrenceUnder(leader.getCurrentBlockPosOrRailBelow(), leader.position());
+        Double best = occurrenceUnder(
+                leader.getCurrentBlockPosOrRailBelow(), leader.position(), leaderArc);
 
         if (best == null) {
             best = nearestTrack(leader.position(), leader.getBbWidth());
@@ -235,9 +236,9 @@ public final class TrackRibbon {
         return best;
     }
 
-    // Where along this ribbon the occurrence of pos nearest the leading car's last arc puts a car
-    // standing at position, or null if this ribbon does not record that block at all.
-    private @Nullable Double occurrenceUnder(BlockPos pos, Vec3 position) {
+    // Where along this ribbon the occurrence of pos nearest arc near puts a car standing at
+    // position, or null if this ribbon does not record that block at all.
+    private @Nullable Double occurrenceUnder(BlockPos pos, Vec3 position, double near) {
         Double best = null;
         double nearest = Double.MAX_VALUE;
 
@@ -247,7 +248,7 @@ public final class TrackRibbon {
             }
 
             double arc = node.arc() + chordFraction(node, position) * node.span();
-            double arcGap = Math.abs(arc - leaderArc);
+            double arcGap = Math.abs(arc - near);
 
             if (arcGap < nearest) {
                 nearest = arcGap;
@@ -438,6 +439,20 @@ public final class TrackRibbon {
         }
 
         return best;
+    }
+
+    /**
+     * Where {@code car} sits along this ribbon reckoned from arc {@code near}, or null if the block
+     * it stands on is not one this ribbon records.
+     *
+     * <p>The same question {@link #arcOf(AbstractMinecart)} answers, settled differently where a
+     * block appears more than once: by which occurrence lies nearer an arc the caller names rather
+     * than nearer the leading car. Asking about a car from that car's own arc keeps the answer on
+     * that car's lap, where the leading car's cursor would put a car most of a lap behind onto the
+     * leading car's lap instead.
+     */
+    public @Nullable Double arcOf(AbstractMinecart car, double near) {
+        return occurrenceUnder(car.getCurrentBlockPosOrRailBelow(), car.position(), near);
     }
 
     /**
