@@ -291,9 +291,10 @@ public final class Train {
      *
      * <p>The train-wide half of a question the per-car {@link TrainPlacer#seated} answers the other
      * half of. That one says whether vanilla's movement is cancelled for one car, which the leading
-     * car is always a no to — it is the car vanilla drives, and the only one that records track. So
-     * the leading car of a train this answers yes for is held by the placer and moved by vanilla at
-     * the same time, and neither answer can stand in for the other.
+     * car is normally a no to — it is the car vanilla drives, and the only one that records track.
+     * The exception is the few ticks a train backed against a buffer is placed whole, its leading
+     * car included. So the leading car of a train this answers yes for is usually held by the
+     * placer and moved by vanilla at the same time, and neither answer can stand in for the other.
      *
      * <p>A train never attempted answers no. It used to answer yes on the grounds that its first
      * attempt was a tick away, which made a third answer out of a question that already had two.

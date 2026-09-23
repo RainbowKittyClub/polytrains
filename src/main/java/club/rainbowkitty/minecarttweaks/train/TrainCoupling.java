@@ -356,8 +356,8 @@ public final class TrainCoupling {
 
         Train train = Train.of(cart);
 
-        // The leading car is never seated — it is the one car vanilla drives — so it is carried
-        // for exactly as long as the placer has not handed its whole train back.
+        // The leading car is normally the one car vanilla drives, so it is carried for as long as
+        // the placer has not handed its whole train back; a train against a buffer seats it too.
         return TrainPlacer.seated(cart) || (cart == train.leader() && train.holding());
     }
 

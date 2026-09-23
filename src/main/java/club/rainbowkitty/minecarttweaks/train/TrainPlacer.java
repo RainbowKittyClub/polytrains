@@ -122,7 +122,7 @@ public final class TrainPlacer {
         return attempt;
     }
 
-    // Counts cars the placer is not holding, the leading car aside — vanilla always drives it.
+    // Counts cars the placer is not holding, the leading car aside — vanilla usually drives it.
     private static int loose(Train train) {
         AbstractMinecart leader = train.leader();
         int loose = 0;
@@ -139,9 +139,10 @@ public final class TrainPlacer {
     /**
      * Whether {@code car} is being placed on its track rather than driven along it by vanilla.
      *
-     * <p>Answers no for a train's leading car even while its train is held — that car is the one
-     * vanilla drives, and the only one that records track. One tick of grace covers a car that
-     * ticks before its leader seats the train.
+     * <p>Normally no for a train's leading car even while its train is held — that car is the one
+     * vanilla drives, and the only one that records track. A train backed against a buffer is the
+     * exception: its leading car is placed as well, so that it stops exactly at the wall. One tick
+     * of grace covers a car that ticks before its leader seats the train.
      */
     public static boolean seated(AbstractMinecart car) {
         if (!(car instanceof AbstractMinecartExt ext)) {
