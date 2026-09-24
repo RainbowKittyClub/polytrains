@@ -118,7 +118,7 @@ public final class CartImpact {
                 // Only two trains meeting: cars of one vehicle, chained across a chunk border
                 // included, are never COLLIDE, and vanilla's own push shunts a loose pair of them.
                 if (interaction == CartInteraction.COLLIDE) {
-                    drag += shunt(cart, struck, movement);
+                    drag += shunt(level, cart, struck, movement);
                 }
             }
 
@@ -140,7 +140,7 @@ public final class CartImpact {
         }
 
         if (drag > 0.0) {
-            slowTrain(cart, drag / movement.length());
+            slowTrain(level, cart, drag / movement.length());
         }
     }
 
@@ -152,7 +152,8 @@ public final class CartImpact {
     // Only accounts for what the cart is bearing down on. The sweep reaches behind too, for a mob
     // a fast cart passed clean through in one tick, but a cart can't drag one it's moving away
     // from — reaching backward let one nudge propagate a line in both directions.
-    private static double shunt(AbstractMinecart cart, AbstractMinecart struck, Vec3 movement) {
+    private static double shunt(ServerLevel level, AbstractMinecart cart,
+            AbstractMinecart struck, Vec3 movement) {
         Vec3 heading = movement.horizontal();
 
         if (heading.lengthSqr() <= STILL * STILL) {
@@ -169,7 +170,8 @@ public final class CartImpact {
         // movement is written from that one, so a push left anywhere else is overwritten unused.
         AbstractMinecart pushed = TrainCoupling.drivenCar(struck);
         Vec3 pushedMovement = pushed.getDeltaMovement();
-        double aheadComponent = pushedMovement.dot(heading);
+        // Read at the struck car, since round a bend the driven car points another way entirely.
+        double aheadComponent = relaid(pushed, struck, pushedMovement).dot(heading);
         double cartMass = TrainCoupling.mass(cart);
         double struckMass = TrainCoupling.mass(struck);
         double sharedSpeed = (cartMass * movement.dot(heading) + struckMass * aheadComponent)
@@ -180,17 +182,47 @@ public final class CartImpact {
             return 0.0;
         }
 
+        Vec3 gainedMovement = relaid(struck, pushed, heading.scale(sharedSpeed - aheadComponent));
+        Vec3 afterMovement = ceilinged(level, pushed, new Vec3(
+                pushedMovement.x() + gainedMovement.x(), pushedMovement.y(),
+                pushedMovement.z() + gainedMovement.z()));
+
+        pushed.setDeltaMovement(afterMovement);
+
+        // Billed for what reached the struck car along the heading past the rails and the ceiling,
+        // and not for the ceiling braking a train that was already over it before the hit.
+        double gainedSpeed = Math.min(relaid(pushed, struck, gainedMovement).dot(heading),
+                relaid(pushed, struck, afterMovement).dot(heading) - aheadComponent);
+
         TrainMeter.strike(cart, struck, movement.dot(heading) - aheadComponent, sharedSpeed,
-                sharedSpeed - aheadComponent);
-
-        Vec3 gainedMovement = heading.scale(sharedSpeed - aheadComponent);
-
-        pushed.setDeltaMovement(pushedMovement.x() + gainedMovement.x(), pushedMovement.y(),
-                pushedMovement.z() + gainedMovement.z());
+                Math.max(0.0, gainedSpeed));
 
         // In the units shove returns: the momentum handed over, which slowTrain then divides by
         // what this train weighs. So what one side gains the other loses, whatever their masses.
-        return (sharedSpeed - aheadComponent) * struckMass;
+        return Math.max(0.0, gainedSpeed) * struckMass;
+    }
+
+    // A movement at one car of a train as the other car carries it, along the rails between them;
+    // unchanged for a cart in no train, which has no ribbon to carry it along.
+    private static Vec3 relaid(AbstractMinecart from, AbstractMinecart to, Vec3 movement) {
+        return from.hasLink() && ModGameRules.trainsEnabled(from.level())
+                ? TrainCoupling.alongTrack(from, to, movement)
+                : movement;
+    }
+
+    // The movement with its horizontal speed scaled down to the car's ceiling: vanilla's clamp on
+    // rails (calculateTrackSpeed, handed the horizontal movement), which a placed car never meets.
+    private static Vec3 ceilinged(ServerLevel level, AbstractMinecart car, Vec3 movement) {
+        double ceiling = car.minecarttweaks$ownMaxSpeed(level);
+        double speed = movement.horizontalDistance();
+
+        if (speed <= ceiling) {
+            return movement;
+        }
+
+        double scale = ceiling / speed;
+
+        return new Vec3(movement.x() * scale, movement.y(), movement.z() * scale);
     }
 
     // The cart's movement as it stands, unless no rail could have given it — non-finite, more than
@@ -289,7 +321,7 @@ public final class CartImpact {
     // as the fraction a lone cart would lose, applied to the one car vanilla drives — the placer
     // overwrites every other car's movement from that one, so writing them individually would
     // just be undone.
-    private static void slowTrain(AbstractMinecart cart, double drag) {
+    private static void slowTrain(ServerLevel level, AbstractMinecart cart, double drag) {
         // Over what the train weighs, not how many cars it has. The two are the same figure under
         // the vanilla model, where every cart weighs one; under the physical model a loaded train
         // shrugs off an impact a light one of the same length would feel.
@@ -297,8 +329,8 @@ public final class CartImpact {
         AbstractMinecart driven = TrainCoupling.drivenCar(cart);
         Vec3 movement = driven.getDeltaMovement();
 
-        driven.setDeltaMovement(
-                movement.x() * (1.0 - loss), movement.y(), movement.z() * (1.0 - loss));
+        driven.setDeltaMovement(ceilinged(level, driven, new Vec3(
+                movement.x() * (1.0 - loss), movement.y(), movement.z() * (1.0 - loss))));
     }
 
     // A struck entity's size relative to a player, clamped: how far the throw carries it divides by
