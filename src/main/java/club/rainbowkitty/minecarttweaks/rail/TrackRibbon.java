@@ -456,7 +456,8 @@ public final class TrackRibbon {
     }
 
     /**
-     * Whether the rail at arc {@code arc} would now send a car off the track this ribbon recorded.
+     * Whether the rail at arc {@code arc} no longer joins the two edges this ribbon recorded
+     * across it.
      *
      * <p>Only a switch can answer yes. A seated car is placed on recorded track and does no rail
      * reading of its own, so a switch thrown behind the leading car is otherwise ignored entirely
@@ -483,9 +484,9 @@ public final class TrackRibbon {
             return false;
         }
 
-        // The cart arrives heading away from the edge it came in by, which is the approach the
-        // switch reads to decide where it sends one.
-        var exits = AbstractMinecart.exits(SwitchedRailBlock.shapeFor(state, inEdge.getOpposite()));
+        // The shape the switch holds, not the one its signal asks for: a signal that changes under
+        // a train is recorded at once, while the shape it would lay waits for the train to clear.
+        var exits = AbstractMinecart.exits(state.getValue(SwitchedRailBlock.SHAPE));
 
         return !(joins(exits.getFirst(), inEdge) && joins(exits.getSecond(), outEdge))
                 && !(joins(exits.getFirst(), outEdge) && joins(exits.getSecond(), inEdge));
