@@ -221,18 +221,27 @@ public final class TrackRibbon {
      * its track exactly. That answer costs the whole train, so it is worth a second question.
      */
     public @Nullable Double arcOfLeader(AbstractMinecart leader) {
-        Double best = occurrenceUnder(
-                leader.getCurrentBlockPosOrRailBelow(), leader.position(), leaderArc);
-
-        if (best == null) {
-            best = nearestTrack(leader.position(), leader.getBbWidth());
-        }
+        Double best = arcNear(leader, leaderArc);
 
         if (best != null) {
             leaderArc = best;
         }
 
         return best;
+    }
+
+    /**
+     * Where {@code car} sits along this ribbon reckoned from arc {@code near}, answered off the
+     * track running nearest it where the block it stands on is not one this ribbon records, or
+     * null if no recorded track passes within its own width of it.
+     *
+     * <p>{@link #arcOfLeader}'s two readings without moving the leading car's cursor. For a cart of
+     * another train: whether it stands on this track at all, and where along it.
+     */
+    public @Nullable Double arcNear(AbstractMinecart car, double near) {
+        Double best = arcOf(car, near);
+
+        return best != null ? best : nearestTrack(car.position(), car.getBbWidth(), near);
     }
 
     // Where along this ribbon the occurrence of pos nearest arc near puts a car standing at
@@ -266,8 +275,8 @@ public final class TrackRibbon {
     // parallel line one block over falls outside and is honestly reported as off this ribbon.
     //
     // Ranked as arcOf ranks: nearest in space, and where two are the same point — which the two
-    // occurrences of a lap are — whichever lies nearer the arc the leading car was last at.
-    private @Nullable Double nearestTrack(Vec3 position, double reach) {
+    // occurrences of a lap are — whichever lies nearer arc near.
+    private @Nullable Double nearestTrack(Vec3 position, double reach, double near) {
         double limit = reach * reach;
         Double best = null;
         double nearest = Double.MAX_VALUE;
@@ -282,7 +291,7 @@ public final class TrackRibbon {
             }
 
             double arc = node.arc() + fraction * node.span();
-            double lap = Math.abs(arc - leaderArc);
+            double lap = Math.abs(arc - near);
 
             if (distanceSqr < nearest - EPSILON
                     || (distanceSqr < nearest + EPSILON && lap < apart)) {
