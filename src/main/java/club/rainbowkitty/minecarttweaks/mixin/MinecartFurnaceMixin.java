@@ -73,6 +73,13 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     @Unique
     private static final int STALL_TICKS = 4;
 
+    // A car covering less ground in a tick than this, and than this share of what its movement
+    // asks for, is going nowhere: two trains shoving each other creep a thousandth of a block.
+    @Unique
+    private static final double STALL_CREEP = 0.005;
+    @Unique
+    private static final double STALL_SHARE = 0.5;
+
     // Ticks of burn time left.
     @Shadow private int fuel;
 
@@ -88,9 +95,18 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     @Unique
     private @Nullable BlockPos minecarttweaks$headingRail;
 
-    // Ticks in a row this cart has been given the engine and still covered no ground.
+    // Ticks in a row this cart has been given the engine and its train still covered no ground.
     @Unique
     private int minecarttweaks$stalled;
+
+    // The entity id of the car the ground covered is read off — the one leading this cart's train,
+    // whose own movement is the train's — and its position and tick count at this cart's last tick.
+    @Unique
+    private int minecarttweaks$gaugeId;
+    @Unique
+    private @Nullable Vec3 minecarttweaks$gaugePosition;
+    @Unique
+    private int minecarttweaks$gaugeTicks;
 
     // Never called: present only to satisfy the compiler about the superclass this mixin extends.
     protected MinecartFurnaceMixin(EntityType<?> entityType, Level level) {
@@ -309,6 +325,28 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         }
     }
 
+    // The car leading this engine's train: one behind it can stand while the train stretches out.
+    @Unique
+    private AbstractMinecart minecarttweaks$gauge() {
+        if (!hasLink() || !ModGameRules.trainsEnabled(level())) {
+            return this;
+        }
+
+        AbstractMinecart leader = Train.of(this).lastLeader();
+
+        return leader == null ? this : leader;
+    }
+
+    // Whether gaugeCar, moved by step in its last tick, holds no movement or covered next to none.
+    @Unique
+    private static boolean minecarttweaks$standing(AbstractMinecart gaugeCar, Vec3 step) {
+        double covered = step.horizontalDistance();
+        double asked = gaugeCar.getDeltaMovement().horizontalDistance();
+
+        return asked * asked <= IMPULSE_EPSILON
+                || (covered < STALL_CREEP && covered < asked * STALL_SHARE);
+    }
+
     // Whether the train this engine is in is still closing up on what it met. Four ticks is less
     // than a train takes to pack, so without this the engine would turn round mid-compression and
     // the train never shuts — an engine still closing gaps is moving something.
@@ -324,14 +362,26 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     // never opens. Left alone, a fuelled cart at a dead end wedges until its fuel runs out — the
     // switchback that becomes impossible.
     //
-    // Counted rather than derived, and read at the top of the tick where last tick's movement
-    // still stands. Unconditional in both models — the trap is vanilla's, not behaviour worth
-    // mirroring — and unaffected by the power curve: effort is maximum at rest, so a wedged cart
-    // is still being pushed at full force.
+    // Counted rather than derived, off the ground the train covers between the tops of two ticks
+    // rather than the movement it holds: a cart wedged among others is handed movement by every
+    // strike on it and still goes nowhere. Unconditional in both models — the trap is vanilla's,
+    // not behaviour worth mirroring — and unaffected by the power curve: effort is maximum at
+    // rest, so a wedged cart is still being pushed at full force.
     @Unique
     private void minecarttweaks$countStall() {
-        if (fuel <= 0 || minecarttweaks$parked
-                || getDeltaMovement().horizontalDistanceSqr() > IMPULSE_EPSILON
+        AbstractMinecart gaugeCar = minecarttweaks$gauge();
+        Vec3 standingPosition = gaugeCar.position();
+        // A leading car outside the ticking chunks stands still without its train being wedged.
+        Vec3 lastPosition = gaugeCar.getId() == minecarttweaks$gaugeId
+                && gaugeCar.tickCount != minecarttweaks$gaugeTicks
+                ? minecarttweaks$gaugePosition : null;
+
+        minecarttweaks$gaugeId = gaugeCar.getId();
+        minecarttweaks$gaugePosition = standingPosition;
+        minecarttweaks$gaugeTicks = gaugeCar.tickCount;
+
+        if (fuel <= 0 || minecarttweaks$parked || lastPosition == null
+                || !minecarttweaks$standing(gaugeCar, standingPosition.subtract(lastPosition))
                 || minecarttweaks$closingUp()) {
             minecarttweaks$stalled = 0;
             return;
