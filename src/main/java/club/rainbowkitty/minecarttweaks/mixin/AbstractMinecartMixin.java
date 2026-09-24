@@ -428,12 +428,12 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         Vec3 shove = separationDirection.scale(SHOVE_IMPULSE * Math.min(1.0, 1.0 / distance));
         push(-shove.x(), 0.0, -shove.z());
 
-        // The shover is then held to what the train has just become, by taking back all the speed
-        // it is still closing at — which makes contact a wall rather than a bounce, since it can
-        // never exceed the shover's own approach. Read off the car vanilla drives, where the push
-        // above landed; every other car's movement is a copy the placer overwrites.
-        double closingSpeed = TrainCoupling.drivenCar(self).getDeltaMovement()
-                .dot(separationDirection) - entity.getKnownMovement().dot(separationDirection);
+        // The shover is then held to the car it touched, by taking back all the speed it is still
+        // closing at — which makes contact a wall rather than a bounce. That car's own movement,
+        // which the placer writes along its own rail: round a bend the driven car is heading
+        // somewhere else, so reading it would walk the train through whoever stood there.
+        double closingSpeed = self.getDeltaMovement().dot(separationDirection)
+                - entity.getKnownMovement().dot(separationDirection);
 
         if (closingSpeed <= 0.0) {
             return;
