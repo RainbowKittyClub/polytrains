@@ -31,6 +31,8 @@ import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
+import club.rainbowkitty.minecarttweaks.rail.RailBrake;
+import club.rainbowkitty.minecarttweaks.rail.RailDrag;
 import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
@@ -67,6 +69,10 @@ public final class TrainMeter {
     // have severed them anyway, so a longer walk measures a train that no longer exists.
     private static final double REACH_MULTIPLIER = 2.0;
 
+    // Slack over a cart's ceiling, as a fraction of it, on top of what vanilla itself adds after
+    // its clamp (see overspeedLimit).
+    private static final double OVERSPEED_MARGIN = 0.01;
+
     // Horizontal centre distance inside which two carts of different trains are inside each other.
     private static final double OVERLAP_DISTANCE = 0.5;
 
@@ -76,6 +82,10 @@ public final class TrainMeter {
     // The fastest each cart has moved in one tick since its last meter line. Keyed by the entity
     // rather than its UUID, since a cart reloaded or taken to another dimension is a new entity.
     private static final Map<AbstractMinecart, Double> PEAKS = new IdentityHashMap<>();
+
+    // The last tick each cart was seen over its ceiling, so an overspeed is written once when it
+    // starts rather than on every tick it lasts.
+    private static final Map<AbstractMinecart, Long> OVER = new IdentityHashMap<>();
 
     // The game time each level was last sampled at. A frozen tick rate still runs the end of each
     // level's tick without advancing the time that picks a sample.
@@ -141,6 +151,8 @@ public final class TrainMeter {
         }
 
         PEAKS.keySet().removeIf(Entity::isRemoved);
+        OVER.entrySet().removeIf(
+                entry -> entry.getKey().isRemoved() || entry.getValue() < tick - 1);
     }
 
     /**
@@ -150,6 +162,62 @@ public final class TrainMeter {
      */
     public static double speed(Vec3 movement) {
         return Math.hypot(movement.x(), movement.z());
+    }
+
+    /**
+     * The fastest a cart with this {@code ceiling} can legitimately be going at the top of a tick,
+     * with 1% to spare. Vanilla clamps a car's speed on the first step of each tick only, then
+     * adds, once a tick each, what a lit powered rail gives — a boost over the ceiling, or a kick
+     * from rest — and the pull of a grade met on a later step (NewMinecartBehavior's
+     * calculateTrackSpeed), so a car at its ceiling carries both over it into the next tick.
+     */
+    public static double overspeedLimit(double ceiling) {
+        double lit = Math.max(ceiling + RailBrake.BOOST_SPEED,
+                RailBrake.ROLLING_SPEED + RailBrake.LAUNCH_SPEED);
+
+        return ceiling * OVERSPEED_MARGIN + lit
+                + Math.max(RailDrag.SLOPE_PULL, lit * TrainCoupling.SLOPE_SPEED_GAIN);
+    }
+
+    /**
+     * Notes the movement {@code cart} starts this tick with, for {@code maxspeed} on its next
+     * {@code meter} line, and writes an {@code overspeed} line on the tick its {@link #speed} first
+     * passes the {@link #overspeedLimit} of {@code ceiling}. Nothing unless DEBUG is on.
+     *
+     * @param ceiling the most the rails leave in the cart's movement after their clamp
+     * @param clamped whether {@code movement} is about to be clamped as absurd; such a tick is
+     *     always written, and marked so
+     */
+    public static void observe(ServerLevel level, AbstractMinecart cart, Vec3 movement,
+            double ceiling, boolean clamped) {
+        if (!LOGGER.isDebugEnabled()) {
+            return;
+        }
+
+        long tick = level.getGameTime();
+        double observedSpeed = speed(movement);
+        double limit = overspeedLimit(ceiling);
+
+        PEAKS.merge(cart, observedSpeed, Math::max);
+
+        if (!clamped && !(observedSpeed > limit)) {
+            OVER.remove(cart);
+            return;
+        }
+
+        Long overTick = OVER.put(cart, tick);
+
+        if (clamped || overTick == null || overTick != tick - 1) {
+            LOGGER.debug(Line.event("overspeed")
+                    .count("tick", tick)
+                    .text("cart", Train.cartId(cart))
+                    .text("train", trainIdOf(cart))
+                    .number("speed", observedSpeed)
+                    .number("ceiling", ceiling)
+                    .flag("clamped", clamped)
+                    .prose("movement " + xyz(movement) + ", limit " + number(limit))
+                    .toString());
+        }
     }
 
     /**
@@ -539,6 +607,10 @@ public final class TrainMeter {
     private static void forgetAll() {
         if (!PEAKS.isEmpty()) {
             PEAKS.clear();
+        }
+
+        if (!OVER.isEmpty()) {
+            OVER.clear();
         }
     }
 

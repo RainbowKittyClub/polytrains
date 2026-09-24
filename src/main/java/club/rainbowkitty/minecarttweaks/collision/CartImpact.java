@@ -7,6 +7,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -43,6 +44,15 @@ public final class CartImpact {
     // Most of its speed one impact may cost a train, however large the thing hit.
     private static final double MAX_IMPACT_DRAG = 0.5;
 
+    // Past this multiple of the fastest the rails can legitimately leave it, a cart's movement is a
+    // fault rather than a speed, and is clamped before anything is swept with it. Wide enough for a
+    // ceiling halved by water under a cart already at the dry one.
+    private static final double ABSURD_SPEED = 2.0;
+
+    // The horizontal movement OldMinecartBehavior stores between ticks, whatever the ceiling: it
+    // caps what it keeps at this and clamps only each step to the ceiling.
+    private static final double OLD_BEHAVIOR_CAP = 2.0;
+
     // Bounds on the multiplier a struck entity's size puts on the shove and on the train's speed
     // loss, keeping a bat from being ignored and an ender dragon from launching.
     private static final double MIN_SIZE_FACTOR = 0.25;
@@ -67,6 +77,10 @@ public final class CartImpact {
         if (movement.lengthSqr() <= STILL * STILL) {
             return;
         }
+
+        // Repaired before it is swept or moved: an absurd movement builds boxes that getEntities
+        // and the block collision walk a section or block at a time, or whose ranges invert.
+        movement = bounded(level, cart, movement);
 
         // Speed alone decides what the cart throws, and what it hurts, and how badly. The train's
         // weight tells on the other side of the impact only: in how little the train is slowed.
@@ -177,6 +191,43 @@ public final class CartImpact {
         // In the units shove returns: the momentum handed over, which slowTrain then divides by
         // what this train weighs. So what one side gains the other loses, whatever their masses.
         return (sharedSpeed - aheadComponent) * struckMass;
+    }
+
+    // The cart's movement as it stands, unless no rail could have given it — non-finite, more than
+    // ABSURD_SPEED times the legitimate limit, or climbing further in a tick than the world is tall
+    // — in which case it is repaired, written back and returned. The meter sees it either way.
+    private static Vec3 bounded(ServerLevel level, AbstractMinecart cart, Vec3 movement) {
+        double ceiling = storedCeiling(level, cart);
+        boolean absurd = !movement.isFinite()
+                || TrainMeter.speed(movement) > ABSURD_SPEED * TrainMeter.overspeedLimit(ceiling)
+                || Math.abs(movement.y()) > level.getHeight();
+
+        TrainMeter.observe(level, cart, movement, ceiling, absurd);
+
+        if (!absurd) {
+            return movement;
+        }
+
+        // Vanilla's own clamp on rails: the length across the ground scaled down to the ceiling,
+        // keeping its direction. A vertical movement that is no movement at all goes to zero.
+        double eastward = Double.isFinite(movement.x()) ? movement.x() : 0.0;
+        double southward = Double.isFinite(movement.z()) ? movement.z() : 0.0;
+        double upward = Double.isFinite(movement.y()) && Math.abs(movement.y()) <= level.getHeight()
+                ? movement.y() : 0.0;
+        double groundSpeed = Math.hypot(eastward, southward);
+        double scale = groundSpeed > ceiling ? ceiling / groundSpeed : 1.0;
+        Vec3 clamped = new Vec3(eastward * scale, upward, southward * scale);
+
+        cart.setDeltaMovement(clamped);
+        return clamped;
+    }
+
+    // The most the rails leave in this cart's movement from one tick to the next: its own ceiling
+    // under the new movement, which clamps to it, or the old movement's fixed store cap.
+    private static double storedCeiling(ServerLevel level, AbstractMinecart cart) {
+        return cart.getBehavior() instanceof NewMinecartBehavior
+                ? cart.minecarttweaks$ownMaxSpeed(level)
+                : OLD_BEHAVIOR_CAP;
     }
 
     // Breaks the cart into its item, unless something else already removed it this tick.

@@ -60,8 +60,8 @@ public interface AbstractMinecartExt extends Linkable {
     /**
      * This cart's own speed ceiling, as its own kind of cart works it out. Exists so that the car
      * driving a train can ask the cars behind it without reaching for a {@code protected} method on
-     * somebody else's instance. Only ever asked of a car that is not driving its train, so it
-     * answers with that car's own figure, not its train's.
+     * somebody else's instance. Asked of any other car it answers with that car's own figure; asked
+     * of the car driving a train, with the train's, which is the one that car is clamped to.
      */
     public double minecarttweaks$ownMaxSpeed(ServerLevel level);
 

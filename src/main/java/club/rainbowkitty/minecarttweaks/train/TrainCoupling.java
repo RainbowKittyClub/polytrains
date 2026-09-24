@@ -88,7 +88,7 @@ public final class TrainCoupling {
     // Vanilla's own two factors on the downhill pull it works out per tick: how much of the cart's
     // own horizontal speed adds to it, and what being in water leaves of it
     // (NewMinecartBehavior#calculateSlopeSpeed).
-    private static final double SLOPE_SPEED_GAIN = 0.02;
+    public static final double SLOPE_SPEED_GAIN = 0.02;
 
     private static final double WATER_SLIDE = 0.2;
 
