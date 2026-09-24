@@ -147,6 +147,14 @@ public final class TrackRibbon {
     }
 
     /**
+     * Where along this ribbon the leading car was last recorded or read, without reading it again.
+     * Meaningless while the ribbon is empty.
+     */
+    public double leaderArc() {
+        return leaderArc;
+    }
+
+    /**
      * Records that a car crossed the rail block at {@code pos} travelling along {@code movement},
      * extending whichever end of the ribbon that block continues. Track already recorded is
      * ignored: whichever car reports it, it is track this ribbon knows, and discarding twenty good
@@ -618,8 +626,8 @@ public final class TrackRibbon {
         }
     }
 
-    // Whether this ribbon records pos anywhere along it.
-    private boolean holds(BlockPos pos) {
+    /** Whether this ribbon records {@code pos} anywhere along it. */
+    public boolean holds(BlockPos pos) {
         for (Node node : nodes) {
             if (node.block().equals(pos)) {
                 return true;

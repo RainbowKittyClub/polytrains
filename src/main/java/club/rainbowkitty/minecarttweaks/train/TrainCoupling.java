@@ -1,6 +1,9 @@
 package club.rainbowkitty.minecarttweaks.train;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -1032,12 +1035,20 @@ public final class TrainCoupling {
             return false;
         }
 
+        return anyTrainNear(level, pos, CROSSING_REACH, trainOf, train -> spans(train, pos));
+    }
+
+    // Whether test holds for a train some linked cart within reach of pos resolves to through
+    // trainOf, each train asked once and the first yes ending the walk.
+    private static boolean anyTrainNear(Level level, BlockPos pos, double reach,
+            Function<AbstractMinecart, @Nullable Train> trainOf, Predicate<Train> test) {
+        Set<Train> asked = Collections.newSetFromMap(new IdentityHashMap<>());
+
         for (AbstractMinecart cart : level.getEntitiesOfClass(
-                AbstractMinecart.class, new AABB(pos).inflate(CROSSING_REACH),
-                AbstractMinecart::hasLink)) {
+                AbstractMinecart.class, new AABB(pos).inflate(reach), AbstractMinecart::hasLink)) {
             Train train = trainOf.apply(cart);
 
-            if (train != null && spans(train, pos)) {
+            if (train != null && asked.add(train) && test.test(train)) {
                 return true;
             }
         }
@@ -1050,19 +1061,63 @@ public final class TrainCoupling {
     // it is answers no instead of claiming track it has left.
     private static boolean spans(Train train, BlockPos pos) {
         TrackRibbon ribbon = train.ribbon();
+
+        if (!ribbon.holds(pos)) {
+            return false;
+        }
+
+        Span span = spanOf(train);
+
+        return span != null && ribbon.covers(span.low(), span.high(), pos);
+    }
+
+    // The run of a train's ribbon between the lowest and highest arcs its cars stand at.
+    private record Span(double low, double high) {}
+
+    // Where a train's cars stand, each read on the lap of the one before it from the leading end,
+    // a short loop recording blocks twice. Null if it places none.
+    private static @Nullable Span spanOf(Train train) {
+        TrackRibbon ribbon = train.ribbon();
+        List<AbstractMinecart> cars = train.cars();
+        AbstractMinecart leader = train.lastLeader();
+        boolean fromLast = cars.size() > 1 && leader == cars.getLast();
+        double nearArc = ribbon.leaderArc();
         double low = Double.POSITIVE_INFINITY;
         double high = Double.NEGATIVE_INFINITY;
 
-        for (AbstractMinecart car : train.cars()) {
-            Double arc = ribbon.arcOf(car);
+        for (int step = 0; step < cars.size(); step++) {
+            AbstractMinecart car = cars.get(fromLast ? cars.size() - 1 - step : step);
+            Double arc = standingArc(ribbon, car, nearArc);
+
+            // A leading car off its recorded blocks counts where the ribbon last had it.
+            if (arc == null && step == 0 && leader != null) {
+                arc = ribbon.leaderArc();
+            }
 
             if (arc != null) {
                 low = Math.min(low, arc);
                 high = Math.max(high, arc);
+                nearArc = arc;
             }
         }
 
-        return low <= high && ribbon.covers(low, high, pos);
+        return low <= high ? new Span(low, high) : null;
+    }
+
+    // Where car stands on ribbon on the lap nearArc names, or null if nowhere; a seated car on the
+    // lap it was seated on, and at its seat when knocked off its recorded blocks.
+    private static @Nullable Double standingArc(
+            TrackRibbon ribbon, AbstractMinecart car, double nearArc) {
+        Double seatArc = TrainPlacer.seated(car)
+                ? car.minecarttweaks$seatArc(ribbon.arcEpoch()) : null;
+
+        if (seatArc == null) {
+            return ribbon.arcNear(car, nearArc);
+        }
+
+        Double arc = ribbon.arcOf(car, seatArc);
+
+        return arc != null ? arc : seatArc;
     }
 
     // Makes sure the ribbon reaches the whole train before anything is measured against it. A
