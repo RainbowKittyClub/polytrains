@@ -64,6 +64,13 @@ public final class TrainCoupling {
     // unplaceable briefly and then fine, and a sever is not.
     private static final int SEVER_TICKS = 10;
 
+    // Ticks a refused car standing on another cart's roof waits uncounted, as one in the air does:
+    // long enough for the meeting that put it there to carry it off or set it back on its rails.
+    private static final int PERCHED_WAIT_TICKS = 40;
+
+    // How far under a car's box to look for what it is standing on.
+    private static final double SUPPORT_DEPTH = 0.05;
+
     // Two batches: one for the batch a client may already be sitting on, one to leave it with
     // nothing, since a client that is never left short goes on replaying at the offset it has.
     private static final int RESYNC_HOLD = 2 * NewMinecartBehavior.POS_ROT_LERP_TICKS;
@@ -917,12 +924,20 @@ public final class TrainCoupling {
             return false;
         }
 
+        AbstractMinecart refused = train.cars().get(refusal.car());
+
         // A car in the air is not a car the track has lost. It is between one piece of track and
         // the next, and where it is now says nothing about whether it will come down on rails —
         // which is the question, and one only a landing can answer. The count is left standing
         // rather than cleared, so a train already failing takes up where it left off once down;
         // the tick goes to holdTrain's other reading, which clears every other car's.
-        if (!train.cars().get(refusal.car()).onGround()) {
+        if (!refused.onGround()) {
+            return false;
+        }
+
+        // A car on another cart's roof reads as on the ground too, yet the next move is as likely
+        // to carry it off as a landing is to set one down: it waits the same way, for so long.
+        if (perched(refused) && !train.perchHeld(refusal.car(), PERCHED_WAIT_TICKS)) {
             return false;
         }
 
@@ -935,6 +950,16 @@ public final class TrainCoupling {
         }
 
         return true;
+    }
+
+    // Whether car stands on an entity it is solid to, a cart's roof, rather than on the world.
+    private static boolean perched(AbstractMinecart car) {
+        AABB box = car.getBoundingBox();
+        AABB underside = new AABB(box.minX, box.minY - SUPPORT_DEPTH, box.minZ,
+                box.maxX, box.minY, box.maxZ);
+
+        return car.level().noBlockCollision(car, underside)
+                && !car.level().getEntityCollisions(car, underside).isEmpty();
     }
 
     // Which car of a train a switch is currently taking off its recorded track, or NONE. Read from

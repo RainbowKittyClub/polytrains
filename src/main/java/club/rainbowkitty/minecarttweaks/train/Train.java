@@ -143,6 +143,10 @@ public final class Train {
     // inheriting a count taken against a different shape.
     private int @Nullable [] faults;
 
+    // Of each car's current fault, the ticks it has stood on another cart's roof. Cleared with
+    // the fault, so a car gets one roof's wait per fault.
+    private int @Nullable [] perches;
+
     // Starts checked on the tick it was built, so its first use does not re-sweep its own cars.
     // Starts held on it too, for the same reason read the other way round: a train built this tick
     // has not missed being laid out, it has not been due one yet.
@@ -306,9 +310,7 @@ public final class Train {
      *     air, or another car's fault took the tick — but is not forgiven either
      */
     public boolean faultHeld(int carIndex, int standingIndex, int ticks) {
-        if (faults == null || faults.length != cars.size()) {
-            faults = new int[cars.size()];
-        }
+        readyCounts();
 
         boolean held = false;
 
@@ -318,10 +320,30 @@ public final class Train {
             }
 
             faults[i] = i == carIndex ? faults[i] + 1 : 0;
+            perches[i] = i == carIndex ? perches[i] : 0;
             held |= i == carIndex && faults[i] >= ticks;
         }
 
         return held;
+    }
+
+    /**
+     * Records that refused car {@code carIndex} stands on another cart's roof this tick, and
+     * answers whether it has stood on one for more than {@code ticks} ticks of its current fault.
+     * Cleared with that fault, so the wait is bounded however the car comes and goes.
+     */
+    public boolean perchHeld(int carIndex, int ticks) {
+        readyCounts();
+
+        return ++perches[carIndex] > ticks;
+    }
+
+    // Allocates the per-car fault and roof counts together, the first time either is asked for.
+    private void readyCounts() {
+        if (faults == null || perches == null || faults.length != cars.size()) {
+            faults = new int[cars.size()];
+            perches = new int[cars.size()];
+        }
     }
 
     /**
