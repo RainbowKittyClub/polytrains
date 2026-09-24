@@ -4,6 +4,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import net.minecraft.server.level.ServerLevel;
@@ -11,12 +12,16 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.phys.Vec3;
 
+import club.rainbowkitty.minecarttweaks.collision.CartImpact;
 import club.rainbowkitty.minecarttweaks.collision.CartInteraction;
 import club.rainbowkitty.minecarttweaks.link.LinkAction;
 import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
-/** Severs a destroyed cart's links, and thins out shoves aimed at a train. */
+/**
+ * Severs a destroyed cart's links, thins out shoves aimed at a train, and holds every shove on a
+ * cart to the speed its rails keep.
+ */
 @Mixin(Entity.class)
 public abstract class EntityMixin {
 
@@ -68,6 +73,7 @@ public abstract class EntityMixin {
     private void minecarttweaks$shoveTrain(
             double pushX, double pushY, double pushZ, CallbackInfo info) {
         if (!((Object) this instanceof AbstractMinecart cart)
+                || !(cart.level() instanceof ServerLevel serverLevel)
                 || !TrainCoupling.carried(cart)) {
             return;
         }
@@ -87,13 +93,32 @@ public abstract class EntityMixin {
         AbstractMinecart driven = TrainCoupling.drivenCar(cart);
         Vec3 alongTrackPush = TrainCoupling.alongTrack(
                 cart, driven, new Vec3(pushX, pushY, pushZ));
-
-        driven.setDeltaMovement(driven.getDeltaMovement()
+        Vec3 shovedMovement = driven.getDeltaMovement()
                 .add(alongTrackPush.x() * massShare, alongTrackPush.y() * massShare,
-                        alongTrackPush.z() * massShare));
+                        alongTrackPush.z() * massShare);
+
+        // Held as any other cart's shove is, below; one lands here for each car of the train that
+        // is struck in a tick.
+        driven.setDeltaMovement(CartImpact.stored(serverLevel, driven, shovedMovement));
 
         if (driven == (Object) this) {
             needsSync = true;
         }
+    }
+
+    // Any other cart's shove is vanilla's own, held to what the cart's rails keep between ticks:
+    // vanilla clamps only on the cart's next move, and its shunt between two carts can leave each
+    // at 1.2 times the faster one's speed until then.
+    @ModifyArg(method = "push(DDD)V",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/world/entity/Entity;"
+                            + "setDeltaMovement(Lnet/minecraft/world/phys/Vec3;)V"))
+    private Vec3 minecarttweaks$shoveUnderCeiling(Vec3 shovedMovement) {
+        if (!((Object) this instanceof AbstractMinecart cart)
+                || !(cart.level() instanceof ServerLevel serverLevel)) {
+            return shovedMovement;
+        }
+
+        return CartImpact.stored(serverLevel, cart, shovedMovement);
     }
 }

@@ -144,6 +144,15 @@ public final class CartImpact {
         }
     }
 
+    /**
+     * {@code movement} with its horizontal speed held to the most {@code cart}'s rails keep from
+     * one tick to the next, for movement written between its moves: vanilla clamps a cart's speed
+     * only as it moves, and a seated car never does.
+     */
+    public static Vec3 stored(ServerLevel level, AbstractMinecart cart, Vec3 movement) {
+        return scaledTo(storedCeiling(level, cart), movement);
+    }
+
     // Two carts meeting along the track. The struck cart moves to the pair's momentum-weighted
     // mean instead of taking the striker's velocity outright — copying velocity creates momentum
     // instead of conserving it, snowballing a line of standing carts into a runaway. The striker
@@ -213,7 +222,11 @@ public final class CartImpact {
     // The movement with its horizontal speed scaled down to the car's ceiling: vanilla's clamp on
     // rails (calculateTrackSpeed, handed the horizontal movement), which a placed car never meets.
     private static Vec3 ceilinged(ServerLevel level, AbstractMinecart car, Vec3 movement) {
-        double ceiling = car.minecarttweaks$ownMaxSpeed(level);
+        return scaledTo(car.minecarttweaks$ownMaxSpeed(level), movement);
+    }
+
+    // The movement with its horizontal speed scaled down to at most ceiling, keeping its direction.
+    private static Vec3 scaledTo(double ceiling, Vec3 movement) {
         double speed = movement.horizontalDistance();
 
         if (speed <= ceiling) {
