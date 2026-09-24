@@ -76,7 +76,7 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         BlockPos start = from.getCurrentBlockPosOrRailBelow();
         BlockPos goal = to.getCurrentBlockPosOrRailBelow();
 
-        if (!railAt(level, start) || !railAt(level, goal)) {
+        if (!railAt(level, goal)) {
             return null;
         }
 
@@ -91,12 +91,17 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
             return new RailPath(displacement.length(), backDirection, backDirection);
         }
 
+        BlockPos[] firstSteps = neighbours(level, start, from.getDeltaMovement(), Switches.JOINED);
+
+        if (firstSteps == null) {
+            return null;
+        }
+
         // On a circuit short enough that both ways round come in under the limit, the nearer one is
         // the gap; whichever was walked first would sometimes be the long way round.
         RailPath nearest = null;
 
-        for (BlockPos firstStep
-                : neighbours(level, start, from.getDeltaMovement(), Switches.JOINED)) {
+        for (BlockPos firstStep : firstSteps) {
             RailPath path = walk(level, from, to, start, firstStep, goal, limit);
 
             if (path != null && (nearest == null || path.distance() < nearest.distance())) {
@@ -120,11 +125,13 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         BlockState state = cart.level().getBlockState(cart.getCurrentBlockPosOrRailBelow());
         Vec3 alongDirection = towardsDirection.horizontal();
 
-        if (!BaseRailBlock.isRail(state) || alongDirection.lengthSqr() < EPSILON * EPSILON) {
+        if (alongDirection.lengthSqr() < EPSILON * EPSILON) {
             return 0;
         }
 
-        return grade(state, alongDirection);
+        RailShape railShape = shape(state, alongDirection, Switches.LAID);
+
+        return railShape == null ? 0 : grade(railShape, alongDirection);
     }
 
     /**
@@ -132,21 +139,22 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
      * {@code movement}, or null if that block is not a rail.
      */
     public static @Nullable Crossing crossing(Level level, BlockPos pos, Vec3 movement) {
-        if (!railAt(level, pos)) {
+        RailShape railShape = shape(level.getBlockState(pos), movement, Switches.LAID);
+
+        if (railShape == null) {
             return null;
         }
 
-        BlockPos[] around = neighbours(level, pos, movement);
+        BlockPos[] around = neighboursFor(level, pos, railShape);
         Vec3 exitDirection = direction(pos, exitTaken(around, pos, movement));
         Vec3 entryDirection = otherExit(around, pos, exitDirection);
-        BlockState state = level.getBlockState(pos);
         Vec3 floorPosition = Vec3.atBottomCenterOf(pos);
 
         return new Crossing(
                 floorPosition.add(entryDirection.scale(0.5))
-                        .add(0.0, edgeHeight(state, entryDirection, movement), 0.0),
+                        .add(0.0, edgeHeight(railShape, entryDirection), 0.0),
                 floorPosition.add(exitDirection.scale(0.5))
-                        .add(0.0, edgeHeight(state, exitDirection, movement), 0.0),
+                        .add(0.0, edgeHeight(railShape, exitDirection), 0.0),
                 exitDirection,
                 span(around, pos, exitDirection));
     }
@@ -156,31 +164,39 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
      * null where {@code pos} is not a rail or the cart is not going anywhere.
      */
     public static @Nullable BlockPos ahead(Level level, BlockPos pos, Vec3 movement) {
-        if (!railAt(level, pos) || movement.horizontalDistanceSqr() <= 0.0) {
+        if (movement.horizontalDistanceSqr() <= 0.0) {
             return null;
         }
 
-        return exitTaken(neighbours(level, pos, movement), pos, movement);
+        BlockPos[] around = neighbours(level, pos, movement);
+
+        return around == null ? null : exitTaken(around, pos, movement);
     }
 
     /**
      * The two rails the block at {@code pos} exits onto, in the order its shape lists them, taking
-     * a switch as it is set.
+     * a switch as it is set; null if that block is not a rail.
      *
      * <p>On a slope the Y of an exit marks which end is the low one, it is not an offset to add:
      * the rail beyond the high end stands a block up, and the one beyond the low end is level with
      * the slope or a block down. Offsetting by the marker lands on air a block under the track
      * instead. {@code movement} only matters on a junction rail, which picks its axis from it.
      */
-    public static BlockPos[] neighbours(Level level, BlockPos pos, Vec3 movement) {
+    public static BlockPos @Nullable [] neighbours(Level level, BlockPos pos, Vec3 movement) {
         return neighbours(level, pos, movement, Switches.LAID);
     }
 
     // As the public neighbours, taking a switch the given way.
-    private static BlockPos[] neighbours(
+    private static BlockPos @Nullable [] neighbours(
             Level level, BlockPos pos, Vec3 movement, Switches switches) {
-        BlockState state = level.getBlockState(pos);
-        var exits = AbstractMinecart.exits(shape(state, movement, switches));
+        RailShape railShape = shape(level.getBlockState(pos), movement, switches);
+
+        return railShape == null ? null : neighboursFor(level, pos, railShape);
+    }
+
+    // The two blocks a rail laid to railShape at pos exits onto.
+    private static BlockPos[] neighboursFor(Level level, BlockPos pos, RailShape railShape) {
+        var exits = AbstractMinecart.exits(railShape);
         Vec3i firstExit = exits.getFirst();
         Vec3i secondExit = exits.getSecond();
         boolean sloped = firstExit.getY() != secondExit.getY();
@@ -194,8 +210,8 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     // sits a tenth proud all the way across; a slope climbs a whole block between its two edges, so
     // the high one is that much further up. Reading the ends of the line adjustToRails walks means
     // a placed car and a car vanilla stepped agree about where the rail is.
-    private static double edgeHeight(BlockState state, Vec3 edge, Vec3 movement) {
-        var exits = AbstractMinecart.exits(shape(state, movement, Switches.LAID));
+    private static double edgeHeight(RailShape railShape, Vec3 edge) {
+        var exits = AbstractMinecart.exits(railShape);
         Vec3i firstExit = exits.getFirst();
         Vec3i secondExit = exits.getSecond();
 
@@ -210,8 +226,8 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     }
 
     // Whether the rail climbs, drops or runs level in the direction of alongDirection.
-    private static int grade(BlockState state, Vec3 alongDirection) {
-        var exits = AbstractMinecart.exits(shape(state, alongDirection, Switches.LAID));
+    private static int grade(RailShape railShape, Vec3 alongDirection) {
+        var exits = AbstractMinecart.exits(railShape);
         Vec3i firstExit = exits.getFirst();
         Vec3i secondExit = exits.getSecond();
 
@@ -259,26 +275,32 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         for (int steps = 1; steps <= maxSteps && walkedDistance <= limit; steps++) {
             if (current.equals(goal)) {
                 Vec3 toEntry = direction(current, previous);
+                BlockPos[] aroundStart = neighbours(level, start, fromExit, Switches.JOINED);
+                BlockPos[] aroundGoal = neighbours(level, goal, toEntry, Switches.JOINED);
+
+                // A formality: between walks only from rail to rail.
+                if (aroundStart == null || aroundGoal == null) {
+                    return null;
+                }
 
                 // Each block is worth the run of track across it, not a flat one: a corner is only
                 // the chord between two adjacent edges, about seven tenths of a block.
-                double distance = distanceToExit(level, from.position(), start, fromExit)
+                double distance = distanceToExit(from.position(), start, aroundStart, fromExit)
                         + walkedDistance
-                        + distanceToExit(level, to.position(), goal, toEntry);
+                        + distanceToExit(to.position(), goal, aroundGoal, toEntry);
 
-                return new RailPath(distance,
-                        otherExit(neighbours(level, start, fromExit, Switches.JOINED), start,
-                                fromExit), toEntry);
-            }
-
-            if (!railAt(level, current)) {
-                return null;
+                return new RailPath(distance, otherExit(aroundStart, start, fromExit), toEntry);
             }
 
             // One reading of the block's exits serves both the run of track across it and the step
             // off it — the whole per-block cost of the walk.
             Vec3 movement = direction(previous, current);
             BlockPos[] around = neighbours(level, current, movement, Switches.JOINED);
+
+            if (around == null) {
+                return null;
+            }
+
             BlockPos onward = exitTaken(around, current, movement);
             walkedDistance += span(around, current, direction(current, onward));
 
@@ -289,12 +311,13 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         return null;
     }
 
-    // How much of block a cart at position has left to cross before its exit.
-    private static double distanceToExit(Level level, Vec3 position, BlockPos block, Vec3 exit) {
+    // How much of block, whose exits are around, a cart at position has left to cross before exit.
+    private static double distanceToExit(
+            Vec3 position, BlockPos block, BlockPos[] around, Vec3 exit) {
         Vec3 leavingPosition = Vec3.atCenterOf(block).horizontal().add(exit.scale(0.5));
 
         return Math.min(position.horizontal().distanceTo(leavingPosition),
-                span(neighbours(level, block, exit, Switches.JOINED), block, exit));
+                span(around, block, exit));
     }
 
     // The run of track across block, between the midpoints of its two edges.
@@ -310,10 +333,15 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         return direction(block, exitTaken(around, block, exit.reverse()));
     }
 
-    // The shape a moving cart sees; a junction rail selects its axis from that movement. A switch
-    // is read by its rails rather than its throw, but only where the question is whether track
-    // connects — the ribbon records where a car did go, and there the resting curve is the truth.
-    private static RailShape shape(BlockState state, Vec3 movement, Switches switches) {
+    // The shape a moving cart sees, or null where the block is not a rail. A junction rail
+    // selects its axis from that movement. A switch is read by its rails rather than its throw,
+    // but only where the question is whether track connects — the ribbon records where a car did
+    // go, and there the resting curve is the truth.
+    private static @Nullable RailShape shape(BlockState state, Vec3 movement, Switches switches) {
+        if (!BaseRailBlock.isRail(state)) {
+            return null;
+        }
+
         if (movement.horizontalDistanceSqr() > 0.0) {
             if (state.getBlock() instanceof JunctionRailBlock) {
                 return JunctionRailBlock.shapeFor(movement);

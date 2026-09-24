@@ -811,16 +811,18 @@ public final class TrackRibbon {
     // the walk cannot double back on the block it came from.
     private static @Nullable BlockPos onward(
             Level level, BlockPos fromBlock, Vec3 outwardDirection) {
+        BlockPos[] around = RailPath.neighbours(level, fromBlock, outwardDirection);
+
         // A recorded block is a position, not a promise: rail mined out from under the ribbon
-        // reads as air here, and asking air for its exits casts it to a rail.
-        if (!BaseRailBlock.isRail(level.getBlockState(fromBlock))) {
+        // reads as air here, and the walk ends at it.
+        if (around == null) {
             return null;
         }
 
         BlockPos best = null;
         double nearest = 0.0;
 
-        for (BlockPos candidate : RailPath.neighbours(level, fromBlock, outwardDirection)) {
+        for (BlockPos candidate : around) {
             double forwardComponent = (candidate.getX() - fromBlock.getX()) * outwardDirection.x
                     + (candidate.getZ() - fromBlock.getZ()) * outwardDirection.z;
 

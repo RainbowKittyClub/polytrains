@@ -5,7 +5,6 @@ import org.jspecify.annotations.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.BaseRailBlock;
 
 /**
  * The stretch of track a cart occupies: the rail it stands on and the two its exits lead to. Held
@@ -38,14 +37,14 @@ public record RailContext(
         Level level = cart.level();
         BlockPos rail = cart.getCurrentBlockPosOrRailBelow();
 
-        // Not isOnRails(): that is a flag the movement code sets, and a stale true would take the
-        // neighbour read into a block that is not a rail at all.
-        if (!BaseRailBlock.isRail(level.getBlockState(rail))) {
-            return OFF_RAILS;
-        }
-
+        // Read off the block, not isOnRails(): a seated car skips the movement code that sets
+        // that flag, so it can be stale.
         BlockPos[] around =
                 RailPath.neighbours(level, rail, cart.getDeltaMovement().horizontal());
+
+        if (around == null) {
+            return OFF_RAILS;
+        }
 
         return new RailContext(rail, around[0], around[1]);
     }
