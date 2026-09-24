@@ -9,6 +9,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.PoweredRailBlock;
@@ -42,6 +43,16 @@ public final class TrainPlacer {
     // How much further than a tick's travel two arcs may be and still be two ends of one move. One
     // node's worth of track, since that is the grain a sweep is answered at.
     private static final double SWEEP_SLACK = 1.5;
+
+    // Past an end car's box, how near another train's cart must stand to be looked at as the end
+    // of the track.
+    private static final double END_SHELL = 0.5;
+
+    // Finding where a car clears another's box, by step along the track then halving the last.
+    // Stepped by box, since two boxes on a diagonal touch with their middles 1.39 apart.
+    private static final double CLEAR_STEP = 0.1;
+    private static final double CLEAR_REACH = 2.0;
+    private static final int CLEAR_HALVINGS = 4;
 
     // How far past a car's own box a player still counts as leaning on it.
     private static final double SHOVE_SHELL = 0.1;
@@ -179,6 +190,13 @@ public final class TrainPlacer {
 
         Double nextArc = ribbon.arcOf(cars.get(leadIndex + fromHead));
         double speed = leader.getDeltaMovement().horizontalDistance();
+
+        // A leading car seated last tick, its train backed against something, skipped vanilla's
+        // move and the clamp inside it, so shoves pile up on it unspent. Capped as vanilla would.
+        if (seated(leader) && leader.level() instanceof ServerLevel level) {
+            speed = Math.min(speed, leader.minecarttweaks$ownMaxSpeed(level));
+        }
+
         double maxLinkDistance = TrainCoupling.maxLinkDistance();
         double[] gaps = train.nextGaps(target, maxLinkDistance, speed);
         double travelSign = travelSign(leader, ribbon.tangentAt(leadArc));
@@ -204,30 +222,47 @@ public final class TrainPlacer {
         double headArc = arcs.headArc();
         double tailArc = arcs.tailArc();
 
-        double tailHalfWidth = cars.get(tailIndex).getBbWidth() * 0.5;
+        AbstractMinecart tailCar = cars.get(tailIndex);
+        double tailHalfWidth = tailCar.getBbWidth() * 0.5;
         double noseLength = leader.getBbWidth() * 0.5;
         boolean farEnd = tailArc > leadArc;
-        double roomToEnd = farEnd ? ribbon.farArc() - tailArc : tailArc - ribbon.nearArc();
-        // Whether the tail end of the train is backed against track it cannot pass.
-        boolean blocked = roomToEnd + EPSILON < tailHalfWidth
-                && ribbon.blockedBeyond(leader.level(), farEnd);
+        // +1 when the tail lies towards the ribbon's far end, so past the tail is up the arcs.
+        double tailSign = farEnd ? 1.0 : -1.0;
 
-        // A train too slow to read a heading counts as pressing: it has nowhere to lengthen
-        // either way, so holding it still is correct either way this reads.
-        boolean pressing = blocked
-                && (travelSign == 0.0 || travelSign == (farEnd ? 1.0 : -1.0));
+        // Where the track behind the tail ends against something it cannot pass: a recorded end
+        // run into a block, or a cart of another train standing on this track. A cart is the end
+        // of usable track and not a refusal, so the train packs short of it with every car seated.
+        Double tailEndArc = nearerEnd(
+                recordedEnd(ribbon, leader.level(), tailArc, tailHalfWidth, tailSign),
+                foreignEnd(train, ribbon, tailCar, tailArc, tailSign, tailHalfWidth), tailSign);
+        double roomToEnd = tailEndArc == null
+                ? Double.POSITIVE_INFINITY : (tailEndArc - tailArc) * tailSign;
+        // Whether the tail end of the train is backed against track it cannot pass.
+        boolean blocked = roomToEnd + EPSILON < tailHalfWidth;
 
         // The same question for the end ahead of the leading car, which a train can be driven
         // into. Inclusive of exact contact, since vanilla already stops a cart its own half-length
-        // short of a block.
-        double roomAhead = farEnd ? leadArc - ribbon.nearArc() : ribbon.farArc() - leadArc;
-        boolean jammed = roomAhead <= noseLength * (1.0 + CONTACT_SLACK)
-                && ribbon.blockedBeyond(leader.level(), !farEnd);
+        // short of a block, and short of another cart at its box. Read at any distance for a
+        // blocked train, since the draw-back below must not pass it.
+        double jamReach = noseLength * (1.0 + CONTACT_SLACK);
+        Double aheadEndArc = nearerEnd(recordedEnd(ribbon, leader.level(), leadArc,
+                        blocked ? Double.POSITIVE_INFINITY : jamReach + EPSILON, -tailSign),
+                foreignEnd(train, ribbon, leader, leadArc, -tailSign, noseLength), -tailSign);
+        double roomAhead = aheadEndArc == null
+                ? Double.POSITIVE_INFINITY : (leadArc - aheadEndArc) * tailSign;
+        boolean jammed = roomAhead <= jamReach;
+
+        // Held at both ends, a train goes nowhere whichever way it reads as moving, so what pokes
+        // past its tail comes out of its couplings rather than out of the end ahead of it.
+        boolean squeezed = blocked && jammed;
+
+        // A train too slow to read a heading counts as pressing: it has nowhere to lengthen
+        // either way, so holding it still is correct either way this reads.
+        boolean pressing = blocked && (squeezed || travelSign == 0.0 || travelSign == tailSign);
 
         // Only a train something is actually pushing packs, and only as far back as that reaches.
         int packReach = jammed
-                ? pressedGaps(train, ribbon, headArc, offsets, order, leadIndex,
-                        farEnd ? -1.0 : 1.0)
+                ? pressedGaps(train, ribbon, headArc, offsets, order, leadIndex, -tailSign)
                 : 0;
         boolean packing = packReach > 0;
 
@@ -246,7 +281,7 @@ public final class TrainPlacer {
 
         if (pressing) {
             tailArc = leadArc + order * (offsets[leadIndex] - offsets[tailIndex]);
-            roomToEnd = farEnd ? ribbon.farArc() - tailArc : tailArc - ribbon.nearArc();
+            roomToEnd = (tailEndArc - tailArc) * tailSign;
 
             // The train only stops once there is no give left to close.
             if (train.compress(gaps, target, tailHalfWidth - roomToEnd,
@@ -263,9 +298,15 @@ public final class TrainPlacer {
             // Zeroed unless the train reads as leaving the block: a seated car carries the
             // train's own movement, so a nonzero speed here would drive it back into what stopped
             // it.
-            if (travelSign == 0.0 || travelSign == (farEnd ? -1.0 : 1.0)) {
+            if (travelSign == 0.0 || travelSign == -tailSign) {
                 speed = 0.0;
             }
+        }
+
+        // A train held at both ends goes nowhere, whatever speed shoves have left on its leading
+        // car; seated cars given that speed would strike with it and lurch off with it once let go.
+        if (squeezed) {
+            speed = 0.0;
         }
 
         if (pressing || packing) {
@@ -275,23 +316,33 @@ public final class TrainPlacer {
             tailArc = arcs.tailArc();
         }
 
+        boolean drawnBack = false;
+
         if (blocked) {
-            roomToEnd = farEnd ? ribbon.farArc() - tailArc : tailArc - ribbon.nearArc();
+            roomToEnd = (tailEndArc - tailArc) * tailSign;
 
-            // Draws the whole train back just far enough that its tail clears the blocked end.
-            double pushback = Math.max(0.0, tailHalfWidth - roomToEnd) * (farEnd ? -1.0 : 1.0);
+            // Draws the whole train back just far enough that its tail clears the blocked end, and
+            // never past the end ahead: a car set down inside a block passes through it.
+            double pushback = Math.min(Math.max(0.0, tailHalfWidth - roomToEnd),
+                    Math.max(0.0, roomAhead - noseLength)) * -tailSign;
 
-            leadArc += pushback;
-            headArc += pushback;
+            // Nor into a cart standing beside the track there: every other car is laid from it.
+            drawnBack = Math.abs(pushback) > EPSILON
+                    && !seatTaken(train, ribbon, leader, leadArc + pushback);
+
+            if (drawnBack) {
+                leadArc += pushback;
+                headArc += pushback;
+            }
         }
 
         Seat[] seats = new Seat[cars.size()];
         Refusal refusal = null;
 
-        // The leading car is skipped unless blocked: normally vanilla places it, but a train
+        // The leading car is skipped unless drawn back: normally vanilla places it, but a train
         // backed against a wall needs it seated too, so it stops exactly at the wall.
         for (int i = 0; i < cars.size(); i++) {
-            if (i == leadIndex && !blocked) {
+            if (i == leadIndex && !drawnBack) {
                 continue;
             }
 
@@ -319,9 +370,9 @@ public final class TrainPlacer {
             }
         }
 
-        // Waits rather than counts against the train: another train occupying these seats will
-        // clear on its own, and vanilla keeps both trains solid to each other until it does.
-        Foul foul = fouled(train, cars, seats);
+        // Waits rather than counts against the train. A cart on this track past either end has
+        // shortened it already; what is left stands off this track or between the train's own cars.
+        Foul foul = fouled(train, cars, seats, leadIndex);
 
         if (foul != null && refusal == null) {
             refusal = new Refusal(Bail.SEAT_FOULED, Refusal.NONE, "a cart of another train lies at "
@@ -334,7 +385,7 @@ public final class TrainPlacer {
         double faceSign = travelSign != 0.0 ? travelSign : order * fromHead;
 
         for (int i = 0; i < cars.size(); i++) {
-            if (i == leadIndex && !blocked) {
+            if (i == leadIndex && !drawnBack) {
                 continue;
             }
 
@@ -372,10 +423,10 @@ public final class TrainPlacer {
     // The first foreign cart lying across one of these seats, or across the ground reaching it.
     private record Foul(int carIndex, AbstractMinecart foulingCart) {}
 
-    // Finds the first seat blocked by another train's cart, clearing that seat so the car stays
-    // loose rather than being placed into it.
+    // Clears the seats another train's cart stands in or lies across reaching, naming the first.
+    // The leading car's seat, taken only to draw a train back, is cleared uncounted.
     private static @Nullable Foul fouled(
-            Train train, List<AbstractMinecart> cars, Seat[] seats) {
+            Train train, List<AbstractMinecart> cars, Seat[] seats, int leadIndex) {
         AABB span = null;
 
         for (int i = 0; i < seats.length; i++) {
@@ -390,12 +441,7 @@ public final class TrainPlacer {
             return null;
         }
 
-        // A cart coupled to one of these is no foul, even when a chunk border splits the walk into
-        // two trains and train.contains says it is not ours.
-        List<AbstractMinecart> others = cars.getFirst().level().getEntitiesOfClass(
-                AbstractMinecart.class, span,
-                car -> !train.contains(car) && !coupledToAny(cars, car));
-
+        List<AbstractMinecart> others = foreignCarts(train, span);
         Foul first = null;
 
         for (int i = 0; i < seats.length; i++) {
@@ -407,7 +453,7 @@ public final class TrainPlacer {
 
             for (AbstractMinecart other : others) {
                 if (sweptBox.intersects(other.getBoundingBox())) {
-                    first = first != null ? first : new Foul(i, other);
+                    first = first != null || i == leadIndex ? first : new Foul(i, other);
 
                     seats[i] = null;
                     break;
@@ -416,6 +462,133 @@ public final class TrainPlacer {
         }
 
         return first;
+    }
+
+    // Every cart in box but this train's own, a cart coupled to one of its cars counting as one
+    // of its own even where a chunk border splits the walk and train.contains says otherwise.
+    private static List<AbstractMinecart> foreignCarts(Train train, AABB box) {
+        List<AbstractMinecart> cars = train.cars();
+
+        return cars.getFirst().level().getEntitiesOfClass(AbstractMinecart.class, box,
+                car -> !train.contains(car) && !coupledToAny(cars, car));
+    }
+
+    // The end another train's cart makes of this track past endCar, outwardSign away from the
+    // train: how far endCar's middle may come, pushed out by halfLength as a recorded end is.
+    private static @Nullable Double foreignEnd(Train train, TrackRibbon ribbon,
+            AbstractMinecart endCar, double reachArc, double outwardSign, double halfLength) {
+        Vec3 reachPosition = ribbon.positionAt(reachArc);
+        AABB aroundBox = endCar.getBoundingBox();
+
+        if (reachPosition != null) {
+            aroundBox = aroundBox.minmax(boxAt(endCar, reachPosition));
+        }
+
+        List<AbstractMinecart> others = foreignCarts(train, aroundBox.inflate(END_SHELL));
+
+        if (others.isEmpty()) {
+            return null;
+        }
+
+        Double standing = ribbon.arcNear(endCar, reachArc);
+        double standingArc = standing == null ? reachArc : standing;
+        Double nearest = null;
+
+        // Not asked whether the two collide: that answer comes off rail memos a tick old, which
+        // at a junction lets two carts standing in each other pass, and the placer passes nothing.
+        for (AbstractMinecart other : others) {
+            Double otherArc = ribbon.arcNear(other, standingArc);
+
+            // One level with or behind endCar has no seat short of it, so it is no end.
+            if (otherArc == null || (otherArc - standingArc) * outwardSign <= 0.0) {
+                continue;
+            }
+
+            Double clearArc = firstClearArc(ribbon, endCar, other.getBoundingBox(), otherArc,
+                    -outwardSign);
+
+            if (clearArc != null) {
+                nearest = nearerEnd(nearest, clearArc + outwardSign * halfLength, outwardSign);
+            }
+        }
+
+        return nearest;
+    }
+
+    // The arc nearest fromArc, stepping towards stepSign, where car's box clears otherBox; null if
+    // it never touched there, or the track or CLEAR_REACH runs out first.
+    private static @Nullable Double firstClearArc(TrackRibbon ribbon, AbstractMinecart car,
+            AABB otherBox, double fromArc, double stepSign) {
+        double touchingArc = fromArc;
+
+        for (int step = 0; step * CLEAR_STEP <= CLEAR_REACH; step++) {
+            double arc = fromArc + stepSign * step * CLEAR_STEP;
+            Vec3 position = ribbon.positionAt(arc);
+
+            if (position == null) {
+                return null;
+            }
+
+            if (boxAt(car, position).intersects(otherBox)) {
+                touchingArc = arc;
+                continue;
+            }
+
+            // A cart the track never brings a car into is beside it, not in the way.
+            if (step == 0) {
+                return null;
+            }
+
+            // Halved down between the last step that touched and this one, which is clear.
+            for (int halving = 0; halving < CLEAR_HALVINGS; halving++) {
+                double middleArc = (touchingArc + arc) * 0.5;
+                Vec3 middle = ribbon.positionAt(middleArc);
+
+                if (middle == null || boxAt(car, middle).intersects(otherBox)) {
+                    touchingArc = middleArc;
+                } else {
+                    arc = middleArc;
+                }
+            }
+
+            return arc;
+        }
+
+        return null;
+    }
+
+    // The recorded end outwardSign away from fromArc, if nearer than reach and the rail stops
+    // there against something solid; null otherwise. Near first, so no far block is ever read.
+    private static @Nullable Double recordedEnd(TrackRibbon ribbon, Level level, double fromArc,
+            double reach, double outwardSign) {
+        boolean farEnd = outwardSign > 0.0;
+        double endArc = farEnd ? ribbon.farArc() : ribbon.nearArc();
+
+        return (endArc - fromArc) * outwardSign < reach && ribbon.blockedBeyond(level, farEnd)
+                ? endArc : null;
+    }
+
+    // Whether a cart of another train stands where car would be seated at arc.
+    private static boolean seatTaken(
+            Train train, TrackRibbon ribbon, AbstractMinecart car, double arc) {
+        Vec3 position = ribbon.positionAt(arc);
+
+        return position != null && !foreignCarts(train, boxAt(car, position)).isEmpty();
+    }
+
+    // Of two ends on the side outwardSign points to, whichever the train meets first.
+    private static @Nullable Double nearerEnd(
+            @Nullable Double a, @Nullable Double b, double outwardSign) {
+        if (a == null || b == null) {
+            return a == null ? b : a;
+        }
+
+        return a * outwardSign <= b * outwardSign ? a : b;
+    }
+
+    // Car's box as it would stand with its middle at position.
+    private static AABB boxAt(AbstractMinecart car, Vec3 position) {
+        return car.getBoundingBox().move(position.subtract(car.position()));
     }
 
     // Whether any of these cars holds a link to other, read off the slots rather than the walk.
@@ -432,7 +605,7 @@ public final class TrainPlacer {
     // The ground a car crosses reaching its seat: its current box joined to the box it will stand
     // in, so a fouling check catches a train it passes through as well as one it lands on.
     private static AABB swept(AbstractMinecart car, Seat seat) {
-        AABB seatBox = car.getBoundingBox().move(seat.position().subtract(car.position()));
+        AABB seatBox = boxAt(car, seat.position());
 
         return seated(car) ? car.getBoundingBox().minmax(seatBox) : seatBox;
     }
