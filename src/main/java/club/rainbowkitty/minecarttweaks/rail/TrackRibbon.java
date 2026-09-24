@@ -566,12 +566,14 @@ public final class TrackRibbon {
      * a dead end, or a block that is not rail.
      */
     public void extendTo(Level level, double from, double to) {
-        while (nearArc() > from + EPSILON && grow(level, true)) {
-            continue;
-        }
+        boolean nearGrowing = true;
+        boolean farGrowing = true;
 
-        while (farArc() < to - EPSILON && grow(level, false)) {
-            continue;
+        // One block off each end in turn: grown one after the other, the near end could spend the
+        // whole cap before the far end had any.
+        while (nearGrowing || farGrowing) {
+            nearGrowing = nearGrowing && nearArc() > from + EPSILON && grow(level, true);
+            farGrowing = farGrowing && farArc() < to - EPSILON && grow(level, false);
         }
     }
 
