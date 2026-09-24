@@ -865,17 +865,21 @@ public final class TrainCoupling {
 
         TrainPlacer.Refusal refusal = TrainPlacer.seat(train, TARGET_SPACING);
 
-        if (refusal != null) {
-            cutIfLost(level, train, refusal);
+        // One fault reading a tick, whichever kind it is, so the two cannot clear each other's
+        // count. A refusal naming a car on the ground takes the tick, a diverted car any other,
+        // refused or not; the car a tick passes over keeps its count standing, not cleared.
+        int divertedIndex = divertedCarIndex(level, train);
+
+        if (refusal != null && cutIfLost(level, train, refusal, divertedIndex)) {
             return;
         }
 
-        // One fault reading a tick, whichever kind it is, so the two cannot clear each other's
-        // count. A train cut here is two trains from the next tick, so there is nothing left to
-        // trim or measure against: both halves go on from where they now are.
-        int divertedIndex = divertedCarIndex(level, train);
+        // A refusal cutIfLost passed on names no car or one in the air, whose count then stands.
+        int refusedIndex = refusal == null ? TrainPlacer.Refusal.NONE : refusal.car();
 
-        if (train.faultHeld(divertedIndex, SEVER_TICKS)
+        // A train cut here is two trains from the next tick, so there is nothing left to trim or
+        // measure against: both halves go on from where they now are.
+        if (train.faultHeld(divertedIndex, refusedIndex, SEVER_TICKS)
                 && divertedIndex != TrainPlacer.Refusal.NONE) {
             TrainMeter.sever(train, divertedIndex, keptIndex(train, divertedIndex), "DIVERTED",
                     "a switch has diverted its track for " + SEVER_TICKS + " ticks");
@@ -883,10 +887,15 @@ public final class TrainCoupling {
             return;
         }
 
+        if (refusal != null) {
+            return;
+        }
+
         trimRibbon(train);
     }
 
-    // What to do about a train the ribbon could not seat. Most refusals are a train waiting rather
+    // What to do about a train the ribbon could not seat, answering whether its refusal took the
+    // tick's fault reading. Most refusals are a train waiting rather
     // than a train in trouble: one with no leading end is standing still, one that cannot yet
     // read which way round it lies has not moved far enough to say, one with no room for its tail
     // is up against the end of its track, one whose track has not reached a car may yet record it,
@@ -894,39 +903,40 @@ public final class TrainCoupling {
     // names a car, and so none is a reason to break anything. A refusal
     // that does name one names a car the track cannot answer for, or one the train is running
     // away from, and once that has held it is a sever.
-    private static void cutIfLost(ServerLevel level, Train train, TrainPlacer.Refusal refusal) {
+    private static boolean cutIfLost(
+            ServerLevel level, Train train, TrainPlacer.Refusal refusal, int divertedIndex) {
         if (refusal.car() == TrainPlacer.Refusal.NONE) {
-            train.faultHeld(TrainPlacer.Refusal.NONE, SEVER_TICKS);
-            return;
+            return false;
         }
 
         // A car in the air is not a car the track has lost. It is between one piece of track and
         // the next, and where it is now says nothing about whether it will come down on rails —
         // which is the question, and one only a landing can answer. The count is left standing
         // rather than cleared, so a train already failing takes up where it left off once down;
-        // every other car's clears as on any tick.
+        // the tick goes to holdTrain's other reading, which clears every other car's.
         if (!train.cars().get(refusal.car()).onGround()) {
-            train.faultHeld(TrainPlacer.Refusal.NONE, refusal.car(), SEVER_TICKS);
-            return;
+            return false;
         }
 
-        if (train.faultHeld(refusal.car(), SEVER_TICKS)) {
+        // First claim on the tick: this fault holds for as long as it is true, while a diverted
+        // reading moves car to car as a train runs over a switch and would starve it.
+        if (train.faultHeld(refusal.car(), divertedIndex, SEVER_TICKS)) {
             TrainMeter.sever(train, refusal.car(), keptIndex(train, refusal.car()),
                     refusal.why().name(), "held " + SEVER_TICKS + " ticks");
             sever(level, train, refusal.car());
         }
+
+        return true;
     }
 
     // Which car of a train a switch is currently taking off its recorded track, or NONE. Read from
     // each car's own seat rather than worked out again here, so the check and the placement cannot
     // come to different answers about where a car is.
     //
-    // The answer alone is not a reason to cut. A switch on a busy junction is re-steered constantly
-    // by whatever else is crossing it, and by this train's own leading car when it reverses onto
-    // track it has already recorded — so a single tick's disagreement between the rail and the
-    // record is the normal state of a shared switch, not a train being taken apart. Only a
-    // disagreement that outlasts the traffic causing it means anything, so this answers a question
-    // and leaves the deciding to the same held count every other fault goes through.
+    // The answer alone is not a reason to cut. Cars running across a switch that disagrees with the
+    // record each show it for a tick in turn, which is not a train being taken apart; only a
+    // disagreement that holds on one car means anything, so this answers a question and leaves the
+    // deciding to the same held count every other fault goes through.
     private static int divertedCarIndex(ServerLevel level, Train train) {
         AbstractMinecart leader = train.leader();
         TrackRibbon ribbon = train.ribbon();
@@ -937,8 +947,10 @@ public final class TrainCoupling {
             Double seatArc = car.minecarttweaks$seatArc(ribbon.arcEpoch());
 
             // A seat arc from a numbering the ribbon has since left says nothing about where this
-            // car sits now, so it is no evidence of a switch having moved under it.
-            if (car != leader && seatArc != null && ribbon.diverted(level, seatArc)) {
+            // car sits now, so it is no evidence of a switch having moved under it. Nor does the
+            // last seat of a car the placer has let go of, which vanilla now runs on the rails.
+            if (car != leader && seatArc != null && TrainPlacer.seated(car)
+                    && ribbon.diverted(level, seatArc)) {
                 return i;
             }
         }

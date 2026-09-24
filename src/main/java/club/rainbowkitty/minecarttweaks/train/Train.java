@@ -300,15 +300,10 @@ public final class Train {
      * tick or two and then fine. Deciding on one tick's reading breaks trains that were never in
      * trouble, so the reading has to hold before it costs anything. Every other car is cleared by
      * the same call, so a fault that moves from car to car never accumulates anywhere.
-     */
-    public boolean faultHeld(int carIndex, int ticks) {
-        return faultHeld(carIndex, TrainPlacer.Refusal.NONE, ticks);
-    }
-
-    /**
-     * As {@link #faultHeld(int, int)}, except that car {@code standingIndex} keeps its count as it
-     * stands rather than having it cleared: a car whose fault this tick is not counted — it is in
-     * the air — but is not forgiven either. A negative {@code standingIndex} names no car.
+     *
+     * @param standingIndex a car that keeps its count as it stands rather than having it cleared,
+     *     or a negative index for none: one whose fault this tick is not counted — it is in the
+     *     air, or another car's fault took the tick — but is not forgiven either
      */
     public boolean faultHeld(int carIndex, int standingIndex, int ticks) {
         if (faults == null || faults.length != cars.size()) {
