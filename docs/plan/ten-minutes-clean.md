@@ -17,6 +17,8 @@ it. M1 and M2 are independent of everything; M3 and M4 are one piece of work; M5
 the line format M3 and M4 define and can be built alongside them. X1 shares a site with M4's
 overspeed line and is built with it; X2 is independent. P1 to P5 are independent of each other
 except that P1 rebases on M4's edit to the same method. R1 is the bar and makes the work complete.
+P6 to P8, planned from the runs after P1 to P5, are independent of each other and each is built
+against a dev server of its own; R1 runs again once they land.
 
 ---
 
@@ -88,6 +90,8 @@ What stays is three kinds of failure that no planned stage addresses:
   cart-to-cart push to the car a train is driven by with no ceiling, the clamp P1 gave `shunt`, and
   the placer copies that car's speed down the train.
 
+They are planned as P6 to P8.
+
 ## How these stages get tested
 
 On the mod's own dev server (`run/server.properties`: game port 25603, rcon 25579, password in the
@@ -134,6 +138,14 @@ so M1 and M2 are one task: copy first, fix the copy under `scripts/mtxrig/`, syn
 `rig-sync.sh`, and test on the main checkout. `scripts/torture.py` (M5) can be run from any
 checkout against the main one's server, since it only speaks rcon and reads
 `rkc/mods/minecart-tweaks/run/logs/debug.log` by path.
+
+P6 to P8 are the exception: they are physics and cannot be judged unrun, so each worktree runs a
+dev server of its own. It is a copy of the main checkout's `run/`, taken after `save-all flush`, on
+ports of its own set in its `server.properties` — `gradle/devserver.gradle` only appends keys the
+file lacks, and `stopServer` finds its process by the checkout's own `launch.cfg` — and it is driven
+with `scripts/devserver.sh <worktree>`, `torture.py --run-dir <worktree>/run` and `rig-sync.sh
+<worktree>/run`. The main checkout's server stays stopped meanwhile, so a command left pointing at
+it fails rather than disturbing it.
 
 The speed ceilings the clauses refer to: vanilla's is `max_minecart_speed / 20` blocks per tick
 (NewMinecartBehavior.java:486), 5.0 at the bar's setting, clamped per axis at
@@ -464,6 +476,57 @@ that shows.
 **Done when.** R1's stall count is zero, and no `meter` line's ribbon node count exceeds twice the
 train's car count plus the reach margin for the whole run.
 
+## P6 — A collision leaves every car under its ceiling — **planned**
+
+**Build.** Vanilla's cart-to-cart push is the injector P1 left. `pushOtherMinecart`
+(AbstractMinecart.java:543-575) runs for every pair `CartInteraction.pushes` allows, since
+`shoveReaction` hands a cart pair back to vanilla, and leaves each cart 0.2 of its own velocity plus
+the pair's mean — up to 1.2 times the ceiling, which vanilla clamps only on the next move.
+`EntityMixin.shoveTrain` (EntityMixin.java:67) then lays that push on the car the train is driven
+by, divided by the train's mass, with no ceiling, and the placer copies that car's speed down the
+train. For two trains the pair has already exchanged momentum in `CartImpact.shunt`, so it is
+pushed twice. Clamp the driven car's horizontal speed to its ceiling where `shoveTrain` lands the
+push, with the clamp P1 gave `shunt` (`ceilinged`, CartImpact.java:215), and settle whether
+vanilla's push should run at all for a pair `shunt` already settles: its velocity half counts the
+meeting twice, while its positional half, a twentieth of a block a tick, may be what keeps two
+touching carts from sitting inside each other.
+
+**Done when.** A ten-minute torture run logs no `overspeed`, and the `abtestloop-a` control still
+reads `maxspeed` 2.50.
+
+## P7 — A fouling cart is the end of the track, not a refusal — **planned**
+
+**Build.** train-identity.md's S17 as written there. `SEAT_FOULED` leaves the fouled car to vanilla,
+which drives it back into the train that fouled it, so two trains that meet each refuse and stand
+inside one another for the rest of the run — most of every run's overlap count. Resolve the fouling
+cart to an arc on this train's ribbon, take the nearest one ahead of the leading car as a limit, and
+feed it through the path `blockedBeyond`, `pressing`, `packing` and the `blocked` draw-back already
+take (TrainPlacer.java:212-271), so every car keeps its seat and the train packs up short.
+`SEAT_FOULED` survives only for a fouling cart with no arc on this ribbon. S17's three questions are
+resolved by building it: that case, whether two trains drawing back from each other oscillate, and
+whether the swept half of `fouled` (TrainPlacer.java:377) keeps refusing.
+
+**Done when.** S17's own: two trains driven head-on stop with every car seated, no `SEAT_FOULED` and
+no loose car on either side, and both resume when one is driven away. Then a ten-minute torture run
+reports no stall refused `SEAT_FOULED`.
+
+## P8 — A head-on meeting leaves both leading cars on their rails — **planned**
+
+**Build.** After a head-on meeting a leading car can stand on the block above its rail — in the P4
+run two trains' leaders stood on `(-20,-52,-3)` together. Resting on another cart's box it reads as
+on the ground, so `cutIfLost` counts `LEADER_OFF_RIBBON` against it instead of waiting as it does
+for a car in the air (TrainCoupling.java:925), and severs it ten ticks later; the cut engine runs on
+alone, leaves the track and stalls. What lifts the car is not known. Reproduce a head-on meeting of
+two trains at 2.5 blocks a tick, on a straight and at the `(-20,-53,-3)` corner, frozen and stepped
+a tick at a time, reading each leading car's position, `onGround` and movement and which code moved
+it. Fix the lift where it happens, and let a car resting on another cart wait as one in the air
+does rather than count towards a sever. Resolve by building it whether the lift is vanilla's
+collision against a solid cart box — `CartInteraction.COLLIDE` makes two trains' carts solid to each
+other — the placer seating a car into the other train, or the push P6 caps.
+
+**Done when.** Repeated head-on meetings at 2.5 blocks a tick each leave both leading cars on their
+rails and sever nothing, and a ten-minute torture run shows no `LEADER_OFF_RIBBON` sever.
+
 # Part R — The bar
 
 ## R1 — Ten minutes clean, twice — **in progress**
@@ -485,9 +548,6 @@ verdict tables are pasted into this stage's "As built", with the commit each ran
 - **Whether a bounce is "appropriate" beyond not failing.** The clause fails on overlap, overspeed
   and a sever after a strike; the momentum figures are reported for reading. Settled by the user
   looking at R1's strike table.
-- **Stages for the three failures left.** The pile-up severs, the foul standoff and the collision
-  overspeed each need a stage before R1 can pass. Settled by the user choosing whether they are
-  planned here, and whether the standoff is train-identity.md's S17 as written.
 - **The audit's remaining findings.** S2 (restart), U2 (stale held heading — the track has no
   station), K1, L1, L2, L5 and D3 are outside this bar and stay in the audit.
 
