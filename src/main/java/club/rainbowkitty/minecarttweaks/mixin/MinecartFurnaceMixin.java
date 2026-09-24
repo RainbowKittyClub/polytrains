@@ -34,6 +34,7 @@ import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.rule.ModGameRules;
 import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
+import club.rainbowkitty.minecarttweaks.train.TrainMeter;
 import club.rainbowkitty.minecarttweaks.util.FurnaceFuel;
 
 /** Furnace-cart speed, burning any fuel, the parking brake, and keeping chunks loaded. */
@@ -346,6 +347,8 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         // one at a time end up pushing against each other. Two that do sum to nothing, and a train
         // whose engines sum to nothing cannot start itself again at all.
         Vec3 reversedHeading = push.scale(-1.0);
+
+        TrainMeter.stallReversed(this);
 
         for (AbstractMinecart car : Train.of(this).cars()) {
             car.minecarttweaks$turnEngine(reversedHeading);

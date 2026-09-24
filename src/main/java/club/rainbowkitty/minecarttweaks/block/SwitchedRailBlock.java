@@ -3,7 +3,6 @@ package club.rainbowkitty.minecarttweaks.block;
 import java.util.EnumMap;
 import java.util.Map;
 
-import com.mojang.logging.LogUtils;
 import com.mojang.serialization.MapCodec;
 import eu.pb4.polymer.blocks.api.BlockModelType;
 import eu.pb4.polymer.blocks.api.MultiPolymerBlockModel;
@@ -12,7 +11,6 @@ import eu.pb4.polymer.blocks.api.PolymerBlockResourceUtils;
 import eu.pb4.polymer.blocks.api.PolymerTexturedBlock;
 import net.fabricmc.fabric.api.networking.v1.context.PacketContext;
 import org.jspecify.annotations.Nullable;
-import org.slf4j.Logger;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -40,6 +38,7 @@ import net.minecraft.world.phys.Vec3;
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
+import club.rainbowkitty.minecarttweaks.train.TrainMeter;
 
 /**
  * A rail that curves a car off its right-hand edge — backward toward where the placer stood by
@@ -48,7 +47,6 @@ import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
  */
 public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedBlock {
 
-    private static final Logger LOGGER = LogUtils.getLogger();
     /** The forward direction — the way the placer was looking; the branch leaves the right edge. */
     public static final EnumProperty<Direction> FACING = BlockStateProperties.HORIZONTAL_FACING;
 
@@ -213,16 +211,20 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
      *         under a car is the one it entered on and swapping it mid-crossing derails the car
      */
     public static boolean toggle(ServerLevel level, BlockPos pos, BlockState state) {
+        boolean reversed = !state.getValue(REVERSED);
+        boolean forward = state.getValue(POWERED) != reversed;
+        RailShape thrown = restingShape(state.getValue(FACING), forward);
+
         if (occupied(level, pos)) {
+            TrainMeter.switched(level, pos, state.getValue(SHAPE), thrown, false,
+                    "wrench refused while occupied");
             return false;
         }
 
-        boolean reversed = !state.getValue(REVERSED);
-        boolean forward = state.getValue(POWERED) != reversed;
+        TrainMeter.switched(level, pos, state.getValue(SHAPE), thrown, true, "thrown by a wrench");
         level.setBlock(
                 pos,
-                state.setValue(REVERSED, reversed)
-                        .setValue(SHAPE, restingShape(state.getValue(FACING), forward)),
+                state.setValue(REVERSED, reversed).setValue(SHAPE, thrown),
                 Block.UPDATE_CLIENTS);
         return true;
     }
@@ -289,8 +291,11 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         RailShape wanted = shapeFor(state, travel);
 
         if (state.getValue(SHAPE) != wanted) {
-            LOGGER.debug("switch at {} steered to {} from {} by a cart heading {}",
-                    pos, wanted, state.getValue(SHAPE), travel);
+            if (TrainMeter.enabled()) {
+                TrainMeter.switched(level, pos, state.getValue(SHAPE), wanted, true,
+                        "steered by a cart heading " + travel.getSerializedName());
+            }
+
             level.setBlock(pos, state.setValue(SHAPE, wanted), Block.UPDATE_CLIENTS);
         }
         // Keep a settle pending for as long as a car is crossing straight, so the switch does not
@@ -317,20 +322,20 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         }
 
         BlockState signalled = state.setValue(POWERED, powered);
+        RailShape resting = restingShape(state.getValue(FACING), divergesForward(signalled));
 
         // The signal belongs to the circuit, so it is recorded whatever stands on the switch; only
         // the curve waits, for the settle to lay it over once the car it would derail has gone.
         if (occupied(level, pos)) {
+            TrainMeter.switched(level, pos, state.getValue(SHAPE), resting, false,
+                    "signal changed while occupied");
             level.setBlock(pos, signalled, Block.UPDATE_CLIENTS);
             settleLater(level, pos);
             return;
         }
 
-        boolean forward = powered != state.getValue(REVERSED);
-        level.setBlock(
-                pos,
-                signalled.setValue(SHAPE, restingShape(state.getValue(FACING), forward)),
-                Block.UPDATE_CLIENTS);
+        TrainMeter.switched(level, pos, state.getValue(SHAPE), resting, true, "signal changed");
+        level.setBlock(pos, signalled.setValue(SHAPE, resting), Block.UPDATE_CLIENTS);
     }
 
     // Lays the resting curve on once the car that was crossing has gone, whether it was held off by
@@ -344,8 +349,8 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         if (occupied(level, pos)) {
             level.scheduleTick(pos, this, SETTLE_DELAY);
         } else {
-            LOGGER.debug("switch at {} laying its resting curve {} over {}",
-                    pos, resting, state.getValue(SHAPE));
+            TrainMeter.switched(level, pos, state.getValue(SHAPE), resting, true,
+                    "laying its resting curve");
             level.setBlock(pos, state.setValue(SHAPE, resting), Block.UPDATE_CLIENTS);
         }
     }

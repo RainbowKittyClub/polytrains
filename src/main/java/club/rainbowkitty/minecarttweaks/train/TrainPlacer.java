@@ -2,9 +2,7 @@ package club.rainbowkitty.minecarttweaks.train;
 
 import java.util.List;
 
-import com.mojang.logging.LogUtils;
 import org.jspecify.annotations.Nullable;
-import org.slf4j.Logger;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -33,8 +31,6 @@ import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
  * leads — hands the whole train back.
  */
 public final class TrainPlacer {
-
-    private static final Logger LOGGER = LogUtils.getLogger();
 
     // Below this, an arc step counts as no movement at all.
     private static final double EPSILON = 1.0E-5;
@@ -112,11 +108,10 @@ public final class TrainPlacer {
         }
 
         if (train.seatingChanged(attempt == null ? null : attempt.why())
-                && LOGGER.isDebugEnabled()) {
-            LOGGER.debug("train of {} {}", train.size(), attempt == null
+                && TrainMeter.enabled()) {
+            TrainMeter.refusal(train, attempt, attempt == null
                     ? "seated"
-                    : "not seated, " + attempt.why() + ", " + loose(train) + " loose: "
-                    + attempt.detail());
+                    : "not seated, " + loose(train) + " loose: " + attempt.detail());
         }
 
         return attempt;

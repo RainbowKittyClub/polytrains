@@ -5,6 +5,7 @@ import eu.pb4.polymer.resourcepack.api.PolymerResourcePackUtils;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import org.slf4j.Logger;
 
@@ -23,6 +24,7 @@ import club.rainbowkitty.minecarttweaks.item.WrenchItems;
 import club.rainbowkitty.minecarttweaks.link.LinkTargeting;
 import club.rainbowkitty.minecarttweaks.rule.ModGameRules;
 import club.rainbowkitty.minecarttweaks.rule.PhysicsGameRules;
+import club.rainbowkitty.minecarttweaks.train.TrainMeter;
 import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
 
 /** Mod entrypoint — wires events and registers content. */
@@ -66,6 +68,9 @@ public class MinecartTweaks implements ModInitializer {
                         + " unavailable; enable the pack at world creation to use them.", MOD_ID);
             }
         });
+
+        // Sampled after each level's tick, once every car of every train has moved.
+        ServerTickEvents.END_LEVEL_TICK.register(TrainMeter::sample);
 
         CreativeModeTabEvents.modifyOutputEvent(REDSTONE_BLOCKS_TAB)
                 .register(RailBlocks::addCreativeTabEntries);

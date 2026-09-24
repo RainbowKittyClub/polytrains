@@ -12,6 +12,7 @@ import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.rule.ModGameRules;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
+import club.rainbowkitty.minecarttweaks.train.TrainMeter;
 
 /**
  * What a moving cart does to whatever it runs into. Which of them it may do anything to at all is
@@ -90,6 +91,8 @@ public final class CartImpact {
             CartInteraction interaction = CartInteraction.of(cart, other);
 
             if (other instanceof AbstractMinecart struck) {
+                TrainMeter.overlap(cart, struck);
+
                 // Both carts run this in the same tick, so the second call finds the first gone.
                 // Whoever was riding is set down unhurt: losing the carts is the whole of the cost.
                 if (interaction == CartInteraction.WRECK) {
@@ -162,6 +165,9 @@ public final class CartImpact {
         if (aheadComponent >= sharedSpeed) {
             return 0.0;
         }
+
+        TrainMeter.strike(cart, struck, movement.dot(heading) - aheadComponent, sharedSpeed,
+                sharedSpeed - aheadComponent);
 
         Vec3 gainedMovement = heading.scale(sharedSpeed - aheadComponent);
 

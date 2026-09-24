@@ -1,11 +1,10 @@
 package club.rainbowkitty.minecarttweaks.train;
 
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
-import com.mojang.logging.LogUtils;
 import org.jspecify.annotations.Nullable;
-import org.slf4j.Logger;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -37,8 +36,6 @@ import club.rainbowkitty.minecarttweaks.rule.ModGameRules;
  * with a name.
  */
 public final class TrainCoupling {
-
-    private static final Logger LOGGER = LogUtils.getLogger();
 
     // Centre-to-centre distance at which two carts are too far apart to link, and how far apart
     // the cars of a linked train settle. The first is the straight line between them rather than
@@ -743,19 +740,16 @@ public final class TrainCoupling {
      * whole length at once.
      */
     public static boolean crossedByTrain(Level level, BlockPos pos) {
-        if (!ModGameRules.trainsEnabled(level)) {
-            return false;
-        }
+        return crossedBy(level, pos, Train::of);
+    }
 
-        for (AbstractMinecart cart : level.getEntitiesOfClass(
-                AbstractMinecart.class, new AABB(pos).inflate(CROSSING_REACH),
-                AbstractMinecart::hasLink)) {
-            if (spans(Train.of(cart), pos)) {
-                return true;
-            }
-        }
-
-        return false;
+    /**
+     * {@link #crossedByTrain}'s answer read off the trains the carts near {@code pos} already
+     * hold, rebuilding none, for an observer that must not settle a train ahead of its own cars.
+     * A train whose links changed since its cars last asked for it is not counted.
+     */
+    public static boolean crossedByHeldTrain(Level level, BlockPos pos) {
+        return crossedBy(level, pos, Train::peek);
     }
 
     /**
@@ -883,14 +877,13 @@ public final class TrainCoupling {
 
         if (train.faultHeld(divertedIndex, SEVER_TICKS)
                 && divertedIndex != TrainPlacer.Refusal.NONE) {
-            LOGGER.debug("train of {} severing at car {}: a switch has diverted its track for"
-                    + " {} ticks", train.size(), divertedIndex, SEVER_TICKS);
+            TrainMeter.sever(train, divertedIndex, keptIndex(train, divertedIndex), "DIVERTED",
+                    "a switch has diverted its track for " + SEVER_TICKS + " ticks");
             sever(level, train, divertedIndex);
             return;
         }
 
         trimRibbon(train);
-        TrainMeter.measure(level, train);
     }
 
     // What to do about a train the ribbon could not seat. Most refusals are a train waiting rather
@@ -916,8 +909,8 @@ public final class TrainCoupling {
         }
 
         if (train.faultHeld(refusal.car(), SEVER_TICKS)) {
-            LOGGER.debug("train of {} severing at car {}: {} held {} ticks",
-                    train.size(), refusal.car(), refusal.why(), SEVER_TICKS);
+            TrainMeter.sever(train, refusal.car(), keptIndex(train, refusal.car()),
+                    refusal.why().name(), "held " + SEVER_TICKS + " ticks");
             sever(level, train, refusal.car());
         }
     }
@@ -957,15 +950,9 @@ public final class TrainCoupling {
     // is cut from the one neighbour it has.
     private static void sever(ServerLevel level, Train train, int carIndex) {
         List<AbstractMinecart> cars = train.cars();
-        AbstractMinecart leader = train.leader();
-        int leadIndex = leader == null ? 0 : cars.indexOf(leader);
-        // Which way the leading car lies up the list, and so which neighbour to keep: the one
-        // towards it, or for the leading car itself the one neighbour it has.
-        int fromHead = leadIndex == 0 ? 1 : -1;
-        int towardsSign = carIndex == leadIndex ? fromHead : -fromHead;
-        int keepIndex = carIndex + towardsSign;
+        int keepIndex = keptIndex(train, carIndex);
 
-        if (keepIndex < 0 || keepIndex >= cars.size()) {
+        if (keepIndex < 0) {
             return;
         }
 
@@ -974,6 +961,41 @@ public final class TrainCoupling {
 
         Linkable.unlink(from, to);
         LinkAction.dropChain(level, from, to);
+    }
+
+    // The neighbour sever cuts car carIndex away from, or -1 if it has none that way. Its own
+    // method so the sever line names the same cut the sever makes.
+    private static int keptIndex(Train train, int carIndex) {
+        List<AbstractMinecart> cars = train.cars();
+        AbstractMinecart leader = train.leader();
+        int leadIndex = leader == null ? 0 : cars.indexOf(leader);
+        // Which way the leading car lies up the list, and so which neighbour to keep: the one
+        // towards it, or for the leading car itself the one neighbour it has.
+        int fromHead = leadIndex == 0 ? 1 : -1;
+        int towardsSign = carIndex == leadIndex ? fromHead : -fromHead;
+        int keepIndex = carIndex + towardsSign;
+
+        return keepIndex < 0 || keepIndex >= cars.size() ? -1 : keepIndex;
+    }
+
+    // Whether the train any linked cart near pos resolves to, through trainOf, lies across it.
+    private static boolean crossedBy(Level level, BlockPos pos,
+            Function<AbstractMinecart, @Nullable Train> trainOf) {
+        if (!ModGameRules.trainsEnabled(level)) {
+            return false;
+        }
+
+        for (AbstractMinecart cart : level.getEntitiesOfClass(
+                AbstractMinecart.class, new AABB(pos).inflate(CROSSING_REACH),
+                AbstractMinecart::hasLink)) {
+            Train train = trainOf.apply(cart);
+
+            if (train != null && spans(train, pos)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Whether the run of ribbon between a train's two end cars takes in the block at pos. Read off
