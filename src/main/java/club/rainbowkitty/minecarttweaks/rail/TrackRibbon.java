@@ -606,10 +606,6 @@ public final class TrackRibbon {
         while (nodes.size() > 1 && nodes.getLast().arc() > until) {
             nodes.removeLast();
         }
-
-        while (nodes.size() > MAX_NODES) {
-            nodes.removeFirst();
-        }
     }
 
     // Whether this ribbon records pos anywhere along it.
@@ -858,6 +854,12 @@ public final class TrackRibbon {
         Node last = nodes.getLast();
         nodes.addLast(new Node(pos, crossing.entry(), crossing.exit(), last.arc() + last.span(),
                 crossing.span()));
+
+        // At the cap the near end gives way rather than this block: record hands over the block
+        // its leading car is on, and refusing that leaves the car off its own ribbon.
+        while (nodes.size() > MAX_NODES) {
+            nodes.removeFirst();
+        }
     }
 
     // Extends the near end, which a train that has reversed is the one growing. The car crosses
@@ -872,6 +874,11 @@ public final class TrackRibbon {
         Node first = nodes.getFirst();
         nodes.addFirst(new Node(pos, crossing.exit(), crossing.entry(),
                 first.arc() - crossing.span(), crossing.span()));
+
+        // As in append, the other end gives way at the cap.
+        while (nodes.size() > MAX_NODES) {
+            nodes.removeLast();
+        }
     }
 
     // Whether two rail blocks can be consecutive: orthogonal neighbours, allowing the one-block
