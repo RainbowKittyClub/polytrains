@@ -1,11 +1,15 @@
 package club.rainbowkitty.minecarttweaks.mixin;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.llamalad7.mixinextras.sugar.Local;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 import net.minecraft.world.level.block.state.BlockState;
@@ -14,11 +18,13 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.collision.CartInteraction;
+import club.rainbowkitty.minecarttweaks.rail.SlopeStep;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /**
- * Holds vanilla's pickup to the speed the resolver allows one at, and its track forces to the
- * train rather than to whichever car happens to be leading it.
+ * Holds vanilla's pickup to the speed the resolver allows one at, its track forces to the train
+ * rather than to whichever car happens to be leading it, and a car stepping along a slope to its
+ * rail.
  */
 @Mixin(NewMinecartBehavior.class)
 public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccessor {
@@ -74,5 +80,34 @@ public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccess
         if (boosted != null) {
             cir.setReturnValue(boosted);
         }
+    }
+
+    // The out position is raised a block for a car read as climbing, so a movement square to the
+    // slope that is sent down it aims a block above the low end; see SlopeStep.squareDownSlope.
+    @WrapOperation(
+            method = "stepAlongTrack",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/world/entity/vehicle/minecart/NewMinecartBehavior;"
+                            + "isDecending(Lnet/minecraft/world/phys/Vec3;"
+                            + "Lnet/minecraft/world/level/block/state/properties/RailShape;)Z",
+                    ordinal = 0))
+    private boolean minecarttweaks$squareDownSlope(NewMinecartBehavior behavior, Vec3 movement,
+            RailShape shape, Operation<Boolean> isDecending) {
+        return isDecending.call(behavior, movement, shape)
+                || SlopeStep.squareDownSlope(movement, shape);
+    }
+
+    // A slope step that meets another cart can leave its car above the rail, and the stepper only
+    // corrects a car below it; SlopeStep puts it back where the step first touched.
+    @WrapOperation(
+            method = "stepAlongTrack",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/world/entity/vehicle/minecart/AbstractMinecart;"
+                            + "move(Lnet/minecraft/world/entity/MoverType;"
+                            + "Lnet/minecraft/world/phys/Vec3;)V"))
+    private void minecarttweaks$moveOnRail(AbstractMinecart cart, MoverType moverType, Vec3 step,
+            Operation<Void> move, @Local(argsOnly = true) BlockPos railPos,
+            @Local(argsOnly = true) RailShape shape) {
+        SlopeStep.moveOnRail(cart, step, railPos, shape, () -> move.call(cart, moverType, step));
     }
 }

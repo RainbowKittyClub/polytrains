@@ -137,6 +137,28 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     }
 
     /**
+     * The height the rail at {@code pos}, laid to {@code railShape}, runs at over the point
+     * ({@code x}, {@code z}): where vanilla's stepper keeps a car standing on it.
+     */
+    public static double heightAt(BlockPos pos, RailShape railShape, double x, double z) {
+        var exits = AbstractMinecart.exits(railShape);
+        Vec3i firstExit = exits.getFirst();
+        Vec3i secondExit = exits.getSecond();
+
+        if (firstExit.getY() == secondExit.getY()) {
+            return pos.getY() + RAIL_LIFT;
+        }
+
+        // The exit marked level is the one the rail climbs towards; the rise runs from nought at
+        // the low edge to one at that one.
+        Vec3i high = firstExit.getY() == 0 ? firstExit : secondExit;
+        double rise = 0.5 + (x - pos.getX() - 0.5) * high.getX()
+                + (z - pos.getZ() - 0.5) * high.getZ();
+
+        return pos.getY() + RAIL_LIFT + Math.clamp(rise, 0.0, 1.0);
+    }
+
+    /**
      * How the track runs across the block at {@code pos} for a cart entering it by
      * {@code movement}, or null if that block is not a rail.
      */
