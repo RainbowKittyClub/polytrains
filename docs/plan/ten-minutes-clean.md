@@ -59,6 +59,35 @@ longer than 4096 characters into several packets with the same request id
 
 ---
 
+**The planned stages do not reach the bar.** One ten-minute run on the torture track after each
+landing, counting what each clause failed on:
+
+| After | Sever | Stall (queued) | Overlap | Overspeed (worst) | Switch-safe |
+|---|---|---|---|---|---|
+| M1–M5, X1, X2 | 7 | 6 | 15,520 | 169 (4.07) | 79 thrown under a train |
+| P1 | 3 | 5 | 19,509 | 29 (3.63) | 56 thrown under a train |
+| P2 | 3 | 3 (9) | 2,936 | 43 (3.27) | 1 `DIVERTED` sever |
+| P3 | 1 | 2 (4) | 19,831 | 46 (3.84) | pass |
+| P4 | 6 | 5 (6) | 15,540 | 51 (3.33) | pass |
+| P5 | 12 | 9 (2) | 23,331 | 40 (3.57) | 1 `DIVERTED` sever |
+
+No run crashed, and every vacuity check passed. Every stall reported was a train standing still,
+which keeps the stall threshold as it is. The runs vary widely from one to the next — the track
+logs about 50,000 strikes in ten minutes — so one run per landing does not rank the landings.
+What stays is three kinds of failure that no planned stage addresses:
+
+- A head-on meeting lifts a leading car onto the block above its rail — two trains' leaders stood on
+  `(-20,-52,-3)` together in the P4 run — so the train refuses `LEADER_OFF_RIBBON` and cuts that
+  car off ten ticks later. Every sever after P2 but one `DIVERTED` is this refusal, and the cut
+  engine runs on alone, leaves the track and stalls off it.
+- Two trains that foul each other each refuse `SEAT_FOULED` and stand inside one another for the
+  rest of the run. That is most of the overlap count, since a pair logs about two lines a tick.
+  train-identity.md's S17 is the plan for it.
+- Cars carry speed past their ceiling out of collisions: 2.7 to 3.8 against 2.5, mostly on leading
+  cars, where the control never reads over 2.50. `EntityMixin.shoveTrain` adds vanilla's
+  cart-to-cart push to the car a train is driven by with no ceiling, the clamp P1 gave `shunt`, and
+  the placer copies that car's speed down the train.
+
 ## How these stages get tested
 
 On the mod's own dev server (`run/server.properties`: game port 25603, rcon 25579, password in the
@@ -114,7 +143,7 @@ placer cancels `moveAlongTrack` for it (AbstractMinecartMixin.java:262-265).
 
 # Part M — Measurement
 
-## M1 — Rig box covers the track and cars couple along their strip — **in progress**
+## M1 — Rig box covers the track and cars couple along their strip — **done**
 
 **Build.** In `run/world/datapacks/mtxrig/` (M2 moves it into the repo). Widen the default box in
 `load.mcfunction:7` to `{x:-24,y:-53,z:-30,w:49,d:59}` — same southern edge, six rows further
@@ -136,7 +165,22 @@ carts in seven trains of 1, 4, 4, 4, 6, 8 and 8, the `x=-1` consist reading F-C-
 north to south, on two consecutive placements — read with `scripts/torture.py --roster` (M5) or a
 per-cart `data get entity` dump over rcon.
 
-## M2 — Rig versioned: datapack in the repo, track as a structure — **in progress**
+### As built
+
+`couple_now` probes the four orthogonal cells at `distance=..0.6` and reaches two cells only across
+a cell holding both a rail and a sign at marker level. The rail test is an addition, so a sign
+standing beside the track between two parallel strips does not bridge them. `couple_pair` tests
+both ends for a free slot before writing either. `couple_warn` sends the `tellraw` and also counts
+`#unlinked mtxrig`, since rcon never sees a `tellraw`. `mtx_prev` is gone; `mtx_mate` is the working
+tag a reset clears. The slope worry in the probe distance is moot: no anchored cell is on an
+ascending rail, and `summon` puts a cart exactly at its cell with no tick inside one rig call.
+
+Observed three times with `torture.py --roster`: 35 carts in trains of 1, 4, 4, 4, 6, 8 and 8, no
+coupling warning, the `x=-1` consist F-C-H-C-C-H-C-F from `z=-27` to `z=-20`. A throwaway yard
+covered the paths the track never uses: a sign in the line bridged, a parallel strip two blocks over
+kept apart, a T-shaped strip warned once.
+
+## M2 — Rig versioned: datapack in the repo, track as a structure — **done**
 
 **Build.** Copy `run/world/datapacks/mtxrig/` to `scripts/mtxrig/` (without its `.claude/`
 directory) and add `scripts/rig-sync.sh` that copies it back under a mod's `run/world/datapacks/`
@@ -153,6 +197,21 @@ restore: copy the file to `run/world/generated/mtxrig/structures/`, then
 **Done when.** `git ls-files scripts/mtxrig` lists the functions and the `.nbt`; in a second box
 location on the yard, `rig-sync.sh`, `place template` and `mtxrig:rig` reproduce the 35-cart
 placement of M1.
+
+### As built
+
+26.2 loads a world's templates from `generated/<ns>/structure/`, singular
+(StructureTemplateManager.java:44), not `structures/`; `rig-sync.sh` installs the template there
+and its header carries the restore. The template comes from `scripts/rig-snapshot.py`, which reads
+the region files after `save-all flush`. It was taken with no carts and the redstone at rest (both
+switches `south_east`, detectors off): 10,080 blocks counting air, `DataVersion` 4903, no entities,
+byte-identical when re-taken. The box holds eight `torturetrack` signs, not seven; the one at
+`(-9,-45,-7)` stands above the heights the rig reads. `mtxrcon.py` never has two requests in flight,
+since vanilla drops a connection whose one read holds two packets.
+
+Observed at a copy shifted by `(+1000,+200,+1000)` and proven air first: `rig-sync.sh`, `place
+template` and `--roster` over a box on the copy alone reproduced M1's placement cell for cell, and
+everything placed there was removed again.
 
 ## M3 — TrainMeter samples the level, with identities — **in progress**
 
@@ -176,7 +235,23 @@ and keep the meter's rule that a train measuring no pair prints `n/a`, never `0.
 one `meter cart=` line per second, ids stable across lines; on the abtestloop control, no furnace
 consist's `maxspeed` exceeds 2.50 in a ten-minute run.
 
-## M4 — Event lines with identities — **in progress**
+### As built
+
+The sampler runs on `ServerTickEvents.END_LEVEL_TICK`; `END_WORLD_TICK` does not exist in the
+lifecycle-events version this build uses. It reads trains through `Train.peek`, `lastLeader` and
+`lastBail`, which rebuild nothing, so turning DEBUG on changes no tick. `maxspeed` is noted in
+`CartImpact.strikeNearby`, where X1 reads the same movement, and the mixin's tick head is untouched.
+The line goes past the Build's format: every line carries `tick=`, blocks are registry ids, and the
+old spacing and ribbon figures are tokens too (`mass`, `pairs`, `gap_worst`, `gap_mean`, `turn`,
+`nodes`, `span`, `checked`, `offset_worst`, `resets`, `revisits`). `fuel` reads through a new
+`minecarttweaks$fuel()` on `AbstractMinecartExt`.
+
+The Done when miscounts the roster: its lone chest cart is a `meter cart=` line, so the M1 roster
+gives six `meter train=` lines and one `meter cart=` line a second. Observed: 3,600 `train=` lines
+over the first ten-minute run, six a second, with steady ids. On the `abtestloop-a` control, ten
+minutes long, the `H-C-C-F-H` consist's `maxspeed` read 2.50 on 599 of its 600 lines and never more.
+
+## M4 — Event lines with identities — **done**
 
 **Build.** One DEBUG line per occurrence, each starting `event=<kind>` and naming its trains by
 M3's ids, prose after the tokens where the line already has some:
@@ -199,7 +274,26 @@ minute; `grep -o 'event=[a-z_]*' run/logs/debug.log | sort | uniq -c` shows each
 occurred; a redstone block set over rcon beside the switch at `(-14,-53,-2)` while the `z=-2`
 consist stands on it logs `event=switch … spanned=true`.
 
-## M5 — Sampler and verdict in `scripts/torture.py` — **in progress**
+### As built
+
+The sites are the Build's. `switch` is also written where `updateState` throws or holds a switch and
+where the wrench throws one, and carries `applied=`: `applied=false` is a change held back because a
+train lies across the switch, which Switch-safe does not count. `spanned` is read through
+`TrainCoupling.crossedByHeldTrain`, which rebuilds no train, so DEBUG changes nothing. Every line
+carries `tick=`, blocks are registry ids, and prose after the tokens never contains `=`.
+
+`overspeed` measures horizontal length, which is what vanilla clamps on rails
+(`NewMinecartBehavior.calculateTrackSpeed`); the per-axis clamp at AbstractMinecart.java:378-380 is
+`comeOffTrack`, for a derailed cart only. The audit's `speed=3.54` readings were a 45° slope read
+as a 3D length. The limit is the ceiling plus 1% plus what vanilla adds after its clamp, a lit
+powered rail's boost or a kick from rest and a grade's pull: 5.21 at a ceiling of 5.0, 2.64 at the
+furnace train's 2.5. It is written once each time a cart crosses it.
+
+Observed on the torture track once M1–M5, X1 and X2 had landed: strikes from `+8` ticks, every kind
+occurred, and a signal change at `(-14,-53,-2)` with the `z=-2` consist across it logged
+`event=switch … spanned=true applied=false`.
+
+## M5 — Sampler and verdict in `scripts/torture.py` — **done**
 
 **Build.** Python 3, standard library only, in the mod's `scripts/`. A persistent rcon client that
 authenticates once and terminates each read with a marker command, since a long reply arrives as
@@ -220,9 +314,24 @@ train coasts to rest, and must report exactly one sever and one stall.
 injected stall and nothing else, and `python3 scripts/torture.py run` on the torture track ends
 with a verdict table, a JSON file and the yard box restored — whatever the verdict says.
 
+### As built
+
+The self-check cuts the engine's fuel at `+300` and the coupling at `+900`, not at 30 s and 45 s: a
+train takes about 450 ticks to come to rest once its fuel is gone, so a 45 s cut first reads as a
+stall after the 90 s run has ended. A stall must hold at every sample across its window, not just
+at its two ends, or a train lapping a short loop in step with the sampling reads as still. A queued
+train is a stalled one with a car within 3 blocks of a train that stalled earlier. Travel is speed
+integrated over time; the chord between samples undercounts it about threefold. `torture.py`'s
+docstring holds these definitions.
+
+Observed: `--selfcheck` reported exactly the injected sever and stall three times on the code before
+this work, and again once M3 and M4 were in and it read real `meter` lines. `run` ends with the
+table, the JSON under `run/torture/` and the yard box restored, and with rcon dead it says the reset
+and restore were skipped.
+
 # Part X — Crash guards
 
-## X1 — Bound the sweep box and repair absurd movement in strikeNearby — **in progress**
+## X1 — Bound the sweep box and repair absurd movement in strikeNearby — **done**
 
 **Build.** In `CartImpact.strikeNearby` (CartImpact.java:63-85), before the sweep box is built:
 read the cart's own ceiling through `AbstractMinecartExt` (:56); if the movement is non-finite or
@@ -236,7 +345,20 @@ the injector is P1.
 `event=overspeed` and the server keeps ticking; the torture track no longer crashes in its first
 five minutes.
 
-## X2 — RailPath refuses to cast a non-rail block — **in progress**
+### As built
+
+The absurd bound is twice M4's overspeed limit, not twice the ceiling, so the powered-rail and grade
+terms never trip it. A vertical movement larger than the level's height is absurd too, since
+`BlockCollisions` walks y unclamped, and a cart on the old minecart behaviour uses a fixed 2.0, what
+`OldMinecartBehavior` stores against its 0.4 ceiling. The clamp scales the horizontal movement to
+the ceiling as vanilla does on rails and sets a non-finite part to 0.
+
+The Done when's `Motion:[1000000d,0d,0d]` never reaches the mod: loading entity data zeroes any
+Motion component over 10 (Entity.java:2158). Observed instead: `Motion:[9.9d,0d,9.9d]` logs
+`event=overspeed … speed=14.00 … clamped=true` and the server keeps ticking, and `[7d,0d,0d]` logs
+`clamped=false`. No torture run since X1 landed has crashed.
+
+## X2 — RailPath refuses to cast a non-rail block — **done**
 
 **Build.** `RailPath.shape` (RailPath.java:316-328) casts `state.getBlock()` to `BaseRailBlock`
 without asking `BaseRailBlock.isRail(state)` first; the Sep 17 crash is that cast on air. Return
@@ -248,6 +370,16 @@ survives of that hypothesis. The cast is the fault, not the reach.
 **Done when.** With a rail removed over rcon between two coupled carts on the yard, the walk logs
 nothing fatal and the server stays up; `grep -n 'BaseRailBlock)' RailPath.java` finds no unguarded
 cast.
+
+### As built
+
+`RailPath.shape` and both `neighbours` return null for a non-rail block, and each caller stops
+there: no path, no crossing, no grade, `OFF_RAILS`. `TrackRibbon.onward` and `RailContext.of`, the
+two callers outside the class, changed with it. The cast at RailPath.java:356 is the only
+`(BaseRailBlock)` cast in `src/`, behind the check at :341.
+
+Observed: with the rail at `(-36,-53,7)` taken out under the rigged `abtestloop-a` train, 200 ticks
+ran with no ERROR and only `RIBBON_SHORT` refusals, and the rail was put back.
 
 # Part P — Physics
 
@@ -280,7 +412,7 @@ before the refusal return, not only after a clean seating — S3; and the airbor
 redstone block set beside `(-14,-53,-2)` while the `z=-2` consist stands across it logs a `switch`
 line with `spanned=true` and the shape unchanged.
 
-## P3 — A train across a switch re-seats, and the switch's link shape follows its throw — **in progress**
+## P3 — A train across a switch re-seats, and the switch's link shape follows its throw — **done**
 
 **Build.** `TrackRibbon.extendTo` (:768 per the audit) stops one block short of a switch, leaving
 every car beyond it `RIBBON_SHORT` with no sever and no recovery — T4; let it record the switch by
@@ -293,6 +425,20 @@ state and see whether they strike.
 **Done when.** The `z=-2` consist, whose sign cell is the switch at `(-14,-53,-2)`, shows
 `seated=8` in its first `meter` line after placement; the two-cart probe across `(-1,-53,-12)`
 logs a `strike`.
+
+### As built
+
+T4 is built: `grow` walks onto a switch only where its current `SHAPE` has an exit on the edge the
+walk comes in by, and the recorded node leaves by that shape's other exit. The `z=-2` consist's
+first `meter` line after placement reads `seated=8`, its ribbon 59 nodes long.
+
+C1 is not built, because the probe did not reproduce it. The switch at `(-1,-53,-12)` cannot stand
+in its default state for the probe: the detector rail at `(0,-53,-12)` throws it for any cart
+approaching from the branch. On a copy at rest built at `(4000,150,4000)` (facing north, laid
+`south_east`), two carts closing from the branch and the joined end struck at 1.5, 3.0 and 5.0
+blocks per tick each, without any change to `linkShape`. The change as built, following the laid
+curve rather than `divergesForward`, also stopped `CartInteraction.crossing` catching two fast
+carts merging from the branch and the open end early, so it was left out.
 
 ## P4 — A meeting leaves the train's lie settled and the shove in the right frame — **in progress**
 
@@ -320,7 +466,7 @@ train's car count plus the reach margin for the whole run.
 
 # Part R — The bar
 
-## R1 — Ten minutes clean, twice — **planned**
+## R1 — Ten minutes clean, twice — **in progress**
 
 **Build.** Nothing. `python3 scripts/torture.py run` after each P stage lands, and again at the end.
 
@@ -331,9 +477,6 @@ verdict tables are pasted into this stage's "As built", with the commit each ran
 
 ## Open decisions
 
-- **The stall threshold.** Five blocks in 600 ticks is a guess sized to outlast a head-on bounce
-  and a queue clearing. Settled by the first R1 run that reports a stall: if the train was moving
-  within a minute, lengthen the window; if it was still, keep it.
 - **The lone chest cart at `(-14,-53,-14)`.** A one-cart strip with its own sign, so treated as
   an intended obstacle. Settled by the user.
 - **Where the `1e150` comes from.** X1 clamps it and P1 removes the injector the evidence points
@@ -342,6 +485,9 @@ verdict tables are pasted into this stage's "As built", with the commit each ran
 - **Whether a bounce is "appropriate" beyond not failing.** The clause fails on overlap, overspeed
   and a sever after a strike; the momentum figures are reported for reading. Settled by the user
   looking at R1's strike table.
+- **Stages for the three failures left.** The pile-up severs, the foul standoff and the collision
+  overspeed each need a stage before R1 can pass. Settled by the user choosing whether they are
+  planned here, and whether the standoff is train-identity.md's S17 as written.
 - **The audit's remaining findings.** S2 (restart), U2 (stale held heading — the track has no
   station), K1, L1, L2, L5 and D3 are outside this bar and stay in the audit.
 
