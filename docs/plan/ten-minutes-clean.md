@@ -18,7 +18,8 @@ the line format M3 and M4 define and can be built alongside them. X1 shares a si
 overspeed line and is built with it; X2 is independent. P1 to P5 are independent of each other
 except that P1 rebases on M4's edit to the same method. R1 is the bar and makes the work complete.
 P6 to P8, planned from the runs after P1 to P5, are independent of each other and each is built
-against a dev server of its own; R1 runs again once they land.
+against a dev server of its own; so are P9 and P10, planned from the first run with P6 to P8 in.
+R1 runs again once they land.
 
 ---
 
@@ -91,6 +92,21 @@ What stays is three kinds of failure that no planned stage addresses:
   the placer copies that car's speed down the train.
 
 They are planned as P6 to P8.
+
+**With P6 to P8 in, the severs left are `DIVERTED` and the stalls are jams that clear.** One
+ten-minute run on the torture track against the last run before them:
+
+| After | Sever | Stall (queued) | Overlap | Overspeed | Switch-safe |
+|---|---|---|---|---|---|
+| P5 | 12, 11 `LEADER_OFF_RIBBON` | 9 (2) | 23,331 | 40 | 1 `DIVERTED` sever |
+| P6–P8 | 8, all `DIVERTED` | 2 (10) | 17,851 | 0 | 8 `DIVERTED` severs |
+
+Driven trains ran 10,975 to 17,708 blocks against 2,966 to 11,029. No car was lifted off its rail,
+nothing went over its ceiling, and no stall was refused `SEAT_FOULED`; every stall cleared, after
+600 to 1,500 ticks. The `DIVERTED` severs come from a switch changed under a train whose span read
+empty for a tick, and from a switch changed beyond a train's end and then reversed onto. The engines
+they cut loose run into other trains' spans, which is most of the overlap: the worst pair is a
+four-car train and an engine two `DIVERTED` severs left alone. They are planned as P9 and P10.
 
 ## How these stages get tested
 
@@ -225,7 +241,7 @@ Observed at a copy shifted by `(+1000,+200,+1000)` and proven air first: `rig-sy
 template` and `--roster` over a box on the copy alone reproduced M1's placement cell for cell, and
 everything placed there was removed again.
 
-## M3 — TrainMeter samples the level, with identities — **in progress**
+## M3 — TrainMeter samples the level, with identities — **done**
 
 **Build.** Move the meter off `holdTrain` (TrainCoupling.java:893) onto a level-wide sample every
 20 ticks from `ServerTickEvents.END_WORLD_TICK` (`fabric-lifecycle-events-v1`, already a dependency
@@ -476,7 +492,7 @@ that shows.
 **Done when.** R1's stall count is zero, and no `meter` line's ribbon node count exceeds twice the
 train's car count plus the reach margin for the whole run.
 
-## P6 — A collision leaves every car under its ceiling — **planned**
+## P6 — A collision leaves every car under its ceiling — **done**
 
 **Build.** Vanilla's cart-to-cart push is the injector P1 left. `pushOtherMinecart`
 (AbstractMinecart.java:543-575) runs for every pair `CartInteraction.pushes` allows, since
@@ -494,7 +510,25 @@ touching carts from sitting inside each other.
 **Done when.** A ten-minute torture run logs no `overspeed`, and the `abtestloop-a` control still
 reads `maxspeed` 2.50.
 
-## P7 — A fouling cart is the end of the track, not a refusal — **planned**
+### As built
+
+Two clamps, not one. The Build's, in `EntityMixin.shoveTrain`, runs the push it lands on the car a
+train is driven by through `CartImpact.stored`, which scales horizontal speed to the ceiling
+`bounded` and the meter use. Alone it left 10 overspeeds a run, all vanilla's push landing on cars
+the placer was not holding, such as cars loosened by `SEAT_FOULED`, so a `@ModifyArg` on the one
+`setDeltaMovement` inside `Entity.push(DDD)` holds every other cart's push the same way. A
+temporary trace on `setDeltaMovement` before the change attributed 62 of 71 overspeeds to
+`shoveTrain` handing on `pushOtherMinecart`'s mean branch, 8 to its furnace branch and 1 to
+vanilla's push on a loose car; the placer's copy down the train was not an injector.
+
+Vanilla's push was kept. Over 16 two-train meetings in three variants, capping or cancelling it made
+no difference to overlap, and once, cancelled, it let a jam build vertical movement of −430 to
+−7,748 blocks a tick for X1 to clamp. It still counts a meeting twice after `shunt`, left open.
+
+Observed on a server of its own: four ten-minute runs with no `overspeed`, and the control at
+`maxspeed` 2.50 on 599 of 600 lines. The first run with P6 to P8 in logged no `overspeed` either.
+
+## P7 — A fouling cart is the end of the track, not a refusal — **done**
 
 **Build.** train-identity.md's S17 as written there. `SEAT_FOULED` leaves the fouled car to vanilla,
 which drives it back into the train that fouled it, so two trains that meet each refuse and stand
@@ -510,7 +544,28 @@ whether the swept half of `fouled` (TrainPlacer.java:377) keeps refusing.
 no loose car on either side, and both resume when one is driven away. Then a ten-minute torture run
 reports no stall refused `SEAT_FOULED`.
 
-## P8 — A head-on meeting leaves both leading cars on their rails — **planned**
+### As built
+
+A cart of another train standing on the ribbon is an end of usable track at either end, not only
+ahead: the seats that foul are mostly at the tail, when a shoved or reversing train backs into
+another. The limit is found by stepping the end car's box along the ribbon until it clears the cart
+(`firstClearArc`), since two boxes on a diagonal still touch with centres 1.39 apart. A train
+blocked at the tail and jammed ahead compresses and stops; the draw-back never passes the end ahead
+nor lands the leading car in a taken seat; a leading car seated last tick has its speed held to its
+ceiling. The swept half of `fouled` checks the car's run in boxes along the ribbon, new ground only.
+
+S17's questions: a fouling cart with no arc on the ribbon keeps `SEAT_FOULED`, now 0.3% of fouls
+rather than 26%, and so does a case S17 did not name, a cart already inside the train's span, 86%
+of what remains and the product of collision pass-throughs. Two trains drawing back do not
+oscillate on open track or at a buffer, but two that fill a small loop end to end stall-reverse
+together every four ticks and never move (P10). The swept half keeps refusing a real pass-through.
+
+Observed on a server of its own: head-on, four cars against four over 400 stepped ticks, no
+`SEAT_FOULED`, no overlap and every car seated, where the code before logged 12 refusals and 7
+overlaps; one train pushed the other to a buffer and packed there, and both left again by stall
+reversal. A ten-minute run had no stall refused `SEAT_FOULED`, nor had the first with P6 to P8 in.
+
+## P8 — A head-on meeting leaves both leading cars on their rails — **done**
 
 **Build.** After a head-on meeting a leading car can stand on the block above its rail — in the P4
 run two trains' leaders stood on `(-20,-52,-3)` together. Resting on another cart's box it reads as
@@ -527,6 +582,69 @@ other — the placer seating a car into the other train, or the push P6 caps.
 **Done when.** Repeated head-on meetings at 2.5 blocks a tick each leave both leading cars on their
 rails and sever nothing, and a ten-minute torture run shows no `LEADER_OFF_RIBBON` sever.
 
+### As built
+
+The lift is vanilla's collision against a solid cart box on a slope: `Entity.collide` settles the
+vertical axis first, a slope step is diagonal, and the stepper only corrects a car it finds below
+its slope line (NewMinecartBehavior.java:456). Climbing into a cart, a car rises the whole step and
+is blocked across; coming down onto a cart's roof, it lands there and is carried over. A temporary
+`setPosRaw` trace put 115 of 117 lifts in a 3,000-tick sample under `stepAlongTrack`'s move, none
+in the placer and none in vanilla's push. A second source: a movement square to a slope aims a block
+above the shape's first exit, the low end on ascending east and south rails.
+
+`SlopeStep.moveOnRail` wraps the stepper's move: vanilla's move runs unchanged, then a car left
+above its rail line goes back to where its box first touched a solid entity, no further than the
+move covered, with `onGround` cleared. `SlopeStep.squareDownSlope` stops the square-movement aim.
+Both are `@WrapOperation`s in `NewMinecartBehaviorMixin`. A refused car resting on an entity's box
+with no block under it waits uncounted as one in the air does, for at most 40 ticks a fault.
+
+It also named the `1e150`: a car blocked exactly on a block edge fails `stepAlongTrack`'s
+zero-progress test, since vanilla places the target 1.0E-5 past the edge and the test wants more,
+so the car loops through its move about `movementLeft / 1e-5` times in one tick, repeating vanilla's
+cart push on each pass — 36.5, 73 and 895 blocks a tick on the struck cart in three samples, each
+caught by X1. P6's clamp on every push stops the repeats compounding; the loop itself stays.
+
+Observed on a server of its own: 19 head-on meetings at 2.5 blocks a tick each, on replicas of the
+corner and hill, the dip and a straight, stepped a tick at a time — no leading car lifted, nothing
+severed; a ten-minute run with no `LEADER_OFF_RIBBON` sever or refusal, as had the first with P6 to
+P8 in.
+
+## P9 — Switch occupancy holds steady, and a ribbon forgets a switch thrown past it — **planned**
+
+**Build.** Every sever in the first run with P6 to P8 in was `DIVERTED`, and they start two ways.
+Occupancy flickers under a jammed train: at `(-14,-53,-2)` a signal change was held with
+`spanned=true`, the settle three ticks later (`SETTLE_DELAY`, SwitchedRailBlock.java:71) laid the
+new curve with `spanned=false`, and three ticks after that a car's request was held with
+`spanned=true` again, the train lying across the switch throughout and stall-reversing every four
+ticks. `spans` (TrainCoupling.java:1051) takes a train's span from the cars whose arc it can read,
+so a train with cars unreadable for a tick drops out of it. The curve went down under the train, its
+recorded straight run no longer matched, and the car on the switch was cut ten ticks later. And a
+switch thrown while no train lies across it can still be on a train's ribbon beyond its ends, since
+the trim keeps the train's length and a margin either side of the leading car, so a train reversing
+onto it is seated along a shape the rails no longer have. Make occupancy steady — a car that cannot
+be placed counts as lying across, or the settle waits out a train it cannot read — and have a switch
+that changes shape make each ribbon holding it outside its train's span forget it from there
+outward, so that growth (P3) reads it again as laid.
+
+**Done when.** Two ten-minute torture runs have no `DIVERTED` sever and pass Switch-safe, and a
+train jammed across `(-14,-53,-2)` and stall-reversing leaves the switch's shape alone.
+
+## P10 — Two trains jammed nose to nose part instead of reversing together — **planned**
+
+**Build.** With P6 to P8 in, the stalls are jams that clear after 600 to 1,500 ticks — `a91c0477`
+from +6440 to +7180 at `(-2,-53,-24)`, `8b9c9326` from +10400 to +11940 at `(-14,-53,-13)`, ten more
+trains queued behind them — and a jammed pair logs a strike every tick. The furnace stall reversal
+(`countStall`, MinecartFurnaceMixin.java:332) turns every engine of a train that has not moved for
+four ticks (`STALL_TICKS`), so two trains pressing nose to nose stall on the same tick and reverse
+together; P7 found two trains filling a small loop end to end reversing in lockstep every four ticks
+and never moving. Find what holds each jam in the runs — a pressing pair, a train caught between
+two, a loop filled end to end — and break the symmetry, for instance by letting one train of a
+pressing pair reverse, chosen the same way from both sides. Resolve by building it whether the
+reversal is the whole story.
+
+**Done when.** A ten-minute torture run reports no stall and no queued train, and two trains filling
+a small loop end to end circulate.
+
 # Part R — The bar
 
 ## R1 — Ten minutes clean, twice — **in progress**
@@ -542,9 +660,9 @@ verdict tables are pasted into this stage's "As built", with the commit each ran
 
 - **The lone chest cart at `(-14,-53,-14)`.** A one-cart strip with its own sign, so treated as
   an intended obstacle. Settled by the user.
-- **Where the `1e150` comes from.** X1 clamps it and P1 removes the injector the evidence points
-  at, but neither names the tick. Settled by the first `overspeed` event under X1, which will carry
-  the cart, the train and the speed.
+- **Vanilla's push after `shunt`.** P6 kept it, capped: it still counts a meeting twice, adding the
+  pair's mean to a placed car and leaving a driven or loose one 0.2 of its own speed. Settled by
+  retrying "cancel it for a pair `shunt` settles" once P9 and P10 land, judged on overlaps and jams.
 - **Whether a bounce is "appropriate" beyond not failing.** The clause fails on overlap, overspeed
   and a sever after a strike; the momentum figures are reported for reading. Settled by the user
   looking at R1's strike table.
