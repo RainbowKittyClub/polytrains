@@ -5,16 +5,16 @@
 #
 # Without an argument it syncs the main checkout's run/, found through git's common directory, so it
 # works the same from a worktree, which has no run/ of its own. The functions and tags replace
-# <run>/<level-name>/datapacks/mtxrig/ outright, so a function deleted here goes there too. Templates
-# in scripts/mtxrig/structures/ go to <run>/<level-name>/generated/mtxrig/structure/ (singular), the
-# directory /place template reads a world's own templates from.
+# <run>/<level-name>/datapacks/mtxrig/ outright, so a function deleted here goes there too.
+# Templates in scripts/mtxrig/structures/ go to <run>/<level-name>/generated/mtxrig/structure/, the
+# directory (singular) /place template reads a world's own templates from.
 #
 # Restoring the torture track from its snapshot, with the dev server up:
 #   scripts/rig-sync.sh
 #   /place template mtxrig:torturetrack -21 -58 -29
 # By hand: copy scripts/mtxrig/structures/torturetrack.nbt to run/world/generated/mtxrig/structure/,
-# /reload, then place. The template covers x -21..2, y -58..-45, z -29..0 and sets every block there,
-# air included. It holds no entities: the trains come from mtxrig:rig as usual.
+# /reload, then place. The template covers x -21..2, y -58..-45, z -29..0 and sets every block in
+# it, air included. It holds no entities: the trains come from mtxrig:rig as usual.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,7 +51,7 @@ world="$run_dir/${level:-world}"
 pack="$world/datapacks/mtxrig"
 mkdir -p "$pack"
 # Excluded paths are also spared by --delete, so a session's .claude/ state there survives.
-rsync -a --delete --exclude .claude/ --exclude structures/ "$here/mtxrig/" "$pack/"
+rsync -a --delete --exclude .claude/ --exclude /structures/ "$here/mtxrig/" "$pack/"
 echo "datapack -> $pack"
 
 shopt -s nullglob
