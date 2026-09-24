@@ -113,10 +113,10 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
     }
 
     /**
-     * The run a cart approaching along {@code travel} is actually given across this switch: the
-     * straight run for one entering by the open end of the forward axis, the resting branch
-     * otherwise. What {@link #steer} lays down as the cart arrives, so anything asking where the
-     * rails would send a cart reads the same answer the cart will get.
+     * The run this switch lays for a cart approaching along {@code travel}: the straight run for
+     * one entering by the open end of the forward axis, the resting branch otherwise. What
+     * {@link #steer} asks for as a cart arrives, which a switch held under another car or a train
+     * refuses; what a switch actually holds is its {@link #SHAPE}.
      */
     public static RailShape shapeFor(BlockState state, Direction travel) {
         Direction facing = state.getValue(FACING);
@@ -293,8 +293,8 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
     }
 
     // Points one switch at a car travelling the given way; any other block at pos is left alone. A
-    // switch already carrying some other car keeps the shape that car is riding, so the approaching
-    // one is routed by whatever it finds on arrival rather than throwing the curve out from under.
+    // switch some other car is riding, or a train is lying across, keeps its shape, so the car is
+    // routed by whatever it finds on arrival rather than throwing the curve out from under.
     private static void orient(
             ServerLevel level, BlockPos pos, Direction travel, AbstractMinecart cart) {
         BlockState state = level.getBlockState(pos);
@@ -308,10 +308,23 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         // A car entering from the open end of the forward axis runs straight across; the branch
         // and the joined half both follow the resting curve.
         RailShape wanted = shapeFor(state, travel);
+        RailShape current = state.getValue(SHAPE);
 
-        if (state.getValue(SHAPE) != wanted) {
+        if (current != wanted) {
+            // The train's own leading car included: back on the switch after a reversal it has to
+            // retrace the shape its ribbon recorded, which is the one held, not be routed anew.
+            if (TrainCoupling.crossedByTrain(level, pos)) {
+                if (TrainMeter.enabled()) {
+                    TrainMeter.switched(level, pos, current, wanted, false,
+                            "held under a train lying across it, asked by a cart heading "
+                                    + travel.getSerializedName());
+                }
+
+                return;
+            }
+
             if (TrainMeter.enabled()) {
-                TrainMeter.switched(level, pos, state.getValue(SHAPE), wanted, true,
+                TrainMeter.switched(level, pos, current, wanted, true,
                         "steered by a cart heading " + travel.getSerializedName());
             }
 

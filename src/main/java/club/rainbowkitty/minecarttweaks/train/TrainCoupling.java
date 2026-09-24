@@ -732,12 +732,12 @@ public final class TrainCoupling {
      * Whether any train is lying across the rail at {@code pos} — not merely whether a cart is
      * inside that block this instant.
      *
-     * <p>A switch asks this before laying its resting curve back on. At speed a cart is inside a
-     * given block for a fraction of a tick and the gap between two cars passes over one entirely,
-     * so a check for a cart standing there reads a long train as a run of brief absences and
-     * changes the rails halfway along it. Only the leading car reads rails now, so nothing else
-     * re-arms the wait either. The ribbon records the track the train is on, which answers for its
-     * whole length at once.
+     * <p>A switch asks this before any change of curve, a car's steering included. At speed a
+     * cart is inside a given block for a fraction of a tick and the gap between two cars passes
+     * over one entirely, so a check for a cart standing there reads a long train as a run of brief
+     * absences and changes the rails halfway along it. Only the leading car reads rails now, so
+     * nothing else re-arms the wait either. The ribbon records the track the train is on, which
+     * answers for its whole length at once.
      */
     public static boolean crossedByTrain(Level level, BlockPos pos) {
         return crossedBy(level, pos, Train::of);
