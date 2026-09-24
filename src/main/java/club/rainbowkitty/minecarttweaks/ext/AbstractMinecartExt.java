@@ -52,6 +52,11 @@ public interface AbstractMinecartExt extends Linkable {
      */
     public default void minecarttweaks$aimEngine(Vec3 heading) {}
 
+    /** Ticks of burn time this cart has left, or zero for a cart that burns nothing. */
+    public default int minecarttweaks$fuel() {
+        return 0;
+    }
+
     /**
      * This cart's own speed ceiling, as its own kind of cart works it out. Exists so that the car
      * driving a train can ask the cars behind it without reaching for a {@code protected} method on

@@ -102,6 +102,11 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         return fuel > 0 && !minecarttweaks$parked;
     }
 
+    @Override
+    public int minecarttweaks$fuel() {
+        return fuel;
+    }
+
     // Asked at the speed of the car whose movement is an input, so every engine of a train reads
     // the same figure and their efforts sum — which is how double-heading buys top speed and not
     // just acceleration.

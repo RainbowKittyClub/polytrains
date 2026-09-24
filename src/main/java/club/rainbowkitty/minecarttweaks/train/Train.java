@@ -203,6 +203,47 @@ public final class Train {
     }
 
     /**
+     * The train {@code car} is holding, or null if it holds none or the one it holds no longer
+     * stands for its links. Unlike {@link #of} this rebuilds nothing and marks nothing, so an
+     * observer can read a train without changing what the next tick does with it.
+     */
+    public static @Nullable Train peek(AbstractMinecart car) {
+        Train held = car instanceof AbstractMinecartExt ext ? ext.minecarttweaks$train() : null;
+
+        if (held == null || held.stale) {
+            return null;
+        }
+
+        for (AbstractMinecart member : held.cars) {
+            if (member.isRemoved()) {
+                return null;
+            }
+        }
+
+        return held;
+    }
+
+    /** The id {@code car} goes by in the meter's lines: the first eight hex digits of its UUID. */
+    public static String cartId(AbstractMinecart car) {
+        return car.getUUID().toString().substring(0, 8);
+    }
+
+    /**
+     * The id a train of {@code cars} goes by: the {@link #cartId} of whichever of them has the
+     * lowest UUID, the car every one of them agrees on. {@code none} for no cars at all.
+     */
+    public static String trainId(List<AbstractMinecart> cars) {
+        AbstractMinecart lowestCar = lowest(cars);
+
+        return lowestCar == null ? "none" : cartId(lowestCar);
+    }
+
+    /** This train's id, which stays the same for as long as its cars do. */
+    public String id() {
+        return trainId(cars);
+    }
+
+    /**
      * The track this train is running on, recorded by its leading car and empty until that car has
      * crossed a rail block. Carried across a rebuild, since the rails do not move when the link
      * graph does; a ribbon that no longer describes where the train is reads as one it has left.
@@ -238,6 +279,14 @@ public final class Train {
             }
         }
 
+        return leader;
+    }
+
+    /**
+     * The end car {@link #leader()} named when it was last asked, without asking again. For an
+     * observer, which must not settle a tick's answer ahead of the train itself.
+     */
+    public @Nullable AbstractMinecart lastLeader() {
         return leader;
     }
 
@@ -283,6 +332,11 @@ public final class Train {
         bail = reason;
 
         return changed;
+    }
+
+    /** Why this train's last seating attempt failed, or null if it seated or none was made. */
+    public TrainPlacer.@Nullable Bail lastBail() {
+        return bail;
     }
 
     /**
