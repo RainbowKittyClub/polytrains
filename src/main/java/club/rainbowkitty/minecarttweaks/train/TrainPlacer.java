@@ -17,6 +17,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
+import club.rainbowkitty.minecarttweaks.ext.Linkable;
 import club.rainbowkitty.minecarttweaks.rail.RailDrag;
 import club.rainbowkitty.minecarttweaks.rail.TrackRibbon;
 import club.rainbowkitty.minecarttweaks.util.MinecartHelper;
@@ -389,8 +390,11 @@ public final class TrainPlacer {
             return null;
         }
 
+        // A cart coupled to one of these is no foul, even when a chunk border splits the walk into
+        // two trains and train.contains says it is not ours.
         List<AbstractMinecart> others = cars.getFirst().level().getEntitiesOfClass(
-                AbstractMinecart.class, span, car -> !train.contains(car));
+                AbstractMinecart.class, span,
+                car -> !train.contains(car) && !coupledToAny(cars, car));
 
         Foul first = null;
 
@@ -412,6 +416,17 @@ public final class TrainPlacer {
         }
 
         return first;
+    }
+
+    // Whether any of these cars holds a link to other, read off the slots rather than the walk.
+    private static boolean coupledToAny(List<AbstractMinecart> cars, AbstractMinecart other) {
+        for (AbstractMinecart car : cars) {
+            if (Linkable.coupled(car, other)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // The ground a car crosses reaching its seat: its current box joined to the box it will stand
