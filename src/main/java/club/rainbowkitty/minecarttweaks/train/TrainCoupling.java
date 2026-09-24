@@ -1043,6 +1043,9 @@ public final class TrainCoupling {
             return;
         }
 
+        Vec3 movement = leader.getDeltaMovement().horizontal();
+        int previousFrame = ribbon.arcEpoch();
+
         // A ribbon holds only what the leading car has stepped along, and a car standing still
         // steps along nothing — so a train that was stopped when its world loaded has an empty one
         // and no way to come by a first node. Seeded with the rail it stands on, which is the block
@@ -1061,7 +1064,7 @@ public final class TrainCoupling {
                 return;
             }
 
-            ribbon.record(level, underPos, leader.getDeltaMovement().horizontal());
+            ribbon.record(level, underPos, movement);
         }
 
         Double arc = ribbon.arcOfLeader(leader);
@@ -1079,6 +1082,22 @@ public final class TrainCoupling {
         double reach = train.length(MAX_LINK_DISTANCE) + 1.0;
 
         ribbon.extendTo(level, arc - reach, arc + reach);
+
+        // A reset numbered the new ribbon off this movement, so the lie is settled from it as in
+        // recordTrack. Unlike there, this car may be bouncing back into its train, so check first.
+        if (ribbon.arcEpoch() != previousFrame && movement.lengthSqr() > EPSILON * EPSILON
+                && trailsLeader(train, leader, arc)) {
+            train.relaidOn(leader);
+        }
+    }
+
+    // Whether the train's far end lies behind its leading car on the ribbon, as relaidOn assumes.
+    private static boolean trailsLeader(Train train, AbstractMinecart leader, double leadArc) {
+        List<AbstractMinecart> cars = train.cars();
+        Double farArc = train.ribbon().arcOf(
+                cars.getFirst() == leader ? cars.getLast() : cars.getFirst());
+
+        return farArc != null && farArc < leadArc;
     }
 
     // Keeps the ribbon to the train's own span plus a margin, measured out from the leading car
