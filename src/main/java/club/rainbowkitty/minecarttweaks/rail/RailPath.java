@@ -32,9 +32,11 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     // puts a cart at blockY + its distance from the low edge + this.
     private static final double RAIL_LIFT = 0.1;
 
-    // The least track one rail block can be worth: a corner, the chord between two adjacent edge
-    // midpoints. Bounds how many blocks a given run of track can have been spent over.
-    private static final double MIN_BLOCK_SPAN = Math.sqrt(0.5);
+    /**
+     * The least track one rail block can be worth: a corner, the chord between two adjacent edge
+     * midpoints. Bounds how many blocks a given run of track can have been spent over.
+     */
+    public static final double MIN_BLOCK_SPAN = Math.sqrt(0.5);
 
     // The four directions one rail can lead to another in.
     private static final Vec3 EAST = new Vec3(1.0, 0.0, 0.0);

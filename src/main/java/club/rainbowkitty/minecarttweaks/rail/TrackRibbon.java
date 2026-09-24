@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseRailBlock;
@@ -20,6 +21,8 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.block.SwitchedRailBlock;
+import club.rainbowkitty.minecarttweaks.rule.ModGameRules;
+import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /**
  * The track a train is running on, as a polyline with cumulative arc length: one node per rail
@@ -44,10 +47,6 @@ public final class TrackRibbon {
     // Hands every arc numbering, on every ribbon, a number of its own. Atomic because a ribbon
     // is built on whichever thread a cart ticks on.
     private static final AtomicInteger EPOCH_COUNTER = new AtomicInteger();
-
-    // A ribbon only has to span the train plus room to grow at the leading end. A cap that a
-    // correct trim never reaches, so a trim that stops being called leaks a bounded amount.
-    private static final int MAX_NODES = 256;
 
     // Below this an arc offset or a chord length is treated as zero.
     private static final double EPSILON = 1.0E-5;
@@ -756,11 +755,24 @@ public final class TrackRibbon {
         return null;
     }
 
+    // Nodes in the trim window of the longest train the rule allows, all corners, plus a part-node
+    // at each end: more than a correct trim keeps, so only a trim no longer called meets it.
+    private static int maxNodes(Level level) {
+        // No rule to read off a server: the default is what a world that never set one allows.
+        int maxCars = level instanceof ServerLevel serverLevel
+                ? serverLevel.getGameRules().get(ModGameRules.MAX_TRAIN_LENGTH)
+                : ModGameRules.MAX_TRAIN_LENGTH.defaultValue();
+        double window = 2.0 * TrainCoupling.trimReach(
+                (maxCars - 1) * TrainCoupling.maxLinkDistance());
+
+        return (int) Math.ceil(window / RailPath.MIN_BLOCK_SPAN) + 2;
+    }
+
     // Walks one block off one end and records it, answering whether the ribbon actually grew. Goes
     // straight to the two builders rather than through record, which reads an unknown block as a
     // discontinuity and would throw away the ribbon it was asked to extend.
     private boolean grow(Level level, boolean nearEnd) {
-        if (nodes.isEmpty() || nodes.size() >= MAX_NODES) {
+        if (nodes.isEmpty() || nodes.size() >= maxNodes(level)) {
             return false;
         }
 
@@ -857,7 +869,9 @@ public final class TrackRibbon {
 
         // At the cap the near end gives way rather than this block: record hands over the block
         // its leading car is on, and refusing that leaves the car off its own ribbon.
-        while (nodes.size() > MAX_NODES) {
+        int limit = maxNodes(level);
+
+        while (nodes.size() > limit) {
             nodes.removeFirst();
         }
     }
@@ -876,7 +890,9 @@ public final class TrackRibbon {
                 first.arc() - crossing.span(), crossing.span()));
 
         // As in append, the other end gives way at the cap.
-        while (nodes.size() > MAX_NODES) {
+        int limit = maxNodes(level);
+
+        while (nodes.size() > limit) {
             nodes.removeLast();
         }
     }

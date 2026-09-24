@@ -292,6 +292,14 @@ public final class TrainCoupling {
     }
 
     /**
+     * How much track either side of its leading car a train's ribbon is trimmed to, for a train
+     * whose cars are spread over {@code trainLength} of it.
+     */
+    public static double trimReach(double trainLength) {
+        return trainLength + MAX_LINK_DISTANCE + RIBBON_MARGIN;
+    }
+
+    /**
      * Records the rail block {@code cart} is stepping through on its train's ribbon. Only the car
      * leading its train records: a trailing car crosses blocks the ribbon already holds in its
      * middle, which the ribbon cannot tell from a jump and would answer by starting over.
@@ -1118,7 +1126,7 @@ public final class TrainCoupling {
             return;
         }
 
-        double reach = train.length(MAX_LINK_DISTANCE) + MAX_LINK_DISTANCE + RIBBON_MARGIN;
+        double reach = trimReach(train.length(MAX_LINK_DISTANCE));
         ribbon.trim(arc - reach, arc + reach);
     }
 
