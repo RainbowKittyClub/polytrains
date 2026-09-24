@@ -155,9 +155,9 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
             return;
         }
 
-        Direction travel = Direction.getApproximateNearest(movement.x(), 0.0, movement.z());
+        BlockPos pos = cart.getCurrentBlockPosOrRailBelow();
 
-        orient(level, cart.getCurrentBlockPosOrRailBelow(), travel, cart);
+        orient(level, pos, entryEdge(pos, cart.position(), movement).getOpposite(), cart);
     }
 
     /**
@@ -271,6 +271,25 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
             return RailShape.SOUTH_WEST;
         }
         return hasEast ? RailShape.NORTH_EAST : RailShape.NORTH_WEST;
+    }
+
+    // The edge a car inside the block at pos came in by: where the line back along its movement
+    // leaves the block. Its heading alone is diagonal on a curve and reads as whichever axis wins.
+    private static Direction entryEdge(BlockPos pos, Vec3 position, Vec3 movement) {
+        double eastFraction = position.x() - pos.getX();
+        double southFraction = position.z() - pos.getZ();
+        double backToWestOrEast = movement.x() == 0.0 ? Double.POSITIVE_INFINITY
+                : (movement.x() > 0.0 ? eastFraction : 1.0 - eastFraction)
+                        / Math.abs(movement.x());
+        double backToNorthOrSouth = movement.z() == 0.0 ? Double.POSITIVE_INFINITY
+                : (movement.z() > 0.0 ? southFraction : 1.0 - southFraction)
+                        / Math.abs(movement.z());
+
+        if (backToWestOrEast < backToNorthOrSouth) {
+            return movement.x() > 0.0 ? Direction.WEST : Direction.EAST;
+        }
+
+        return movement.z() > 0.0 ? Direction.NORTH : Direction.SOUTH;
     }
 
     // Points one switch at a car travelling the given way; any other block at pos is left alone. A
