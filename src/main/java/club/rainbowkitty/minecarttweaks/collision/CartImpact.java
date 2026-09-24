@@ -115,9 +115,9 @@ public final class CartImpact {
                     return;
                 }
 
-                // The terms of CartInteraction.pushes that the interaction in hand does not settle;
-                // asking it outright would resolve the whole pair a second time.
-                if (interaction.blocks() && !TrainCoupling.sameTrain(cart, struck)) {
+                // Only two trains meeting: cars of one vehicle, chained across a chunk border
+                // included, are never COLLIDE, and vanilla's own push shunts a loose pair of them.
+                if (interaction == CartInteraction.COLLIDE) {
                     drag += shunt(cart, struck, movement);
                 }
             }
