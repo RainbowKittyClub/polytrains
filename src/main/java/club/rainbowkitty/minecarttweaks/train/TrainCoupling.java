@@ -94,6 +94,9 @@ public final class TrainCoupling {
     // the way the train is going.
     private static final double ANY_MOVEMENT = 1.0E-10;
 
+    // Below this speed a train is all but standing, and leaves on its engines' aim.
+    private static final double STANDING_SPEED = 0.05;
+
     // Track kept either side of the train when the ribbon is trimmed, on top of the train's own
     // length. Room for the leading car to run into before the next record extends it.
     private static final double RIBBON_MARGIN = 8.0;
@@ -223,11 +226,17 @@ public final class TrainCoupling {
 
         // A standing train has no movement to read a heading off, so it leaves on the aim of its
         // powered carts. Without that only those carts move and the train never gets going — and
-        // they are the carts the placer is not moving, so it never gets going at all.
+        // they are the carts the placer is not moving, so it never gets going at all. All but
+        // standing counts: a car pressed into what stopped it is shoved a crawl towards it every
+        // tick, and read as a heading, that crawl drives it back in however its engines turn.
         Vec3 headingDirection = resisted.horizontal();
 
-        if (headingDirection.lengthSqr() <= ANY_MOVEMENT) {
-            headingDirection = driveHeading(cart);
+        if (headingDirection.lengthSqr() <= STANDING_SPEED * STANDING_SPEED) {
+            Vec3 aimedDirection = driveHeading(cart);
+
+            if (aimedDirection.lengthSqr() > ANY_MOVEMENT) {
+                headingDirection = aimedDirection;
+            }
         }
 
         return headingDirection.lengthSqr() > ANY_MOVEMENT
@@ -275,16 +284,23 @@ public final class TrainCoupling {
     }
 
     /**
-     * The direction the train's powered cars are pushing in, or zero if none of them is. Summed, so
-     * two furnace carts aimed against each other cancel. For starting from a standstill only, where
-     * a car has no movement of its own to read a heading off.
+     * The direction the train's powered cars are pushing in at {@code cart}, or zero if none of
+     * them is. Each engine's heading is carried to {@code cart} along the rails first, so two
+     * either side of a bend that push the same way along the track add up, and two aimed against
+     * each other cancel. For a car with no movement of its own worth reading a heading off.
      */
     public static Vec3 driveHeading(AbstractMinecart cart) {
         Vec3 headingDirection = Vec3.ZERO;
 
         for (AbstractMinecart member : Train.of(cart).cars()) {
-            headingDirection = headingDirection.add(member.minecarttweaks$driveHeading());
+            Vec3 engineHeading = member.minecarttweaks$driveHeading();
+
+            if (engineHeading.lengthSqr() > ANY_MOVEMENT) {
+                headingDirection = headingDirection.add(headingAt(member, cart, engineHeading));
+            }
         }
+
+        headingDirection = headingDirection.horizontal();
 
         return headingDirection.lengthSqr() > EPSILON ? headingDirection.normalize() : Vec3.ZERO;
     }
