@@ -18,8 +18,8 @@ the line format M3 and M4 define and can be built alongside them. X1 shares a si
 overspeed line and is built with it; X2 is independent. P1 to P5 are independent of each other
 except that P1 rebases on M4's edit to the same method. R1 is the bar and makes the work complete.
 P6 to P8, planned from the runs after P1 to P5, are independent of each other and each is built
-against a dev server of its own; so are P9 and P10, planned from the first run with P6 to P8 in.
-R1 runs again once they land.
+against a dev server of its own; so are P9 and P10, planned from the first run with P6 to P8 in,
+and P11, planned from the first with P9 and P10 in. R1 runs again once it lands.
 
 ---
 
@@ -107,6 +107,14 @@ nothing went over its ceiling, and no stall was refused `SEAT_FOULED`; every sta
 empty for a tick, and from a switch changed beyond a train's end and then reversed onto. The engines
 they cut loose run into other trains' spans, which is most of the overlap: the worst pair is a
 four-car train and an engine two `DIVERTED` severs left alone. They are planned as P9 and P10.
+
+**With P9 and P10 in, only overlap is left.** The first ten-minute run with them in passed every
+clause but Bounce: no sever, 28 couplings held at every sample, no stall, no overspeed, Switch-safe
+with 321 spanned changes held, and driven trains running 14,940 to 20,619 blocks. Bounce failed on
+6,875 `overlap` lines alone — 2,291 episodes, 2,243 of them under ten ticks and none longer than 28,
+spread across the track, at every distance from 0.0 to 0.5 — cars of two trains passing into one
+another in pile-ups, the strike between them logged only once they were inside each other. It is
+planned as P11.
 
 ## How these stages get tested
 
@@ -609,7 +617,7 @@ corner and hill, the dip and a straight, stepped a tick at a time — no leading
 severed; a ten-minute run with no `LEADER_OFF_RIBBON` sever or refusal, as had the first with P6 to
 P8 in.
 
-## P9 — Switch occupancy holds steady, and a ribbon forgets a switch thrown past it — **planned**
+## P9 — Switch occupancy holds steady, and a ribbon forgets a switch thrown past it — **done**
 
 **Build.** Every sever in the first run with P6 to P8 in was `DIVERTED`, and they start two ways.
 Occupancy flickers under a jammed train: at `(-14,-53,-2)` a signal change was held with
@@ -629,7 +637,30 @@ outward, so that growth (P3) reads it again as laid.
 **Done when.** Two ten-minute torture runs have no `DIVERTED` sever and pass Switch-safe, and a
 train jammed across `(-14,-53,-2)` and stall-reversing leaves the switch's shape alone.
 
-## P10 — Two trains jammed nose to nose part instead of reversing together — **planned**
+### As built
+
+Occupancy flickered for a reason the Build did not name. On a loop shorter than twice a train, a
+car's block is recorded on two laps, and `arcOf` breaks the tie towards the leading car's lap, so
+the far car read a lap off and the switch fell out of the span with the train across it. `spans` now
+reads each car on the lap of the car before it, from the leading end: a seated car on its seat's
+lap, any other within its own width, a leading car nothing can read at the ribbon's cursor. The
+settle is unchanged, so the settle, a signal, a steer and the wrench all read one answer. "A car
+that cannot be placed counts as lying across" was built and taken out: it only ever fired on wrecked
+trains, and it could stop a train's own leading car steering.
+
+`TrackRibbon.forgetThrown` walks out from each end of the train's span and, at the first switch
+whose laid shape no longer joins its recorded edges, drops it and everything past it, so that P3's
+growth records it again as laid. It runs at every seating, before growth in `reachTrain`, and from
+`SwitchedRailBlock.onPlace` on every change of shape for trains in reach, the latter for a leading
+car that steps onto a switch it has just steered. `diverted` shares its test.
+
+Of the eight severs in the first run with P6 to P8 in, two were a switch changed under the train and
+six a switch thrown past its end. Observed on a server of its own: two ten-minute runs with no sever
+and Switch-safe passed, 372 and 122 spanned changes held; a consist penned across `(-14,-53,-2)`
+under a signal toggled every 15 ticks for 600 ticks had the switch changed under it 12 times and a
+car cut before, and neither after. The first run with P9 and P10 in had no sever.
+
+## P10 — Two trains jammed nose to nose part instead of reversing together — **done**
 
 **Build.** With P6 to P8 in, the stalls are jams that clear after 600 to 1,500 ticks — `a91c0477`
 from +6440 to +7180 at `(-2,-53,-24)`, `8b9c9326` from +10400 to +11940 at `(-14,-53,-13)`, ten more
@@ -644,6 +675,47 @@ reversal is the whole story.
 
 **Done when.** A ten-minute torture run reports no stall and no queued train, and two trains filling
 a small loop end to end circulate.
+
+### As built
+
+The reversal was not the whole story: most jams held because the stall check never fired. It counted
+a stalled tick only while the cart's movement was under 3e-4 blocks a tick, and every strike wrote
+movement back, so a lone engine read about 1.0 while its position did not change for 1,400 ticks.
+The check now reads how far the train's leading car actually moved.
+
+Of a pressing pair, each train's engines driving into the other at touching ends, the train whose
+lowest car UUID sorts first turns; the other waits up to 20 ticks and holds 8 after it turns, and a
+train never waits on one that turned within 8 ticks and presses again, so one trapped against a
+buffer is not held. The reversed heading is carried along the rails to each engine. A train pulling
+away from a blocked end has its leading car left to vanilla rather than seated every tick, which is
+what lets a filled loop circulate, and a train under 0.05 blocks a tick starts on its engines' aim
+rather than its own crawl.
+
+The run it was planned from held a train caught between two on the `x=-2` line and the `x=-14`
+column filled with cars that `DIVERTED` severs had cut loose. Not fixed: two trains whose cars
+interleave after passing through each other at a junction can still stand `SEAT_FOULED`, the case P7
+left and P11 takes.
+
+Observed on a server of its own: two trains filling a 24-block loop end to end circulate, 8 and 8
+cars going 13 to 34 laps in 600 ticks against 0.4 to 1.4 in 300 before, and a ten-minute run had no
+stall and no queued train. So had the first run with P9 and P10 in.
+
+## P11 — Cars of two trains never pass into one another — **planned**
+
+**Build.** With P9 and P10 in, overlap is the one clause left: 6,875 lines in 2,291 episodes, almost
+all under ten ticks, spread across the track at every distance from 0.0 to 0.5 — cars of two trains
+inside one another in pile-ups, the strike between them logged only once they already were, as
+`b580e030` into `29d06e39` at a closing speed of 2.51 and a distance of 0.09. Find which code puts
+each car inside the other — vanilla's move, which stops at a box solid to it; the placer, which
+seats a train along its ribbon against where the other train stood at the time; a push; or a
+junction, where `CartInteraction` answers from rail memos a tick old — and stop it there. Check
+first whether an overlap line is two cars inside one another at the end of the tick or only part-way
+through it, since the line is written at one car's tick head against the other car wherever it now
+is; if only part-way, the measurement is what is wrong and is fixed instead. P7 traced the
+`SEAT_FOULED` it left to the same pass-throughs, and the open question of vanilla's push after
+`shunt` is settled here: retry cancelling it for a pair `shunt` settles, judged on overlap.
+
+**Done when.** A ten-minute torture run logs no `overlap` and fails no other clause.
 
 # Part R — The bar
 
@@ -662,7 +734,7 @@ verdict tables are pasted into this stage's "As built", with the commit each ran
   an intended obstacle. Settled by the user.
 - **Vanilla's push after `shunt`.** P6 kept it, capped: it still counts a meeting twice, adding the
   pair's mean to a placed car and leaving a driven or loose one 0.2 of its own speed. Settled by
-  retrying "cancel it for a pair `shunt` settles" once P9 and P10 land, judged on overlaps and jams.
+  retrying "cancel it for a pair `shunt` settles" in P11, judged on overlap.
 - **Whether a bounce is "appropriate" beyond not failing.** The clause fails on overlap, overspeed
   and a sever after a strike; the momentum figures are reported for reading. Settled by the user
   looking at R1's strike table.
