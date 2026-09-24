@@ -777,11 +777,8 @@ public final class TrackRibbon {
                 ? null : onward(level, end.block(), outwardDirection);
 
         // Not stopped by track this ribbon already holds: a circuit re-enters its own blocks a lap
-        // on, and refusing to walk there leaves a looping train with no arc to sit at. A switch
-        // does stop it: which way it sends a car depends on how that car arrives, and this walk
-        // has no car and runs one of its two ends backwards. Guessing wrong here does not bend the
-        // track a little, it lays the ribbon down the other leg and the train is placed onto it.
-        if (next == null || level.getBlockState(next).getBlock() instanceof SwitchedRailBlock) {
+        // on, and refusing to walk there leaves a looping train with no arc to sit at.
+        if (next == null || !enterable(level.getBlockState(next), outwardDirection)) {
             return false;
         }
 
@@ -794,6 +791,20 @@ public final class TrackRibbon {
         }
 
         return nodes.size() > before;
+    }
+
+    // Whether a walk heading outwardDirection can go on into the block in state.
+    private static boolean enterable(BlockState state, Vec3 outwardDirection) {
+        if (!(state.getBlock() instanceof SwitchedRailBlock)) {
+            return true;
+        }
+
+        // A switch only as laid, the shape it holds while a train lies across it. With no car and
+        // one end walked backwards, a guessed approach can lay the ribbon down the other leg.
+        Direction inEdge = Direction.getApproximateNearest(outwardDirection.reverse());
+        var exits = AbstractMinecart.exits(state.getValue(SwitchedRailBlock.SHAPE));
+
+        return joins(exits.getFirst(), inEdge) || joins(exits.getSecond(), inEdge);
     }
 
     // The flat unit axis out of a node through its entry edge or its exit edge, or null where the
