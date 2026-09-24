@@ -1,4 +1,5 @@
-# Called once per marker cell, whether or not a cart was placed there, so it does nothing at all
-# unless there is a new cart to couple. Without this guard an empty cell would clear mtx_prev and
-# break the chain between two markers that are only separated by unmarked track.
-execute if entity @e[tag=mtx_new] run function mtxrig:couple_now
+# Called once per anchored cell, whether or not a cart was placed there: a sign's cell places none,
+# and then there is no mtx_new cart for the execute to run as.
+execute as @e[tag=mtx_new,limit=1] at @s run function mtxrig:couple_now
+tag @e[tag=mtx_new] remove mtx_new
+tag @e[tag=mtx_mate] remove mtx_mate

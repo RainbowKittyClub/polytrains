@@ -17,7 +17,7 @@ $kill @e[tag=mtx,tag=mtx_$(group)]
 kill @e[type=minecraft:item,nbt={Item:{id:"minecraft:iron_chain"}}]
 
 # Working tags, in case a run was interrupted partway.
-tag @e remove mtx_prev
 tag @e remove mtx_new
+tag @e remove mtx_mate
 tag @e remove mtx_fresh
 kill @e[tag=mtx_anchor]
