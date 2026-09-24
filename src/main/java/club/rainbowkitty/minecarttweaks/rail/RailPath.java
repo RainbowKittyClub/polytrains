@@ -338,7 +338,7 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     // The shape a moving cart sees, or null where the block is not a rail. A junction rail
     // selects its axis from that movement. A switch is read by its rails rather than its throw,
     // but only where the question is whether track connects — the ribbon records where a car did
-    // go, and there the resting curve is the truth.
+    // go, and there the switch as laid is the truth.
     private static @Nullable RailShape shape(BlockState state, Vec3 movement, Switches switches) {
         if (!BaseRailBlock.isRail(state)) {
             return null;

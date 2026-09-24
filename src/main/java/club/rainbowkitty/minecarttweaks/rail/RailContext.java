@@ -16,8 +16,8 @@ import net.minecraft.world.level.Level;
  * is — harmless, because the three blocks recorded still overlap the one it moved to.
  *
  * @param rail the rail the cart stands on, or null if it is not on one
- * @param first the rail one exit leads to, or null if that exit leads off the track
- * @param second the rail the other exit leads to, or null if that exit leads off the track
+ * @param first the block one exit leads to, rail or not; null only in {@link #OFF_RAILS}
+ * @param second the block the other exit leads to, rail or not; null only in {@link #OFF_RAILS}
  */
 public record RailContext(
         @Nullable BlockPos rail,
