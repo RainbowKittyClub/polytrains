@@ -114,7 +114,7 @@ placer cancels `moveAlongTrack` for it (AbstractMinecartMixin.java:262-265).
 
 # Part M — Measurement
 
-## M1 — Rig box covers the track and cars couple along their strip — **planned**
+## M1 — Rig box covers the track and cars couple along their strip — **in progress**
 
 **Build.** In `run/world/datapacks/mtxrig/` (M2 moves it into the repo). Widen the default box in
 `load.mcfunction:7` to `{x:-24,y:-53,z:-30,w:49,d:59}` — same southern edge, six rows further
@@ -136,7 +136,7 @@ carts in seven trains of 1, 4, 4, 4, 6, 8 and 8, the `x=-1` consist reading F-C-
 north to south, on two consecutive placements — read with `scripts/torture.py --roster` (M5) or a
 per-cart `data get entity` dump over rcon.
 
-## M2 — Rig versioned: datapack in the repo, track as a structure — **planned**
+## M2 — Rig versioned: datapack in the repo, track as a structure — **in progress**
 
 **Build.** Copy `run/world/datapacks/mtxrig/` to `scripts/mtxrig/` (without its `.claude/`
 directory) and add `scripts/rig-sync.sh` that copies it back under a mod's `run/world/datapacks/`
@@ -154,7 +154,7 @@ restore: copy the file to `run/world/generated/mtxrig/structures/`, then
 location on the yard, `rig-sync.sh`, `place template` and `mtxrig:rig` reproduce the 35-cart
 placement of M1.
 
-## M3 — TrainMeter samples the level, with identities — **planned**
+## M3 — TrainMeter samples the level, with identities — **in progress**
 
 **Build.** Move the meter off `holdTrain` (TrainCoupling.java:893) onto a level-wide sample every
 20 ticks from `ServerTickEvents.END_WORLD_TICK` (`fabric-lifecycle-events-v1`, already a dependency
@@ -176,7 +176,7 @@ and keep the meter's rule that a train measuring no pair prints `n/a`, never `0.
 one `meter cart=` line per second, ids stable across lines; on the abtestloop control, no furnace
 consist's `maxspeed` exceeds 2.50 in a ten-minute run.
 
-## M4 — Event lines with identities — **planned**
+## M4 — Event lines with identities — **in progress**
 
 **Build.** One DEBUG line per occurrence, each starting `event=<kind>` and naming its trains by
 M3's ids, prose after the tokens where the line already has some:
@@ -199,7 +199,7 @@ minute; `grep -o 'event=[a-z_]*' run/logs/debug.log | sort | uniq -c` shows each
 occurred; a redstone block set over rcon beside the switch at `(-14,-53,-2)` while the `z=-2`
 consist stands on it logs `event=switch … spanned=true`.
 
-## M5 — Sampler and verdict in `scripts/torture.py` — **planned**
+## M5 — Sampler and verdict in `scripts/torture.py` — **in progress**
 
 **Build.** Python 3, standard library only, in the mod's `scripts/`. A persistent rcon client that
 authenticates once and terminates each read with a marker command, since a long reply arrives as
@@ -222,7 +222,7 @@ with a verdict table, a JSON file and the yard box restored — whatever the ver
 
 # Part X — Crash guards
 
-## X1 — Bound the sweep box and repair absurd movement in strikeNearby — **planned**
+## X1 — Bound the sweep box and repair absurd movement in strikeNearby — **in progress**
 
 **Build.** In `CartImpact.strikeNearby` (CartImpact.java:63-85), before the sweep box is built:
 read the cart's own ceiling through `AbstractMinecartExt` (:56); if the movement is non-finite or
@@ -236,7 +236,7 @@ the injector is P1.
 `event=overspeed` and the server keeps ticking; the torture track no longer crashes in its first
 five minutes.
 
-## X2 — RailPath refuses to cast a non-rail block — **planned**
+## X2 — RailPath refuses to cast a non-rail block — **in progress**
 
 **Build.** `RailPath.shape` (RailPath.java:316-328) casts `state.getBlock()` to `BaseRailBlock`
 without asking `BaseRailBlock.isRail(state)` first; the Sep 17 crash is that cast on air. Return
@@ -251,7 +251,7 @@ cast.
 
 # Part P — Physics
 
-## P1 — Collision momentum on a placed car is laid along its rail and ceilinged — **planned**
+## P1 — Collision momentum on a placed car is laid along its rail and ceilinged — **in progress**
 
 **Build.** `shunt` (CartImpact.java:138-173): re-lay the gained movement onto the pushed car's own
 tangent with `TrainCoupling.alongTrack`, as `EntityMixin.java:88` already does for a shove — the
@@ -266,7 +266,7 @@ pattern one file over.
 **Done when.** R1's `overspeed` count is zero over ten minutes, and every `strike` line's `shared`
 lies between the two carts' speeds along the contact heading.
 
-## P2 — The switch guard reads the geometry and runs every tick — **planned**
+## P2 — The switch guard reads the geometry and runs every tick — **in progress**
 
 **Build.** `orient` (SwitchedRailBlock.java:277-283) refuses to steer when
 `TrainCoupling.crossedByTrain(level, pos)`, as `occupied` (:357-358) already does for the settle;
@@ -280,7 +280,7 @@ before the refusal return, not only after a clean seating — S3; and the airbor
 redstone block set beside `(-14,-53,-2)` while the `z=-2` consist stands across it logs a `switch`
 line with `spanned=true` and the shape unchanged.
 
-## P3 — A train across a switch re-seats, and the switch's link shape follows its throw — **planned**
+## P3 — A train across a switch re-seats, and the switch's link shape follows its throw — **in progress**
 
 **Build.** `TrackRibbon.extendTo` (:768 per the audit) stops one block short of a switch, leaving
 every car beyond it `RIBBON_SHORT` with no sever and no recovery — T4; let it record the switch by
@@ -294,7 +294,7 @@ state and see whether they strike.
 `seated=8` in its first `meter` line after placement; the two-cart probe across `(-1,-53,-12)`
 logs a `strike`.
 
-## P4 — A meeting leaves the train's lie settled and the shove in the right frame — **planned**
+## P4 — A meeting leaves the train's lie settled and the shove in the right frame — **in progress**
 
 **Build.** `reachTrain`'s record (TrainCoupling.java:1018-1026) gets the epoch guard and
 `train.relaidOn` call that `recordTrack` has (:315-326), so a ribbon reset at a meeting does not
@@ -305,7 +305,7 @@ pushback in `AbstractMinecartMixin` (:407-436) reads the struck car's own veloci
 **Done when.** No `ORDER_UNREADABLE` refusal follows a `strike` in R1, and every head-on strike is
 followed within 40 ticks by both trains' `speed` changing sign.
 
-## P5 — Ribbon reach is tied to the length rule, and the field stall is chased — **planned**
+## P5 — Ribbon reach is tied to the length rule, and the field stall is chased — **in progress**
 
 **Build.** `MAX_NODES` (TrackRibbon.java:50) becomes a function of `max_train_length`
 (ModGameRules.java:38) and the seating pitch, `extendTo` splits its budget between the two ends
