@@ -1,5 +1,6 @@
 package club.rainbowkitty.minecarttweaks.train;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.jspecify.annotations.Nullable;
@@ -53,6 +54,13 @@ public final class TrainPlacer {
     private static final double CLEAR_STEP = 0.1;
     private static final double CLEAR_REACH = 2.0;
     private static final int CLEAR_HALVINGS = 4;
+
+    // Spacing of the boxes a car's run to its seat is checked at: under half a car, so the boxes
+    // overlap and nothing between two of them is missed.
+    private static final double PATH_STEP = 0.4;
+
+    // How far a run to a seat may bend outside the two boxes it joins, on a U-turn.
+    private static final double RUN_SHELL = 1.0;
 
     // How far past a car's own box a player still counts as leaning on it.
     private static final double SHOVE_SHELL = 0.1;
@@ -337,6 +345,7 @@ public final class TrainPlacer {
         }
 
         Seat[] seats = new Seat[cars.size()];
+        double[] seatArcs = new double[cars.size()];
         Refusal refusal = null;
 
         // The leading car is skipped unless drawn back: normally vanilla places it, but a train
@@ -347,6 +356,8 @@ public final class TrainPlacer {
             }
 
             double arc = headArc - order * offsets[i];
+
+            seatArcs[i] = arc;
 
             if (!ribbon.reaches(arc)) {
                 // A car the train is moving away from is being left behind for good; one it is
@@ -372,7 +383,7 @@ public final class TrainPlacer {
 
         // Waits rather than counts against the train. A cart on this track past either end has
         // shortened it already; what is left stands off this track or between the train's own cars.
-        Foul foul = fouled(train, cars, seats, leadIndex);
+        Foul foul = fouled(train, cars, seats, seatArcs, leadIndex);
 
         if (foul != null && refusal == null) {
             refusal = new Refusal(Bail.SEAT_FOULED, Refusal.NONE, "a cart of another train lies at "
@@ -423,10 +434,10 @@ public final class TrainPlacer {
     // The first foreign cart lying across one of these seats, or across the ground reaching it.
     private record Foul(int carIndex, AbstractMinecart foulingCart) {}
 
-    // Clears the seats another train's cart stands in or lies across reaching, naming the first.
-    // The leading car's seat, taken only to draw a train back, is cleared uncounted.
-    private static @Nullable Foul fouled(
-            Train train, List<AbstractMinecart> cars, Seat[] seats, int leadIndex) {
+    // Clears the seats another train's cart stands in or lies across the track to, naming the
+    // first. The leading car's seat, taken only to draw a train back, is cleared uncounted.
+    private static @Nullable Foul fouled(Train train, List<AbstractMinecart> cars, Seat[] seats,
+            double[] seatArcs, int leadIndex) {
         AABB span = null;
 
         for (int i = 0; i < seats.length; i++) {
@@ -441,7 +452,13 @@ public final class TrainPlacer {
             return null;
         }
 
-        List<AbstractMinecart> others = foreignCarts(train, span);
+        List<AbstractMinecart> others = foreignCarts(train, span.inflate(RUN_SHELL));
+
+        if (others.isEmpty()) {
+            return null;
+        }
+
+        double runLimit = furthestRun(cars.get(leadIndex));
         Foul first = null;
 
         for (int i = 0; i < seats.length; i++) {
@@ -449,10 +466,29 @@ public final class TrainPlacer {
                 continue;
             }
 
-            AABB sweptBox = swept(cars.get(i), seats[i]);
+            AbstractMinecart car = cars.get(i);
+            AABB seatBox = boxAt(car, seats[i].position());
+            AABB sweptBox = swept(car, seats[i]);
+            List<AABB> pathBoxes = null;
+            boolean pathRead = false;
 
             for (AbstractMinecart other : others) {
-                if (sweptBox.intersects(other.getBoundingBox())) {
+                AABB otherBox = other.getBoundingBox();
+                boolean fouls = seatBox.intersects(otherBox);
+
+                // A seated car ran here, so the way it came is checked too: along its track where
+                // that can be read, and across both boxes where it cannot.
+                if (!fouls && seated(car) && sweptBox.inflate(RUN_SHELL).intersects(otherBox)) {
+                    if (!pathRead) {
+                        pathBoxes = pathBoxes(train.ribbon(), car, seatArcs[i], runLimit);
+                        pathRead = true;
+                    }
+
+                    fouls = pathBoxes == null ? sweptBox.intersects(otherBox)
+                            : runsThrough(car, seats[i], pathBoxes, other);
+                }
+
+                if (fouls) {
                     first = first != null || i == leadIndex ? first : new Foul(i, other);
 
                     seats[i] = null;
@@ -462,6 +498,59 @@ public final class TrainPlacer {
         }
 
         return first;
+    }
+
+    // The car's box at each step along its track between where it stands and its seat, both
+    // ends left out; null when the two are further apart than a tick can carry it.
+    private static @Nullable List<AABB> pathBoxes(
+            TrackRibbon ribbon, AbstractMinecart car, double seatArc, double runLimit) {
+        Double startArc = ribbon.arcNear(car, seatArc);
+
+        if (startArc == null || Math.abs(seatArc - startArc) > runLimit) {
+            return null;
+        }
+
+        int steps = (int) Math.ceil(Math.abs(seatArc - startArc) / PATH_STEP);
+        List<AABB> boxes = new ArrayList<>(Math.max(0, steps - 1));
+
+        for (int step = 1; step < steps; step++) {
+            Vec3 position = ribbon.positionAt(startArc + (seatArc - startArc) * step / steps);
+
+            if (position != null) {
+                boxes.add(boxAt(car, position));
+            }
+        }
+
+        return boxes;
+    }
+
+    // Whether car, running to its seat, meets other on ground its box did not already cover, or
+    // runs on past the middle of one it was already up against.
+    private static boolean runsThrough(
+            AbstractMinecart car, Seat seat, List<AABB> pathBoxes, AbstractMinecart other) {
+        AABB otherBox = other.getBoundingBox();
+
+        if (car.getBoundingBox().intersects(otherBox)) {
+            Vec3 runDirection = seat.position().subtract(car.position()).horizontal();
+
+            return other.position().subtract(car.position()).horizontal().dot(runDirection) > 0.0
+                    && other.position().subtract(seat.position()).horizontal()
+                            .dot(runDirection) < 0.0;
+        }
+
+        for (AABB pathBox : pathBoxes) {
+            if (pathBox.intersects(otherBox)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // The furthest a car of leader's train can run along its track in one tick, a node to spare.
+    private static double furthestRun(AbstractMinecart leader) {
+        return (leader.level() instanceof ServerLevel level
+                ? leader.minecarttweaks$ownMaxSpeed(level) : 0.0) + SWEEP_SLACK;
     }
 
     // Every cart in box but this train's own, a cart coupled to one of its cars counting as one
@@ -602,8 +691,8 @@ public final class TrainPlacer {
         return false;
     }
 
-    // The ground a car crosses reaching its seat: its current box joined to the box it will stand
-    // in, so a fouling check catches a train it passes through as well as one it lands on.
+    // Where a car may meet another train's cart reaching its seat: its current box joined to the
+    // box it will stand in, which bounds the track between for the fouling check to look along.
     private static AABB swept(AbstractMinecart car, Seat seat) {
         AABB seatBox = boxAt(car, seat.position());
 
