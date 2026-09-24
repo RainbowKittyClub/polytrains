@@ -58,6 +58,14 @@ public interface AbstractMinecartExt extends Linkable {
     }
 
     /**
+     * Whether this cart is under its own power and has begun counting ticks its train covered no
+     * ground on, towards turning it round. Only a burning, unparked furnace cart ever is.
+     */
+    public default boolean minecarttweaks$stalling() {
+        return false;
+    }
+
+    /**
      * This cart's own speed ceiling, as its own kind of cart works it out. Exists so that the car
      * driving a train can ask the cars behind it without reaching for a {@code protected} method on
      * somebody else's instance. Asked of any other car it answers with that car's own figure; asked

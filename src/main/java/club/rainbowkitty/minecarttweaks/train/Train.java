@@ -107,6 +107,11 @@ public final class Train {
     // The tick this train last had give taken out of its gaps by something it has run into.
     private long packedTick = Long.MIN_VALUE;
 
+    // The tick this train last turned round on a stall, and the tick until which it holds its
+    // own turn for a train that turned away from it.
+    private long turnedTick = Long.MIN_VALUE;
+    private long turnHeldTick = Long.MIN_VALUE;
+
     // The last tick this train was laid out. A train is laid out once a tick by the car leading
     // it, so a gap here is that car not having ticked — which is not a thing a car chooses, and
     // so not a thing the rest of the train can wait out.
@@ -245,6 +250,17 @@ public final class Train {
     /** This train's id, which stays the same for as long as its cars do. */
     public String id() {
         return trainId(cars);
+    }
+
+    /**
+     * Whether this train turns round before {@code other} when the two stall against each other:
+     * the one whose lowest car UUID sorts first, which both reach the same way.
+     */
+    public boolean turnsBefore(Train other) {
+        AbstractMinecart ownLowest = lowest(cars);
+        AbstractMinecart otherLowest = lowest(other.cars);
+
+        return ownLowest != null && otherLowest != null && sortsFirst(ownLowest, otherLowest);
     }
 
     /**
@@ -567,6 +583,26 @@ public final class Train {
         return packedTick + 1 >= tick;
     }
 
+    /** Records that this train turned round on a stall on {@code tick}. */
+    public void setTurned(long tick) {
+        turnedTick = tick;
+    }
+
+    /** Whether this train turned round on a stall at most {@code ticks} before {@code tick}. */
+    public boolean turnedWithin(long tick, int ticks) {
+        return turnedTick + ticks >= tick;
+    }
+
+    /** Holds this train's stall turn until {@code tick}, for a train that turned away from it. */
+    public void holdTurn(long tick) {
+        turnHeldTick = Math.max(turnHeldTick, tick);
+    }
+
+    /** Whether this train is holding its stall turn on {@code tick}. */
+    public boolean turnHeld(long tick) {
+        return tick < turnHeldTick;
+    }
+
     // The tightest a pair may be seated: two cars closer than this are inside each other, which
     // vanilla's own shove is left to separate.
     private double floor(double target) {
@@ -608,6 +644,17 @@ public final class Train {
         }
 
         return arcPositions;
+    }
+
+    /** Whether any engine of this train has begun to stall: under power, and going nowhere. */
+    public boolean stalling() {
+        for (AbstractMinecart car : cars) {
+            if (car.minecarttweaks$stalling()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Whether any car of this train is driving it, whatever that car is currently putting out. */

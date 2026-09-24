@@ -169,6 +169,14 @@ public final class TrainPlacer {
         return seatedTick != 0 && seatedTick + 1 >= car.level().getGameTime();
     }
 
+    /**
+     * Every cart of another train standing against {@code end}, a car of {@code train}: as far past
+     * its box as the placer looks for another train's cart to pack short of.
+     */
+    public static List<AbstractMinecart> cartsAgainst(Train train, AbstractMinecart end) {
+        return foreignCarts(train, end.getBoundingBox().inflate(END_SHELL));
+    }
+
     // Seats the train if the ribbon can answer for every car, naming the first bail otherwise.
     private static @Nullable Refusal attempt(Train train, double target) {
         AbstractMinecart leader = train.leader();

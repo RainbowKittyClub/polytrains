@@ -1,5 +1,6 @@
 package club.rainbowkitty.minecarttweaks.train;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -24,6 +25,7 @@ import net.minecraft.world.phys.Vec3;
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
 import club.rainbowkitty.minecarttweaks.link.LinkAction;
 import club.rainbowkitty.minecarttweaks.rail.RailBrake;
+import club.rainbowkitty.minecarttweaks.rail.RailContext;
 import club.rainbowkitty.minecarttweaks.rail.RailDrag;
 import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
@@ -74,6 +76,9 @@ public final class TrainCoupling {
 
     // How far under a car's box to look for what it is standing on.
     private static final double SUPPORT_DEPTH = 0.05;
+
+    // Ticks a train holds its stall turn once one it pressed against turned away: time to follow.
+    private static final int TURN_HOLD_TICKS = 8;
 
     // Two batches: one for the batch a client may already be sitting on, one to leave it with
     // nothing, since a client that is never left short goes on replaying at the offset it has.
@@ -282,6 +287,58 @@ public final class TrainCoupling {
         }
 
         return headingDirection.lengthSqr() > EPSILON ? headingDirection.normalize() : Vec3.ZERO;
+    }
+
+    /**
+     * Whether {@code engine}'s train, stalled, should hold its turn: for a stalled train it presses
+     * nose to nose that {@link Train#turnsBefore} it, or for one that has just turned away from it
+     * and may already have left. Asked the same way from both sides, so of two trains pressing
+     * each other one turns and the other follows it away instead of turning with it.
+     */
+    public static boolean yieldsTurn(AbstractMinecart engine) {
+        if (!ModGameRules.trainsEnabled(engine.level())) {
+            return false;
+        }
+
+        Train train = Train.of(engine);
+        long tick = engine.level().getGameTime();
+
+        if (train.turnHeld(tick)) {
+            return true;
+        }
+
+        // Not to one that has just turned and presses again: it has shown it cannot get away.
+        for (Train other : pressedAgainst(train)) {
+            if (other.stalling() && other.turnsBefore(train)
+                    && !other.turnedWithin(tick, TURN_HOLD_TICKS)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Turns {@code engine}'s train round, aiming every engine of it along its own rails the way
+     * {@code heading} points at {@code engine}, and holds the turn of every train it was pressing
+     * nose to nose, which a turn made first can leave unseen.
+     */
+    public static void turnRound(AbstractMinecart engine, Vec3 heading) {
+        Train train = Train.of(engine);
+        boolean trains = ModGameRules.trainsEnabled(engine.level());
+        long tick = engine.level().getGameTime();
+
+        train.setTurned(tick);
+
+        for (Train other : pressedAgainst(train)) {
+            other.holdTurn(tick + TURN_HOLD_TICKS);
+        }
+
+        // Round a bend one world heading sends two engines of a train opposite ways along it.
+        for (AbstractMinecart car : train.cars()) {
+            car.minecarttweaks$turnEngine(
+                    trains && car != engine ? headingAt(engine, car, heading) : heading);
+        }
     }
 
     /** The furthest centre-to-centre distance at which two carts may be linked. */
@@ -1246,6 +1303,43 @@ public final class TrainCoupling {
 
         double reach = trimReach(train.length(MAX_LINK_DISTANCE));
         ribbon.trim(arc - reach, arc + reach);
+    }
+
+    // The trains an end of train presses nose to nose on its track, each driving into the other.
+    private static List<Train> pressedAgainst(Train train) {
+        List<AbstractMinecart> cars = train.cars();
+        List<Train> pressing = new ArrayList<>();
+
+        if (!ModGameRules.trainsEnabled(cars.getFirst().level())) {
+            return pressing;
+        }
+
+        for (AbstractMinecart end : cars.size() == 1
+                ? cars : List.of(cars.getFirst(), cars.getLast())) {
+            for (AbstractMinecart other : TrainPlacer.cartsAgainst(train, end)) {
+                Train otherTrain = Train.of(other);
+
+                if (RailContext.sharesTrack(end, other) && otherTrain.driving()
+                        && drivesInto(end, other) && drivesInto(other, end)
+                        && !pressing.contains(otherTrain)) {
+                    pressing.add(otherTrain);
+                }
+            }
+        }
+
+        return pressing;
+    }
+
+    // Whether car's train drives it towards target, going by its engines' aim at car.
+    private static boolean drivesInto(AbstractMinecart car, AbstractMinecart target) {
+        return driveHeading(car).dot(target.position().subtract(car.position()).horizontal()) > 0.0;
+    }
+
+    // heading at engine laid along the rails to car, or left as it is when square across them.
+    private static Vec3 headingAt(AbstractMinecart engine, AbstractMinecart car, Vec3 heading) {
+        Vec3 alongDirection = alongTrack(engine, car, heading);
+
+        return alongDirection.horizontalDistanceSqr() > ANY_MOVEMENT ? alongDirection : heading;
     }
 
     // One car's rider asking to move. Client intent rather than the player's own velocity, which a

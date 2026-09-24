@@ -80,6 +80,11 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     @Unique
     private static final double STALL_SHARE = 0.5;
 
+    // The most ticks a stalled engine holds its turn for another train that turns first, before
+    // turning anyway: time for that one to turn and get going, so this one can follow.
+    @Unique
+    private static final int YIELD_TICKS = 5 * STALL_TICKS;
+
     // Ticks of burn time left.
     @Shadow private int fuel;
 
@@ -95,9 +100,12 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     @Unique
     private @Nullable BlockPos minecarttweaks$headingRail;
 
-    // Ticks in a row this cart has been given the engine and its train still covered no ground.
+    // Ticks in a row this cart has been given the engine and its train still covered no ground,
+    // and the tick they were last counted on.
     @Unique
     private int minecarttweaks$stalled;
+    @Unique
+    private long minecarttweaks$stallCountedTick;
 
     // The entity id of the car the ground covered is read off — the one leading this cart's train,
     // whose own movement is the train's — and its position and tick count at this cart's last tick.
@@ -122,6 +130,13 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     @Override
     public int minecarttweaks$fuel() {
         return fuel;
+    }
+
+    // A count left standing by a cart that has stopped ticking says nothing about now.
+    @Override
+    public boolean minecarttweaks$stalling() {
+        return minecarttweaks$stalled > 0
+                && minecarttweaks$stallCountedTick + 1 >= level().getGameTime();
     }
 
     // Asked at the speed of the car whose movement is an input, so every engine of a train reads
@@ -379,6 +394,7 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         minecarttweaks$gaugeId = gaugeCar.getId();
         minecarttweaks$gaugePosition = standingPosition;
         minecarttweaks$gaugeTicks = gaugeCar.tickCount;
+        minecarttweaks$stallCountedTick = level().getGameTime();
 
         if (fuel <= 0 || minecarttweaks$parked || lastPosition == null
                 || !minecarttweaks$standing(gaugeCar, standingPosition.subtract(lastPosition))
@@ -391,18 +407,22 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
             return;
         }
 
-        // The whole train turns, not this one engine of it, and every engine is handed the same
-        // heading rather than each reversing its own. A train's cars stall at different moments —
-        // its leading car is driven by vanilla while the rest are placed — so engines left to turn
-        // one at a time end up pushing against each other. Two that do sum to nothing, and a train
-        // whose engines sum to nothing cannot start itself again at all.
+        // Of two trains stalled against each other only one turns straight away, or both run
+        // back into whatever lies behind them together: on a loop they fill, for ever.
+        if (minecarttweaks$stalled < YIELD_TICKS && TrainCoupling.yieldsTurn(this)) {
+            return;
+        }
+
+        // The whole train turns, not this one engine of it, and every engine is handed the one
+        // heading, carried along the rails to it, rather than each reversing its own. A train's
+        // cars stall at different moments — its leading car is driven by vanilla while the rest
+        // are placed — so engines left to turn one at a time end up pushing against each other.
+        // Two that do sum to nothing, and a train whose engines sum to nothing cannot start itself
+        // again at all.
         Vec3 reversedHeading = push.scale(-1.0);
 
         TrainMeter.stallReversed(this);
-
-        for (AbstractMinecart car : Train.of(this).cars()) {
-            car.minecarttweaks$turnEngine(reversedHeading);
-        }
+        TrainCoupling.turnRound(this, reversedHeading);
     }
 
     // Replaces vanilla's hardcoded burn-time ceiling with the rule's.
