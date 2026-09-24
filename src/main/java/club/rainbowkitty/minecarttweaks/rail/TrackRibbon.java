@@ -5,6 +5,7 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 import com.mojang.logging.LogUtils;
 import org.jspecify.annotations.Nullable;
@@ -70,6 +71,9 @@ public final class TrackRibbon {
     // two are indistinguishable by the block a car stands on. Which of them a car is really on is
     // only answerable from where it was a moment ago.
     private double leaderArc;
+
+    // Set while blocksBetween walks the nodes: its action can throw a switch, and so cut them.
+    private boolean walking;
 
     // Kept for the meter, and monotonic over this ribbon's whole life rather than per attempt —
     // the question they answer is whether resets have stopped, which a counter that resets cannot.
@@ -482,10 +486,56 @@ public final class TrackRibbon {
     public boolean diverted(Level level, double arc) {
         Node node = nodeAt(arc);
 
-        if (node == null) {
-            return false;
+        return node != null && thrown(level, node);
+    }
+
+    /**
+     * Forgets the track beyond {@code [low, high]} from the first switch each way that no longer
+     * joins the edges recorded across it, so that growth reads that switch again as it now lies.
+     *
+     * <p>A switch thrown while no car lies across it can still be recorded past either end of the
+     * train, and a train reversing onto it would be seated along a curve the rails no longer have.
+     * Track between the two arcs is the train's own, which {@link #diverted} answers for instead.
+     * Both arcs are to be ones cars stand at, so the track under them always stays.
+     */
+    public void forgetThrown(Level level, double low, double high) {
+        // Arcs wholly off this ribbon say nothing about which of its track is the train's, and a
+        // cut mid-walk is left to the train's next seating, which asks again.
+        if (walking || nodes.isEmpty() || high < nearArc() - EPSILON || low > farArc() + EPSILON) {
+            return;
         }
 
+        Node farCut = firstThrown(level, nodes.iterator(), node -> node.arc() > high + EPSILON);
+        Node nearCut = firstThrown(level, nodes.descendingIterator(),
+                node -> node.arc() + node.span() < low - EPSILON);
+
+        // Each loop drops the nodes past the switch and then the switch itself.
+        while (farCut != null && nodes.removeLast() != farCut) {
+            continue;
+        }
+
+        while (nearCut != null && nodes.removeFirst() != nearCut) {
+            continue;
+        }
+    }
+
+    // Walking outward, the first node past the train that is a thrown switch, or null. Only nodes
+    // past the train have their block read.
+    private static @Nullable Node firstThrown(
+            Level level, Iterator<Node> outward, Predicate<Node> past) {
+        while (outward.hasNext()) {
+            Node node = outward.next();
+
+            if (past.test(node) && thrown(level, node)) {
+                return node;
+            }
+        }
+
+        return null;
+    }
+
+    // Whether node is a switch that no longer joins the two edges recorded across it.
+    private static boolean thrown(Level level, Node node) {
         BlockState state = level.getBlockState(node.block());
 
         if (!(state.getBlock() instanceof SwitchedRailBlock)) {
@@ -604,10 +654,16 @@ public final class TrackRibbon {
         double low = Math.min(from, to);
         double high = Math.max(from, to);
 
-        for (Node node : nodes) {
-            if (node.arc() + node.span() >= low - EPSILON && node.arc() <= high + EPSILON) {
-                action.accept(node.block());
+        walking = true;
+
+        try {
+            for (Node node : nodes) {
+                if (node.arc() + node.span() >= low - EPSILON && node.arc() <= high + EPSILON) {
+                    action.accept(node.block());
+                }
             }
+        } finally {
+            walking = false;
         }
     }
 

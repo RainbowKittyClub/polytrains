@@ -17,6 +17,7 @@ import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseRailBlock;
+import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -771,6 +772,27 @@ public final class TrainCoupling {
     }
 
     /**
+     * Has every train that could reach the switch at {@code pos} before it is next seated forget
+     * that switch past its own cars, the switch having just changed shape. A train lying across it
+     * keeps it, as it keeps every switch between its cars.
+     */
+    public static void forgetThrown(Level level, BlockPos pos) {
+        if (!(level instanceof ServerLevel serverLevel) || !ModGameRules.trainsEnabled(level)) {
+            return;
+        }
+
+        // As far as a leading car runs in a tick: one stepping onto the switch before its train is
+        // seated again would take the curve recorded there for track it already knows.
+        double reach = CROSSING_REACH + (AbstractMinecart.useExperimentalMovement(level)
+                ? serverLevel.getGameRules().get(GameRules.MAX_MINECART_SPEED) / 20.0 : 0.0);
+
+        anyTrainNear(level, pos, reach, Train::of, train -> {
+            forgetThrownPast(level, train, null);
+            return false;
+        });
+    }
+
+    /**
      * The mass of {@code cart}'s train, in empty minecarts. A cart on its own is a train of one.
      *
      * <p>What a cart weighs is {@link RailForces#cartMass}'s to say, and under the vanilla model
@@ -1066,32 +1088,35 @@ public final class TrainCoupling {
             return false;
         }
 
-        Span span = spanOf(train);
+        Span span = spanOf(train, null);
 
         return span != null && ribbon.covers(span.low(), span.high(), pos);
     }
 
-    // The run of a train's ribbon between the lowest and highest arcs its cars stand at.
-    private record Span(double low, double high) {}
+    // The run of a train's ribbon between the lowest and highest arcs its cars stand at, and
+    // whether every car was read there from a known leading car, as a cut of the track has to be.
+    private record Span(double low, double high, boolean whole) {}
 
-    // Where a train's cars stand, each read on the lap of the one before it from the leading end,
-    // a short loop recording blocks twice. Null if it places none.
-    private static @Nullable Span spanOf(Train train) {
+    // Where a train's cars stand, each read on the lap of the one before it from the leading end
+    // (leadArc that car's, if given), a short loop recording blocks twice. Null if it places none.
+    private static @Nullable Span spanOf(Train train, @Nullable Double leadArc) {
         TrackRibbon ribbon = train.ribbon();
         List<AbstractMinecart> cars = train.cars();
         AbstractMinecart leader = train.lastLeader();
         boolean fromLast = cars.size() > 1 && leader == cars.getLast();
-        double nearArc = ribbon.leaderArc();
+        double nearArc = leadArc == null ? ribbon.leaderArc() : leadArc;
         double low = Double.POSITIVE_INFINITY;
         double high = Double.NEGATIVE_INFINITY;
+        boolean whole = leader != null;
 
         for (int step = 0; step < cars.size(); step++) {
             AbstractMinecart car = cars.get(fromLast ? cars.size() - 1 - step : step);
-            Double arc = standingArc(ribbon, car, nearArc);
+            Double arc = step == 0 && leadArc != null ? leadArc : standingArc(ribbon, car, nearArc);
 
-            // A leading car off its recorded blocks counts where the ribbon last had it.
-            if (arc == null && step == 0 && leader != null) {
-                arc = ribbon.leaderArc();
+            if (arc == null) {
+                whole = false;
+                // A leading car off its recorded blocks counts where the ribbon last had it.
+                arc = step == 0 && leader != null ? ribbon.leaderArc() : null;
             }
 
             if (arc != null) {
@@ -1101,7 +1126,7 @@ public final class TrainCoupling {
             }
         }
 
-        return low <= high ? new Span(low, high) : null;
+        return low <= high ? new Span(low, high, whole) : null;
     }
 
     // Where car stands on ribbon on the lap nearArc names, or null if nowhere; a seated car on the
@@ -1118,6 +1143,15 @@ public final class TrainCoupling {
         Double arc = ribbon.arcOf(car, seatArc);
 
         return arc != null ? arc : seatArc;
+    }
+
+    // Has a train's ribbon forget each switch thrown past its cars, once it can read all of them.
+    private static void forgetThrownPast(Level level, Train train, @Nullable Double leadArc) {
+        Span span = spanOf(train, leadArc);
+
+        if (span != null && span.whole()) {
+            train.ribbon().forgetThrown(level, span.low(), span.high());
+        }
     }
 
     // Makes sure the ribbon reaches the whole train before anything is measured against it. A
@@ -1160,6 +1194,10 @@ public final class TrainCoupling {
         if (arc == null) {
             return;
         }
+
+        // A switch thrown past either end since it was recorded is forgotten from there outward,
+        // so the growth below lays it as it now lies instead of a reversal seating cars across it.
+        forgetThrownPast(level, train, arc);
 
         // Both ways, not just behind: a train reverses by swapping which end leads, and the cars
         // that were behind the old one are ahead of the new.

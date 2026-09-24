@@ -370,6 +370,18 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         level.setBlock(pos, signalled.setValue(SHAPE, resting), Block.UPDATE_CLIENTS);
     }
 
+    // Has the trains near a switch that has just changed shape forget it past their own cars,
+    // before a leading car that steered it steps on. Every change of shape passes through here.
+    @Override
+    protected void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState,
+            boolean movedByPiston) {
+        super.onPlace(state, level, pos, oldState, movedByPiston);
+
+        if (oldState.is(this) && oldState.getValue(SHAPE) != state.getValue(SHAPE)) {
+            TrainCoupling.forgetThrown(level, pos);
+        }
+    }
+
     // Lays the resting curve on once the car that was crossing has gone, whether it was held off by
     // a passthrough or by a signal change. Its schedulers keep at most one of these pending.
     @Override
