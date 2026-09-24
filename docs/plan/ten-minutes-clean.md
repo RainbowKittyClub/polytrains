@@ -94,6 +94,18 @@ advanced 12,000 ticks or rcon dies; then parse the log from the mark, print the 
 the series, reset the group and restore the yard box `{x:-44,y:-53,z:-4,w:25,d:25}`. After a
 crash: `devserver.sh restart`, then kill `@e[tag=mtx]` before the reloaded carts re-accelerate.
 
+Working in a worktree, as `/batch` does. `build.gradle`, `settings.gradle` and `gradlew` are
+symlinks into the `gradle/` submodule, so a fresh worktree builds nothing until
+`git submodule update --init` has run in it. `run/` is gitignored and exists only in the main
+checkout, so a worktree has no dev server, no world, no rig and no `debug.log`: build and lint
+there, and observe the "Done when" on the main checkout's dev server after the branch is merged,
+never by starting a second server (the ports in `gradle.properties` would collide). The rig
+datapack is likewise only in the main checkout's `run/world/datapacks/mtxrig/` until M2 copies it,
+so M1 and M2 are one task: copy first, fix the copy under `scripts/mtxrig/`, sync it back with
+`rig-sync.sh`, and test on the main checkout. `scripts/torture.py` (M5) can be run from any
+checkout against the main one's server, since it only speaks rcon and reads
+`rkc/mods/minecart-tweaks/run/logs/debug.log` by path.
+
 The speed ceilings the clauses refer to: vanilla's is `max_minecart_speed / 20` blocks per tick
 (NewMinecartBehavior.java:486), 5.0 at the bar's setting, clamped per axis at
 AbstractMinecart.java:378-380; the mod halves it for a furnace cart under the vanilla model
