@@ -415,6 +415,12 @@ public final class TrainPlacer {
 
             place(train, cars.get(i), seats[i], headArc - order * offsets[i],
                     faceSign, speed, i != leadIndex);
+
+            // Drawn back off an end the train is leaving, the leading car stays vanilla's: seated,
+            // it skips vanilla's move and is drawn back again every tick that end still presses.
+            if (i == leadIndex && !pressing) {
+                loosen(cars.get(i));
+            }
         }
 
         train.setGaps(gaps);
