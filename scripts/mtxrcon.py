@@ -115,7 +115,7 @@ class Rcon:
             try:
                 chunk = self.sock.recv(count - len(data))
             except OSError as e:
-                # A timeout mid-reply leaves the stream unframed, so the connection is done either way.
+                # A timeout mid-reply leaves the stream unframed: the connection is done either way.
                 raise RconDead(f"rcon read failed: {e}") from e
             if not chunk:
                 raise RconDead("rcon connection closed")
@@ -130,13 +130,17 @@ def utf16_len(text):
     return len(text.encode("utf-16-le")) // 2
 
 
+def git_common_dir():
+    """The repository's shared .git directory, the same from the main checkout or a worktree."""
+    here = Path(__file__).resolve().parent
+    return Path(subprocess.run(
+        ["git", "-C", str(here), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        check=True, capture_output=True, text=True).stdout.strip())
+
+
 def main_checkout():
     """The main checkout of this repository, even when called from one of its worktrees."""
-    here = Path(__file__).resolve().parent
-    common = subprocess.run(
-        ["git", "-C", str(here), "rev-parse", "--path-format=absolute", "--git-common-dir"],
-        check=True, capture_output=True, text=True).stdout.strip()
-    return Path(common).parent
+    return git_common_dir().parent
 
 
 def default_run_dir():
@@ -156,10 +160,15 @@ def read_properties(run_dir):
 
 def connect(run_dir, timeout=30.0):
     """An authenticated connection to the dev server that owns run_dir."""
-    props = read_properties(run_dir)
-    if props.get("enable-rcon") != "true":
-        raise RconDead(f"rcon is not enabled in {Path(run_dir) / 'server.properties'}")
-    return Rcon(int(props["rcon.port"]), props["rcon.password"], timeout=timeout)
+    path = Path(run_dir) / "server.properties"
+    try:
+        props = read_properties(run_dir)
+        if props.get("enable-rcon") != "true":
+            raise RconDead(f"rcon is not enabled in {path}")
+        port, password = int(props["rcon.port"]), props["rcon.password"]
+    except (OSError, KeyError, ValueError) as e:
+        raise RconDead(f"no usable rcon settings in {path}: {e!r}") from e
+    return Rcon(port, password, timeout=timeout)
 
 
 def main():
