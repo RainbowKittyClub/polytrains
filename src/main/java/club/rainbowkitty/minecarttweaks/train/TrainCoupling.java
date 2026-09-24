@@ -903,8 +903,10 @@ public final class TrainCoupling {
         // A car in the air is not a car the track has lost. It is between one piece of track and
         // the next, and where it is now says nothing about whether it will come down on rails —
         // which is the question, and one only a landing can answer. The count is left standing
-        // rather than cleared, so a train already failing takes up where it left off once down.
+        // rather than cleared, so a train already failing takes up where it left off once down;
+        // every other car's clears as on any tick.
         if (!train.cars().get(refusal.car()).onGround()) {
+            train.faultHeld(TrainPlacer.Refusal.NONE, refusal.car(), SEVER_TICKS);
             return;
         }
 

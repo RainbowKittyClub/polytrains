@@ -302,6 +302,15 @@ public final class Train {
      * the same call, so a fault that moves from car to car never accumulates anywhere.
      */
     public boolean faultHeld(int carIndex, int ticks) {
+        return faultHeld(carIndex, TrainPlacer.Refusal.NONE, ticks);
+    }
+
+    /**
+     * As {@link #faultHeld(int, int)}, except that car {@code standingIndex} keeps its count as it
+     * stands rather than having it cleared: a car whose fault this tick is not counted — it is in
+     * the air — but is not forgiven either. A negative {@code standingIndex} names no car.
+     */
+    public boolean faultHeld(int carIndex, int standingIndex, int ticks) {
         if (faults == null || faults.length != cars.size()) {
             faults = new int[cars.size()];
         }
@@ -309,6 +318,10 @@ public final class Train {
         boolean held = false;
 
         for (int i = 0; i < faults.length; i++) {
+            if (i == standingIndex && i != carIndex) {
+                continue;
+            }
+
             faults[i] = i == carIndex ? faults[i] + 1 : 0;
             held |= i == carIndex && faults[i] >= ticks;
         }
