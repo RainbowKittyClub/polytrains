@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import it.unimi.dsi.fastutil.longs.LongSet;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -28,7 +29,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.RailShape;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.block.JunctionRailBlock;
@@ -107,12 +107,16 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     @Unique
     private long minecarttweaks$railTick;
 
-    // The ground this cart covers this tick, and the tick it was read on. Held alongside the rail
-    // context and for the same reason; its own zero never reads as fresh either.
+    // The rail blocks this cart covers, and the tick, position and movement they were walked from.
+    // The position and movement are null until the first walk, so that walk is never skipped.
     @Unique
-    private @Nullable AABB minecarttweaks$swept;
+    private @Nullable LongSet minecarttweaks$covered;
     @Unique
-    private long minecarttweaks$sweptTick;
+    private long minecarttweaks$coveredTick;
+    @Unique
+    private @Nullable Vec3 minecarttweaks$coveredFrom;
+    @Unique
+    private @Nullable Vec3 minecarttweaks$coveredMovement;
 
     // Never called: present only to satisfy the compiler about the superclass this mixin extends.
     public AbstractMinecartMixin(EntityType<?> type, Level level) {
@@ -189,18 +193,21 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     }
 
     @Override
-    public AABB minecarttweaks$sweptBox() {
+    public LongSet minecarttweaks$coveredTrack() {
         long now = level().getGameTime();
+        Vec3 standingPosition = position();
+        Vec3 movement = getDeltaMovement();
 
-        if (minecarttweaks$swept == null || minecarttweaks$sweptTick != now) {
-            AbstractMinecart self = minecarttweaks$self();
-
-            minecarttweaks$swept = self.getBoundingBox()
-                    .expandTowards(self.getDeltaMovement());
-            minecarttweaks$sweptTick = now;
+        if (minecarttweaks$covered == null || minecarttweaks$coveredTick != now
+                || !standingPosition.equals(minecarttweaks$coveredFrom)
+                || !movement.equals(minecarttweaks$coveredMovement)) {
+            minecarttweaks$covered = RailContext.covering(minecarttweaks$self());
+            minecarttweaks$coveredTick = now;
+            minecarttweaks$coveredFrom = standingPosition;
+            minecarttweaks$coveredMovement = movement;
         }
 
-        return minecarttweaks$swept;
+        return minecarttweaks$covered;
     }
 
     @Override

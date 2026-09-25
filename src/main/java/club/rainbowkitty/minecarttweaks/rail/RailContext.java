@@ -1,5 +1,7 @@
 package club.rainbowkitty.minecarttweaks.rail;
 
+import it.unimi.dsi.fastutil.longs.LongIterator;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
@@ -9,7 +11,8 @@ import net.minecraft.world.level.Level;
 /**
  * The stretch of track a cart occupies: the rail it stands on and the two its exits lead to. Held
  * so "are these two on the same piece of track" can be answered by comparing block positions
- * rather than walking the rails — cheap enough to ask from the collision path.
+ * rather than walking the rails — cheap enough to ask from the collision path. Whether two carts
+ * can meet further off than that is {@link #meets}, which walks the rails once per cart and move.
  *
  * <p>A cart caches one of these per tick. It is therefore as of the start of the tick, and a cart
  * moving fast enough to cross a block within one has a neighbourhood a block behind where it now
@@ -26,6 +29,10 @@ public record RailContext(
 
     /** A cart that is not on a rail at all, and so shares track with nothing. */
     public static final RailContext OFF_RAILS = new RailContext(null, null, null);
+
+    // How far past its own half-length the track a cart covers reaches, so that two carts whose
+    // boxes meet at a block edge both cover the block across it.
+    private static final double COVER_SLACK = 0.1;
 
     /** Whether the cart stands on a rail at all. */
     public boolean onRails() {
@@ -52,8 +59,7 @@ public record RailContext(
     /**
      * Whether two carts stand on the same rail or one exit apart — the limit of what this checks.
      * It covers every pair a tick of ordinary movement can bring together, while a pair closing
-     * faster than a block a tick can meet beyond it, caught instead by the swept-box test in
-     * {@code CartInteraction}.
+     * faster than a block a tick can meet beyond it, caught instead by {@link #meets}.
      *
      * <p>True if either says so: a junction rail picks its shape from the cart reading it, so a
      * cart on one sees only its own axis, and erring towards neighbours merely collides as vanilla
@@ -65,6 +71,39 @@ public record RailContext(
         RailContext theirs = other.minecarttweaks$railContext();
 
         return mine.covers(theirs) || theirs.covers(mine);
+    }
+
+    /**
+     * The rail blocks {@code cart} can be over before its next move ends: its own half-length
+     * either side of where it stands, and on over the ground its movement carries it, walked along
+     * the rails. Callers should prefer the cart's own memo.
+     */
+    public static LongSet covering(AbstractMinecart cart) {
+        double halfLength = cart.getBbWidth() * 0.5 + COVER_SLACK;
+
+        return RailPath.covered(
+                cart, cart.getDeltaMovement().horizontalDistance() + halfLength, halfLength);
+    }
+
+    /**
+     * Whether two carts can run into each other before either's next move ends: the track each
+     * covers, from where it stands now, shares a block. Walked along the rails, so it follows a
+     * curve, a grade or a switch's roads where a straight reach would leave them, and two carts
+     * crossing one junction both cover it.
+     */
+    public static boolean meets(AbstractMinecart cart, AbstractMinecart other) {
+        LongSet mine = cart.minecarttweaks$coveredTrack();
+        LongSet theirs = other.minecarttweaks$coveredTrack();
+        LongSet fewer = mine.size() <= theirs.size() ? mine : theirs;
+        LongSet more = fewer == mine ? theirs : mine;
+
+        for (LongIterator blocks = fewer.iterator(); blocks.hasNext(); ) {
+            if (more.contains(blocks.nextLong())) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Whether the rail {@code other} stands on is this stretch of track or a step off it. */
