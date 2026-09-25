@@ -19,7 +19,9 @@ overspeed line and is built with it; X2 is independent. P1 to P5 are independent
 except that P1 rebases on M4's edit to the same method. R1 is the bar and makes the work complete.
 P6 to P8, planned from the runs after P1 to P5, are independent of each other and each is built
 against a dev server of its own; so are P9 and P10, planned from the first run with P6 to P8 in,
-and P11, planned from the first with P9 and P10 in. R1 runs again once it lands.
+and P11, planned from the first with P9 and P10 in. P12 and P13, and the rest of P5, were planned
+after R1 from what it does not measure; they are independent of each other, and R1 runs again once
+they land.
 
 ---
 
@@ -115,6 +117,19 @@ with 321 spanned changes held, and driven trains running 14,940 to 20,619 blocks
 spread across the track, at every distance from 0.0 to 0.5 — cars of two trains passing into one
 another in pile-ups, the strike between them logged only once they were inside each other. It is
 planned as P11.
+
+**R1 is blind to low speed, to a jump, and to a coupling stretched past its link.** R1's two runs
+were at `max_minecart_speed=100`. At 40 the user sees cars detach and their chains stretch across
+the track before they snap back to the train. The samples of both R1 runs show it too: a coupled
+pair farther apart than a link (3 blocks) in 28 and 22 of 601 samples, worst 8.29 and 9.39 blocks,
+which only a car the placer has let go can be, so it is not packet delivery. On the `3bjump` rig
+(box `{x:-18,y:-53,z:25,w:10,d:10}`), a strip ending eastward whose westward end curves round and
+jumps back onto the eastbound track, the train turns round in mid-air: the stall check counts a tick
+stalled when the leading car shows next to no horizontal movement, which a car climbing or falling
+steeply does as much as one wedged against a buffer. A run switched from 100 to 40 part-way logged 8
+overlaps and 4 overspeeds, worst 2.52, the overspeeds from the ceilings dropping under trains
+already moving, so it says nothing clean about low speed. They are planned as P12 and P13, and P5's
+bound is settled as the trim window.
 
 ## How these stages get tested
 
@@ -534,6 +549,10 @@ that shows.
 **Done when.** R1's stall count is zero, and no `meter` line's ribbon node count exceeds twice the
 train's car count plus the reach margin for the whole run.
 
+Decided after R1: the bound is the trim window, `6n + 16` blocks of span for a train of `n` cars,
+held strictly. `holdTrain` returns before `trimRibbon` when a seating is refused, so a refused train
+goes untrimmed while its leading car records on; trim it too.
+
 ## P6 — A collision leaves every car under its ceiling — **done**
 
 **Build.** Vanilla's cart-to-cart push is the injector P1 left. `pushOtherMinecart`
@@ -774,6 +793,30 @@ a stall, and kept, none.
 Observed on a server of its own: two ten-minute runs passing every clause and every vacuity check,
 with no overlap.
 
+## P12 — A train in the air does not turn round — **planned**
+
+**Build.** The furnace stall check (`countStall` in `MinecartFurnaceMixin`) counts a tick stalled
+when the train's leading car covers next to no ground or holds next to no horizontal movement
+(`standing`), and turns the whole train after four such ticks. A car climbing or falling steeply, or
+at the top of a jump, meets that as well as one wedged against a buffer, so on the `3bjump` rig the
+train turns round in mid-air. Count nothing while the leading car is off its rails, and count its
+vertical movement as movement, so that only a train on its rails and going nowhere stalls.
+
+**Done when.** On `3bjump`, over ten minutes, the train turns only at the strip's eastern end and
+never in the air, and a torture run at 100 still reports no stall.
+
+## P13 — A coupled car stays within a link of its train, at any speed — **planned**
+
+**Build.** Give `torture.py` a `--speed` for the value of `max_minecart_speed` a run is checked
+against, and a clause that fails when two coupled cars stand farther apart than a link
+(`maxLinkDistance`, 3 blocks) at any sample, reporting the worst. Then run at 40 from the start and
+find what lets a car go loose and drift from its train — a refusal handing it to vanilla, a seat it
+cannot be put back in — and what still lets cars of two trains pass into one another at that speed,
+and stop each where it happens.
+
+**Done when.** Two consecutive ten-minute runs at 40 pass every clause, the new one included, and a
+run at 100 still does.
+
 # Part R — The bar
 
 ## R1 — Ten minutes clean, twice — **done**
@@ -823,9 +866,6 @@ of the trim window; twice the car count plus a margin, read literally, no runnin
 
 - **The lone chest cart at `(-14,-53,-14)`.** A one-cart strip with its own sign, so treated as
   an intended obstacle. Settled by the user.
-- **Which bound P5's ribbon is held to.** Twice the car count plus the reach margin, read literally,
-  no train meets; the trim window, `6n + 16` blocks, R1's trains met in run 2 and overran by up to 4
-  in run 1, where a refused train goes untrimmed. Settled by the user.
 - **The audit's remaining findings.** S2 (restart), U2 (stale held heading — the track has no
   station), K1, L1, L2, L5 and D3 are outside this bar and stay in the audit.
 
