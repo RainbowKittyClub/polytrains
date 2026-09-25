@@ -156,7 +156,7 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
 
     @Override
     public void minecarttweaks$aimEngine(Vec3 heading) {
-        minecarttweaks$aimAlong(heading);
+        minecarttweaks$aimAlong(heading, false);
     }
 
     @Override
@@ -233,7 +233,7 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         double movementFloorSqr = hasLink() ? IMPULSE_EPSILON : MOVING_EPSILON;
 
         if (deltaMovement.horizontalDistanceSqr() > movementFloorSqr) {
-            minecarttweaks$aimAlong(deltaMovement.horizontal().normalize());
+            minecarttweaks$aimAlong(deltaMovement.horizontal().normalize(), true);
         }
 
         // Vanilla's engine, when the model keeps it: its own branch supplies the force from here.
@@ -273,12 +273,19 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     // a slope would re-aim the engine after the cart and have it drive itself home; a hairpin,
     // which truly reverses a cart, does leave the rail.
     @Unique
-    private void minecarttweaks$aimAlong(Vec3 heading) {
+    private void minecarttweaks$aimAlong(Vec3 heading, boolean fromMovement) {
         BlockPos rail = getCurrentBlockPosOrRailBelow();
+        boolean reversing = push.lengthSqr() > IMPULSE_EPSILON && heading.dot(push) < REVERSAL_DOT;
 
-        if (push.lengthSqr() > IMPULSE_EPSILON
-                && heading.dot(push) < REVERSAL_DOT
-                && rail.equals(minecarttweaks$headingRail)) {
+        if (reversing && rail.equals(minecarttweaks$headingRail)) {
+            return;
+        }
+
+        // Nor one read off the cart's own movement while its train is in the air: every car but the
+        // leading one is loose then, and one the car ahead stops on a ramp moves only by the slope.
+        if (reversing && fromMovement && minecarttweaks$inAir(minecarttweaks$gauge())) {
+            // Stamped, so the rule above goes on holding it on this rail once the train lands.
+            minecarttweaks$headingRail = rail;
             return;
         }
 
@@ -352,6 +359,13 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         return leader == null ? this : leader;
     }
 
+    // Whether car is in the air: off its rails and not on the ground, so between one piece of track
+    // and the next rather than run off the end of it.
+    @Unique
+    private static boolean minecarttweaks$inAir(AbstractMinecart car) {
+        return !car.isOnRails() && !car.onGround();
+    }
+
     // Whether gaugeCar, moved by step in its last tick, holds no movement or covered next to none.
     @Unique
     private static boolean minecarttweaks$standing(AbstractMinecart gaugeCar, Vec3 step) {
@@ -396,7 +410,10 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         minecarttweaks$gaugeTicks = gaugeCar.tickCount;
         minecarttweaks$stallCountedTick = level().getGameTime();
 
+        // Nothing counts while the leading car is in the air: one that hits a wall mid-jump drops
+        // with no horizontal movement, which reads as standing, yet it is coming down, not wedged.
         if (fuel <= 0 || minecarttweaks$parked || lastPosition == null
+                || minecarttweaks$inAir(gaugeCar)
                 || !minecarttweaks$standing(gaugeCar, standingPosition.subtract(lastPosition))
                 || minecarttweaks$closingUp()) {
             minecarttweaks$stalled = 0;
