@@ -496,7 +496,7 @@ blocks per tick each, without any change to `linkShape`. The change as built, fo
 curve rather than `divergesForward`, also stopped `CartInteraction.crossing` catching two fast
 carts merging from the branch and the open end early, so it was left out.
 
-## P4 — A meeting leaves the train's lie settled and the shove in the right frame — **in progress**
+## P4 — A meeting leaves the train's lie settled and the shove in the right frame — **done**
 
 **Build.** `reachTrain`'s record (TrainCoupling.java:1018-1026) gets the epoch guard and
 `train.relaidOn` call that `recordTrack` has (:315-326), so a ribbon reset at a meeting does not
@@ -506,6 +506,20 @@ pushback in `AbstractMinecartMixin` (:407-436) reads the struck car's own veloci
 
 **Done when.** No `ORDER_UNREADABLE` refusal follows a `strike` in R1, and every head-on strike is
 followed within 40 ticks by both trains' `speed` changing sign.
+
+### As built
+
+K2 relays the lie only where the train's far end lies behind its leading car on the grown ribbon:
+the Build's form laid a train backwards whenever the named leader was running back into its own
+train — a struck train after a head-on meeting, a released train, a fallback head after a rebuild.
+It is not what keeps `ORDER_UNREADABLE` away after a strike, since a reset with the leader moving
+already settled the lie; one with the leader standing and a packed neighbour is left as it was. C4
+reads the touched car's own velocity, which the placer writes along that car's own seat.
+
+Neither R1 run logged an `ORDER_UNREADABLE` refusal. Both trains reversing after every head-on
+strike no longer describes the design: since P10 one train of a pressing pair turns and the other
+follows. Of 1,311 and 1,190 head-on meetings, 60% had the pair apart and no longer closing forty
+ticks later, and the user accepted that as the bounce.
 
 ## P5 — Ribbon reach is tied to the length rule, and the field stall is chased — **in progress**
 
@@ -798,13 +812,10 @@ Run 2 (`run-torturetrack-20260924-212029.json`):
 | Switch-safe | PASS | no switch thrown under a spanning train, no `DIVERTED` sever; 237 changes held |
 | vacuity | PASS | 17,866 strikes between trains; driven trains ran 17,254–20,049 blocks; 35 carts |
 
-P4 and P5 read R1 for their own Done when and stay in progress on it. Neither run logged an
-`ORDER_UNREADABLE` refusal, but of 1,311 and 1,190 head-on meetings only 60% had the two trains
-apart and no longer closing forty ticks later, and P10 turns one train of a pressing pair by design,
-so both trains reversing is not what happens. The largest ribbons were 46, 59 and 71 nodes for
-trains of 4, 6 and 8 cars, spanning 44.0, 53.1 and 64.6 blocks in run 1 and 37.5, 51.6 and 63.9 in
-run 2, against the `6n + 16` blocks of the trim window; twice the car count plus a margin, read
-literally, no running train comes near.
+P4 and P5 read R1 for their own Done when; P4 is recorded under its own heading, and P5 stays in
+progress on it. The largest ribbons were 46, 59 and 71 nodes for trains of 4, 6 and 8 cars, spanning
+44.0, 53.1 and 64.6 blocks in run 1 and 37.5, 51.6 and 63.9 in run 2, against the `6n + 16` blocks
+of the trim window; twice the car count plus a margin, read literally, no running train comes near.
 
 ---
 
@@ -812,11 +823,6 @@ literally, no running train comes near.
 
 - **The lone chest cart at `(-14,-53,-14)`.** A one-cart strip with its own sign, so treated as
   an intended obstacle. Settled by the user.
-- **Whether a bounce is "appropriate" beyond not failing.** The clause fails on overlap, overspeed
-  and a sever after a strike; the momentum figures are reported for reading. Settled by the user
-  looking at R1's strike table. P4 asks that both trains reverse after every head-on strike; since
-  P10 one train of a pressing pair turns and the other follows, and 60% of head-on meetings are
-  apart forty ticks later.
 - **Which bound P5's ribbon is held to.** Twice the car count plus the reach margin, read literally,
   no train meets; the trim window, `6n + 16` blocks, R1's trains met in run 2 and overran by up to 4
   in run 1, where a refused train goes untrimmed. Settled by the user.
