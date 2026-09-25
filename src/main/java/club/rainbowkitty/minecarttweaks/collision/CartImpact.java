@@ -27,6 +27,9 @@ public final class CartImpact {
     // Below this a cart is treated as stopped: it neither shoves nor strikes.
     private static final double STILL = 1.0E-4;
 
+    // Closer than this two boxes' faces count as touching rather than overlapping.
+    private static final double OVERLAP_TOLERANCE = 1.0E-4;
+
     // Damage per block per tick of impact speed, per point of minecart_damage: the speed in blocks
     // per second halved, so at the rule's default of 20 a cart at vanilla's top speed deals two
     // hearts.
@@ -142,6 +145,33 @@ public final class CartImpact {
         if (drag > 0.0) {
             slowTrain(level, cart, drag / movement.length());
         }
+    }
+
+    /**
+     * Whether {@code step} carries {@code cart} closer to a cart of another train that its box is
+     * already inside. Vanilla's move stops a box only at a face it has yet to cross, so two carts
+     * that have come to overlap at all slide on into each other as far as their movement takes
+     * them.
+     */
+    public static boolean deepens(AbstractMinecart cart, Vec3 step) {
+        Vec3 run = step.horizontal();
+
+        if (run.lengthSqr() <= STILL * STILL) {
+            return false;
+        }
+
+        // Shrunk by the tolerance the move settles a face at, so carts touching are not inside.
+        AABB box = cart.getBoundingBox().deflate(OVERLAP_TOLERANCE);
+
+        for (Entity other : cart.level().getEntities(cart, box,
+                candidate -> candidate instanceof AbstractMinecart struck
+                        && CartInteraction.of(cart, struck) == CartInteraction.COLLIDE)) {
+            if (other.position().subtract(cart.position()).horizontal().dot(run) > 0.0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
