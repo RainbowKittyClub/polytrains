@@ -23,8 +23,8 @@ import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /**
  * Holds vanilla's pickup to the speed the resolver allows one at, its track forces to the train
- * rather than to whichever car happens to be leading it, and a car stepping along a slope to its
- * rail.
+ * rather than to whichever car happens to be leading it, and a car stepping into another cart to
+ * its rail.
  */
 @Mixin(NewMinecartBehavior.class)
 public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccessor {
@@ -97,8 +97,8 @@ public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccess
                 || SlopeStep.squareDownSlope(movement, shape);
     }
 
-    // A slope step that meets another cart can leave its car above the rail, and the stepper only
-    // corrects a car below it; SlopeStep puts it back where the step first touched.
+    // A step that meets another cart can leave its car off its line, lifted off a slope or slid
+    // off a corner; SlopeStep puts it back where the step first touched.
     @WrapOperation(
             method = "stepAlongTrack",
             at = @At(value = "INVOKE",
