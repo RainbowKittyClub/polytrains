@@ -419,7 +419,7 @@ ran with no ERROR and only `RIBBON_SHORT` refusals, and the rail was put back.
 
 # Part P — Physics
 
-## P1 — Collision momentum on a placed car is laid along its rail and ceilinged — **in progress**
+## P1 — Collision momentum on a placed car is laid along its rail and ceilinged — **done**
 
 **Build.** `shunt` (CartImpact.java:138-173): re-lay the gained movement onto the pushed car's own
 tangent with `TrainCoupling.alongTrack`, as `EntityMixin.java:88` already does for a shove — the
@@ -434,7 +434,15 @@ pattern one file over.
 **Done when.** R1's `overspeed` count is zero over ten minutes, and every `strike` line's `shared`
 lies between the two carts' speeds along the contact heading.
 
-## P2 — The switch guard reads the geometry and runs every tick — **in progress**
+### As built
+
+Built as the Build says, `shunt` now taking the level and the struck train's speed at the struck
+car, and its gain laid along the rails and clamped. It did not reach its own Done when alone — 29 to
+51 overspeeds a run while it was the only cap — because vanilla's push was the larger injector,
+which P6 capped. Both R1 runs logged no `overspeed`, and `shared` lies between the two speeds by
+construction, being their mass-weighted mean.
+
+## P2 — The switch guard reads the geometry and runs every tick — **done**
 
 **Build.** `orient` (SwitchedRailBlock.java:277-283) refuses to steer when
 `TrainCoupling.crossedByTrain(level, pos)`, as `occupied` (:357-358) already does for the settle;
@@ -447,6 +455,18 @@ before the refusal return, not only after a clean seating — S3; and the airbor
 **Done when.** No `event=switch … spanned=true` and no sever with the diverted reason in R1; a
 redstone block set beside `(-14,-53,-2)` while the `z=-2` consist stands across it logs a `switch`
 line with `spanned=true` and the shape unchanged.
+
+### As built
+
+`orient` refuses under a spanning train and logs it `applied=false`; `diverted` compares the
+recorded edges with the held `SHAPE`; `holdTrain` counts a diverted car on a refused tick, one fault
+reading a tick; an airborne car's own count stands while every other clears. It also needed a change
+the Build did not name: `steer` read a car's approach off its diagonal heading on a curve and asked
+for the straight run under the train's own leader, so it now traces back to the edge the car came in
+by. `DIVERTED` severs went on until P3's growth across a switch and P9's steady occupancy. With the
+consist frozen across `(-14,-53,-2)` and a redstone block set beside it, the line read `spanned=true
+applied=false` and the shape stayed. Both R1 runs passed Switch-safe, holding 227 and 237 changes
+asked of a spanned switch.
 
 ## P3 — A train across a switch re-seats, and the switch's link shape follows its throw — **done**
 
@@ -700,7 +720,7 @@ Observed on a server of its own: two trains filling a 24-block loop end to end c
 cars going 13 to 34 laps in 600 ticks against 0.4 to 1.4 in 300 before, and a ten-minute run had no
 stall and no queued train. So had the first run with P9 and P10 in.
 
-## P11 — Cars of two trains never pass into one another — **planned**
+## P11 — Cars of two trains never pass into one another — **done**
 
 **Build.** With P9 and P10 in, overlap is the one clause left: 6,875 lines in 2,291 episodes, almost
 all under ten ticks, spread across the track at every distance from 0.0 to 0.5 — cars of two trains
@@ -717,14 +737,74 @@ is; if only part-way, the measurement is what is wrong and is fixed instead. P7 
 
 **Done when.** A ten-minute torture run logs no `overlap` and fails no other clause.
 
+### As built
+
+The overlaps were real. A temporary end-of-tick check of every pair of cars from two trains found 92
+to 93% of overlap lines to be cars inside one another at the start or end of the tick; the one
+measurement error was a car climbing a slope sweeping down onto a car on flat track 3.2 blocks
+below, so `TrainMeter.overlap` also asks that the two boxes share height. A trace of every position
+change put 90% of first contacts on vanilla's move of a loose or leading car through another train's
+car that `CartInteraction` had called IGNORE — its rail memos and the swept-box walk both missed
+pairs at junctions, switches and curves — 9% on the stepper lifting a car left below a slope into
+the car above, one on the placer and none on a push.
+
+`RailContext.meets` now intersects the rail blocks each car can be over before its next move ends,
+walked along the rails over both axes of a junction and all three roads of a switch. A car already
+inside another train's car is refused a step that carries it deeper, since vanilla's move stops a
+box only at a face it has not yet crossed. Making crossings solid exposed a derailment: a diagonal
+corner step blocked on one axis slid off its line and, on a slope past a junction, read air, so P8's
+`SlopeStep.moveOnRail` now also puts back a car left below its rail or slid sideways at a corner.
+Vanilla's push was kept: cancelled for a pair `shunt` settles, a run logged 18 overlaps, a sever and
+a stall, and kept, none.
+
+Observed on a server of its own: two ten-minute runs passing every clause and every vacuity check,
+with no overlap.
+
 # Part R — The bar
 
-## R1 — Ten minutes clean, twice — **in progress**
+## R1 — Ten minutes clean, twice — **done**
 
 **Build.** Nothing. `python3 scripts/torture.py run` after each P stage lands, and again at the end.
 
 **Done when.** Two consecutive runs pass all five clauses and the three vacuity checks. The two
 verdict tables are pasted into this stage's "As built", with the commit each ran against.
+
+### As built
+
+The bar was reached after P11, on the main checkout's server, by the two runs following the
+self-check; both ran against `aab9960`. It took stages the plan did not start with — P6 to P11,
+planned from the runs after each landing — and one run after each landing is recorded in the
+findings.
+
+Run 1 (`run-torturetrack-20260924-211008.json`):
+
+| Clause | Verdict | Detail |
+|---|---|---|
+| Alive | PASS | ran to +12000 ticks; no crash report; no ERROR or stack trace from the mod |
+| Sever | PASS | 28 couplings held at every sample; no `event=sever` |
+| Stall | PASS | no driven train stood within 5 blocks for 600 ticks |
+| Bounce | PASS | 0 overlap, 0 overspeed, 0 sever within 40 ticks of a strike; 19,193 strikes |
+| Switch-safe | PASS | no switch thrown under a spanning train, no `DIVERTED` sever; 227 changes held |
+| vacuity | PASS | 19,193 strikes between trains; driven trains ran 10,984–20,952 blocks; 35 carts |
+
+Run 2 (`run-torturetrack-20260924-212029.json`):
+
+| Clause | Verdict | Detail |
+|---|---|---|
+| Alive | PASS | ran to +12000 ticks; no crash report; no ERROR or stack trace from the mod |
+| Sever | PASS | 28 couplings held at every sample; no `event=sever` |
+| Stall | PASS | no driven train stood within 5 blocks for 600 ticks |
+| Bounce | PASS | 0 overlap, 0 overspeed, 0 sever within 40 ticks of a strike; 17,866 strikes |
+| Switch-safe | PASS | no switch thrown under a spanning train, no `DIVERTED` sever; 237 changes held |
+| vacuity | PASS | 17,866 strikes between trains; driven trains ran 17,254–20,049 blocks; 35 carts |
+
+P4 and P5 read R1 for their own Done when and stay in progress on it. Neither run logged an
+`ORDER_UNREADABLE` refusal, but of 1,311 and 1,190 head-on meetings only 60% had the two trains
+apart and no longer closing forty ticks later, and P10 turns one train of a pressing pair by design,
+so both trains reversing is not what happens. The largest ribbons were 46, 59 and 71 nodes for
+trains of 4, 6 and 8 cars, spanning 44.0, 53.1 and 64.6 blocks in run 1 and 37.5, 51.6 and 63.9 in
+run 2, against the `6n + 16` blocks of the trim window; twice the car count plus a margin, read
+literally, no running train comes near.
 
 ---
 
@@ -732,12 +812,14 @@ verdict tables are pasted into this stage's "As built", with the commit each ran
 
 - **The lone chest cart at `(-14,-53,-14)`.** A one-cart strip with its own sign, so treated as
   an intended obstacle. Settled by the user.
-- **Vanilla's push after `shunt`.** P6 kept it, capped: it still counts a meeting twice, adding the
-  pair's mean to a placed car and leaving a driven or loose one 0.2 of its own speed. Settled by
-  retrying "cancel it for a pair `shunt` settles" in P11, judged on overlap.
 - **Whether a bounce is "appropriate" beyond not failing.** The clause fails on overlap, overspeed
   and a sever after a strike; the momentum figures are reported for reading. Settled by the user
-  looking at R1's strike table.
+  looking at R1's strike table. P4 asks that both trains reverse after every head-on strike; since
+  P10 one train of a pressing pair turns and the other follows, and 60% of head-on meetings are
+  apart forty ticks later.
+- **Which bound P5's ribbon is held to.** Twice the car count plus the reach margin, read literally,
+  no train meets; the trim window, `6n + 16` blocks, R1's trains met in run 2 and overran by up to 4
+  in run 1, where a refused train goes untrimmed. Settled by the user.
 - **The audit's remaining findings.** S2 (restart), U2 (stale held heading — the track has no
   station), K1, L1, L2, L5 and D3 are outside this bar and stay in the audit.
 
