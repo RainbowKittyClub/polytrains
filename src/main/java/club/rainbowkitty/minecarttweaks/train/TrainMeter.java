@@ -298,8 +298,11 @@ public final class TrainMeter {
 
     /**
      * Writes an {@code event=overlap} line when {@code other} is a cart of another train standing
-     * within {@link #OVERLAP_DISTANCE} of {@code cart}: two vehicles inside each other. Nothing
-     * unless DEBUG is on.
+     * within {@link #OVERLAP_DISTANCE} of {@code cart} across the ground, at a height their boxes
+     * share: two vehicles inside each other. Nothing unless DEBUG is on.
+     *
+     * <p>The height matters where track crosses under track: a car on a slope reaches through the
+     * blocks it climbs in a tick, and reads a car passing beneath as right on top of it.
      */
     public static void overlap(AbstractMinecart cart, AbstractMinecart other) {
         if (!LOGGER.isDebugEnabled()) {
@@ -309,8 +312,8 @@ public final class TrainMeter {
         double distance = Math.hypot(other.getX() - cart.getX(), other.getZ() - cart.getZ());
 
         // Cheapest first: sameTrain asks both cars for their trains.
-        if (!(distance <= OVERLAP_DISTANCE) || Linkable.coupled(cart, other)
-                || TrainCoupling.sameTrain(cart, other)) {
+        if (!(distance <= OVERLAP_DISTANCE) || !sharesHeight(cart, other)
+                || Linkable.coupled(cart, other) || TrainCoupling.sameTrain(cart, other)) {
             return;
         }
 
@@ -371,6 +374,12 @@ public final class TrainMeter {
                         ? "none" : Integer.toString(carIndex))
                 .prose(detail)
                 .toString());
+    }
+
+    // Whether the two carts' boxes overlap in height.
+    private static boolean sharesHeight(AbstractMinecart cart, AbstractMinecart other) {
+        return cart.getBoundingBox().maxY > other.getBoundingBox().minY
+                && other.getBoundingBox().maxY > cart.getBoundingBox().minY;
     }
 
     // One train's line: which train, where its leading car is and how fast it has run, what the
