@@ -821,7 +821,7 @@ a stall, and kept, none.
 Observed on a server of its own: two ten-minute runs passing every clause and every vacuity check,
 with no overlap.
 
-## P12 — A train in the air does not turn round — **planned**
+## P12 — A train in the air does not turn round — **done**
 
 **Build.** The furnace stall check (`countStall` in `MinecartFurnaceMixin`) counts a tick stalled
 when the train's leading car covers next to no ground or holds next to no horizontal movement
@@ -833,7 +833,40 @@ vertical movement as movement, so that only a train on its rails and going nowhe
 **Done when.** On `3bjump`, over ten minutes, the train turns only at the strip's eastern end and
 never in the air, and a torture run at 100 still reports no stall.
 
-## P13 — A coupled car stays within a link of its train, at any speed — **planned**
+### As built
+
+The stall check was not what turned the train. A trace of every reversal of an engine's push on
+`3bjump` found all 21 made in the air to be the engine re-aiming itself off its own movement
+(`aimAlong` from `accelerate`), the leading car off its rails every time; the stall check counted an
+airborne leader one tick a jump, the tick it struck the face of the ramp's support and dropped,
+never the four it turns on. With the leading car in the air, `holdTrain` refuses `LEADER_OFF_RIBBON`
+and the cars behind it go loose; solid to one another on the ramp, they stop dead, and the engine,
+climbed off the rail it was last aimed on, reads vanilla's slope pull as its movement and turns
+west. A leader that then lands against the support with no movement is seated at rest and the train
+starts off on its engines' aim, back the way it came; one that lands still moving is re-aimed east
+by the placer. So the turn showed at 60, 64 and 70 of the speeds tried from 20 to 100, and at no
+other.
+
+A reversal read off the cart's own movement is now refused while the train's leading car is in the
+air, and the rail it was refused on is stamped, so the same-rail rule goes on holding the engine
+once the train lands; the placer's aim is untouched. The stall check counts nothing while the
+leading car is in the air. Both read the air, off its rails and off the ground, not only off its
+rails: a leader run off an unbuffered end onto the ground is off its rails too, and the stall
+reversal is what brings it back. Vertical movement is not counted as movement: the air already
+covers every car it was aimed at, it moved the stall threshold on slopes, and under realistic
+physics it would read gravity kept in `deltaMovement.y` as movement.
+
+Observed on a server of its own, with the `3bjump` rig as the user built it: in ten minutes at 100
+the train turned 276 times over 275 jumps, every turn at the eastern end with the leading car on its
+rails against the buffer, and at 60, where the code before turned it 44 times in 1,500 ticks, 178
+times over 177 jumps, likewise; 1,000 ticks at each of ten speeds from 20 to 100 turned it nowhere
+else. P10's loop and pressing-pair probes ran identical tick for tick, and a ten-minute torture run
+at 100 passed every clause and every vacuity check. Not fixed: under realistic physics the train
+cannot clear the jump, and its leader hangs on the edge of the ramp's support, on the ground,
+stall-reversing every four ticks; and an engine loose on a slope while its leading car is on its
+rails could still read the slope's pull as a reversal, which no run showed.
+
+## P13 — A coupled car stays within a link of its train, at any speed — **in progress**
 
 **Build.** Give `torture.py` a `--speed` for the value of `max_minecart_speed` a run is checked
 against, and a clause that fails when two coupled cars stand farther apart than a link
@@ -970,3 +1003,7 @@ whole answer. Probes: `execute if entity` and the bare `execute if block` return
 `Test failed`; `run say` returns nothing over rcon; `@e[type=#minecraft:minecarts]` is undefined in
 26.2 and matches nothing, so name the seven cart types. A persistent socket answers in about
 0.15 ms per command; `scripts/devserver.sh … rcon` in about 300 ms.
+
+Two clients at once corrupt each other's replies: every command's output goes into one shared
+`RconConsoleSource` buffer, cleared as each command starts (DedicatedServer.java:713-717), so
+nothing else may talk rcon to a server a run is sampling.
