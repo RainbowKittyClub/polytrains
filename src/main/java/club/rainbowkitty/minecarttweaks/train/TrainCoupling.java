@@ -978,6 +978,10 @@ public final class TrainCoupling {
 
         TrainPlacer.Refusal refusal = TrainPlacer.seat(train, TARGET_SPACING);
 
+        // Refused or not: a refused train's leading car records on all the same. No seat lies
+        // further from that car than the train is long, well inside what the trim keeps.
+        trimRibbon(train);
+
         // One fault reading a tick, whichever kind it is, so the two cannot clear each other's
         // count. A refusal naming a car on the ground takes the tick, a diverted car any other,
         // refused or not; the car a tick passes over keeps its count standing, not cleared.
@@ -990,21 +994,12 @@ public final class TrainCoupling {
         // A refusal cutIfLost passed on names no car or one in the air, whose count then stands.
         int refusedIndex = refusal == null ? TrainPlacer.Refusal.NONE : refusal.car();
 
-        // A train cut here is two trains from the next tick, so there is nothing left to trim or
-        // measure against: both halves go on from where they now are.
         if (train.faultHeld(divertedIndex, refusedIndex, SEVER_TICKS)
                 && divertedIndex != TrainPlacer.Refusal.NONE) {
             TrainMeter.sever(train, divertedIndex, keptIndex(train, divertedIndex), "DIVERTED",
                     "a switch has diverted its track for " + SEVER_TICKS + " ticks");
             sever(level, train, divertedIndex);
-            return;
         }
-
-        if (refusal != null) {
-            return;
-        }
-
-        trimRibbon(train);
     }
 
     // What to do about a train the ribbon could not seat, answering whether its refusal took the
@@ -1307,7 +1302,9 @@ public final class TrainCoupling {
         TrackRibbon ribbon = train.ribbon();
         AbstractMinecart leader = train.leader();
 
-        if (leader == null || ribbon.isEmpty()) {
+        // A linked train of one is a car whose partners are not in the world, its ribbon still
+        // running under them; trimmed to its own length it would keep only the margin round it.
+        if (leader == null || train.size() < 2 || ribbon.isEmpty()) {
             return;
         }
 
