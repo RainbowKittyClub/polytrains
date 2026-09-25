@@ -536,7 +536,7 @@ strike no longer describes the design: since P10 one train of a pressing pair tu
 follows. Of 1,311 and 1,190 head-on meetings, 60% had the pair apart and no longer closing forty
 ticks later, and the user accepted that as the bounce.
 
-## P5 — Ribbon reach is tied to the length rule, and the field stall is chased — **in progress**
+## P5 — Ribbon reach is tied to the length rule, and the field stall is chased — **done**
 
 **Build.** `MAX_NODES` (TrackRibbon.java:50) becomes a function of `max_train_length`
 (ModGameRules.java:38) and the seating pitch, `extendTo` splits its budget between the two ends
@@ -552,6 +552,34 @@ train's car count plus the reach margin for the whole run.
 Decided after R1: the bound is the trim window, `6n + 16` blocks of span for a train of `n` cars,
 held strictly. `holdTrain` returns before `trimRibbon` when a seating is refused, so a refused train
 goes untrimmed while its leading car records on; trim it too.
+
+### As built
+
+The node cap is the trim window of the longest train `max_train_length` allows, every node counted a
+corner, plus a part-node at each end: 1,111 nodes at the default of 128, where the old 256 held no
+train over 39 cars. At the cap, `append` and `prepend` drop the far end rather than the block
+`record` hands over, which would leave the leading car off its own ribbon, and `extendTo` grows one
+block off each end in turn, so the near end cannot spend the cap before the far end has any. T5
+named no fix of its own: the stalls the runs caught came from P7's fouled pairs, P8's engines cut
+loose off their rails and P10's jams, and R1 reported none.
+
+Held to the trim window, the bound failed only for a refused train, which `holdTrain` returned from
+before trimming while its leading car recorded on. It now trims after every seating, refused or not,
+and before any cut; both halves of a cut keep every seat on the trimmed ribbon. A linked train of
+one, a car whose partners are unloaded or in another dimension, always refuses and is left
+untrimmed, since its ribbon still runs under them. The trim drops whole nodes, so each end can keep
+one node reaching past the window and a span can read up to two blocks over `6n + 16`. A car let go
+that falls more than `1.5(n - 1) + 11` blocks behind its seat, 15.5 for four cars, loses the track
+under it; R1's worst coupled pair stood 9.39 apart.
+
+Observed on a server of its own: two ten-minute runs passing every clause and every vacuity check,
+with no span over the window in 3,600 train lines each: at most 32.5, 43.9 and 56.0 blocks and 37,
+51 and 64 nodes for trains of 4, 6 and 8 cars, against 40, 52 and 64 blocks. A run on the code
+before, on the same server, reached 67.0 for eight cars, refused `SEAT_FOULED`, and failed Stall
+once, which neither run after it did: a train caught between two others at the `(-1,-53,-12)`
+switch, its engines reversing every 4 to 12 ticks while the train behind struck it at 2.50 about
+every 70 ticks. Not chased: P10 named a train caught between two among its jams, and one can still
+hold long enough to count.
 
 ## P6 — A collision leaves every car under its ceiling — **done**
 
@@ -855,10 +883,10 @@ Run 2 (`run-torturetrack-20260924-212029.json`):
 | Switch-safe | PASS | no switch thrown under a spanning train, no `DIVERTED` sever; 237 changes held |
 | vacuity | PASS | 17,866 strikes between trains; driven trains ran 17,254–20,049 blocks; 35 carts |
 
-P4 and P5 read R1 for their own Done when; P4 is recorded under its own heading, and P5 stays in
-progress on it. The largest ribbons were 46, 59 and 71 nodes for trains of 4, 6 and 8 cars, spanning
-44.0, 53.1 and 64.6 blocks in run 1 and 37.5, 51.6 and 63.9 in run 2, against the `6n + 16` blocks
-of the trim window; twice the car count plus a margin, read literally, no running train comes near.
+P4 and P5 read R1 for their own Done when; each is recorded under its own heading. The largest
+ribbons were 46, 59 and 71 nodes for trains of 4, 6 and 8 cars, spanning 44.0, 53.1 and 64.6 blocks
+in run 1 and 37.5, 51.6 and 63.9 in run 2, against the `6n + 16` blocks of the trim window; twice
+the car count plus a margin, read literally, no running train comes near.
 
 ---
 
