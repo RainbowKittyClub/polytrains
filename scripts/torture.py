@@ -8,13 +8,19 @@
 
 Python 3, standard library only. It speaks rcon through mtxrcon.py beside it and reads the dev
 server's logs/debug.log from a mark taken just before the rig call, so it runs from any checkout
-against the main one's server. Series and verdict go to <run-dir>/torture/ as JSON.
+against the main one's server. Series and verdict go to <run-dir>/torture/ as JSON. A run and the
+selfcheck are measured at max_minecart_speed=100 unless --speed names another value, and refuse to
+start on a server set otherwise.
 
 Definitions this file settles beyond the plan's clause table:
   train     the carts joined by link slots; its id is the first 8 hex digits of the car whose
             UUID sorts lowest by java.util.UUID.compareTo, as the mod's Train.id() names it
   sever     a coupling present at the first sample and missing at a later one, or an event=sever
             line; a line naming a cart of a missing coupling within a sample of it is the same sever
+  coupling  the Coupling clause: two cars a link slot joins standing farther apart than a link,
+            LINK_DISTANCE centre to centre in a straight line as a link is measured, at a sample.
+            The placer seats a pair at most a link apart along the rails, so only a car it has let
+            go stands further; one pair past it at consecutive samples is one episode
   stall     a train with a furnace car whose every car stays within STALL_RADIUS of where it stood
             STALL_WINDOW ticks earlier, at every sample across that window; the window must hold
             throughout, or a train lapping a short loop at the sampling period reads as still
@@ -79,7 +85,14 @@ RCON_TIMEOUT = 30.0
 # Game time standing still this long while rcon still answers means the server is not ticking.
 FROZEN_SECONDS = 60.0
 
-RULES = {"minecraft:max_minecart_speed": "100", "minecarttweaks:realistic_physics": "false"}
+DEFAULT_SPEED = 100
+
+# TrainCoupling.maxLinkDistance(): the widest two carts may stand to be linked, measured centre to
+# centre in a straight line (LinkRefusal), and the most a seated pair stands apart along the rails.
+LINK_DISTANCE = 3.0
+
+# The clauses a run must pass, in the order the verdict table lists them.
+CLAUSES = ("Alive", "Sever", "Coupling", "Stall", "Bounce", "Switch-safe")
 
 LINK_PATH = '"fabric:attachments"."minecarttweaks:link"'
 
@@ -623,11 +636,12 @@ def read_event(report, number, message):
 class Run:
     """Everything one sampling session collected, for judging and for the JSON."""
 
-    def __init__(self, mode, group, box, duration):
+    def __init__(self, mode, group, box, duration, speed=DEFAULT_SPEED):
         self.mode = mode
         self.group = group
         self.box = box
         self.duration = duration
+        self.speed = speed
         self.start_tick = None
         self.last_tick = None
         self.start_wall = None
@@ -709,6 +723,8 @@ def judge(run):
                               severs + [dict(a, source="new coupling") for a in added])
     verdict["Sever"]["count"] = len(severs)
 
+    verdict["Coupling"] = judge_coupling(run)
+
     episodes = run.stalls.episodes
     for episode in episodes:
         attach_meter(episode, log)
@@ -765,6 +781,67 @@ def judge(run):
 
     if run.mode == "run":
         verdict["vacuity"] = judge_vacuity(run, strikes)
+    return verdict
+
+
+def coupled_pairs(sample):
+    """The coupled pairs of one sample, each with how far apart its cars stand, in UUID order."""
+    pairs = []
+    for edge in sample.edges:
+        a, b = sorted(edge, key=java_order)
+        if a in sample.carts and b in sample.carts:
+            pairs.append((a, b, math.dist(sample.carts[a].pos, sample.carts[b].pos)))
+    return sorted(pairs)
+
+
+def spread(distance):
+    # A NaN position ranks as the widest pair of all, never as one within a link.
+    return math.inf if math.isnan(distance) else distance
+
+
+def judge_coupling(run):
+    """The Coupling clause: every coupled pair within a link at every sample."""
+    episodes, open_episodes = [], {}
+    readings = samples_over = 0
+    widest = None
+    for sample in run.samples:
+        over = {}
+        for a, b, distance in coupled_pairs(sample):
+            if widest is None or spread(distance) > spread(widest):
+                widest = distance
+            if spread(distance) > LINK_DISTANCE:
+                over[(a, b)] = distance
+        readings += len(over)
+        samples_over += bool(over)
+        for pair in [p for p in open_episodes if p not in over]:
+            del open_episodes[pair]
+        for (a, b), distance in over.items():
+            episode = open_episodes.get((a, b))
+            if episode is None:
+                episode = {"cars": [short(a), short(b)], "uuids": [a, b],
+                           "kinds": sample.carts[a].kind + sample.carts[b].kind,
+                           "start_tick": sample.tick, "samples": 0, "worst": distance,
+                           "worst_tick": sample.tick}
+                open_episodes[(a, b)] = episode
+                episodes.append(episode)
+            episode["end_tick"] = sample.tick
+            episode["samples"] += 1
+            if spread(distance) > spread(episode["worst"]):
+                episode["worst"], episode["worst_tick"] = distance, sample.tick
+
+    held = len(run.severs.first or ())
+    widest_text = "n/a" if widest is None else f"{widest:.2f}"
+    problems = []
+    if episodes:
+        worst = max(episodes, key=lambda e: spread(e["worst"]))
+        problems.append(
+            f"{readings} reading(s) of a coupled pair past {LINK_DISTANCE:g} blocks in "
+            f"{samples_over} of {len(run.samples)} samples, {len(episodes)} episode(s); worst "
+            f"{worst['worst']:.2f}, {'-'.join(worst['cars'])} ({worst['kinds']}) at "
+            f"{run.rel(worst['worst_tick'])}")
+    verdict = clause(problems, f"{held} couplings within {LINK_DISTANCE:g} blocks at every sample; "
+                               f"widest {widest_text}", episodes)
+    verdict["count"] = readings
     return verdict
 
 
@@ -832,8 +909,7 @@ def attach_meter(episode, log):
 
 
 def overall(run, verdict):
-    clauses = ("Alive", "Sever", "Stall", "Bounce", "Switch-safe")
-    if any(verdict[c]["verdict"] == "FAIL" for c in clauses):
+    if any(verdict[c]["verdict"] == "FAIL" for c in CLAUSES):
         return "FAIL"
     if run.mode == "run" and verdict["vacuity"]["verdict"] == "FAIL":
         return "NOT A TORTURE"
@@ -843,7 +919,7 @@ def overall(run, verdict):
 def judge_selfcheck(run, verdict):
     """Whether the verdict reports the injected sever and stall and nothing else."""
     problems = []
-    for name in ("Alive", "Bounce", "Switch-safe"):
+    for name in ("Alive", "Coupling", "Bounce", "Switch-safe"):
         if verdict[name]["verdict"] != "PASS":
             problems.append(f"{name} {verdict[name]['summary']}")
     injected = {i["what"]: i for i in run.injections}
@@ -887,7 +963,7 @@ def roster_lines(sample):
 def print_verdict(run, verdict, result, selfcheck_problems=None):
     print()
     print(f"torture.py {run.mode}: group {run.group}, box {fmt_box(run.box)}, "
-          f"commit {run.meta.get('commit', '?')}")
+          f"max_minecart_speed {run.speed}, commit {run.meta.get('commit', '?')}")
     if run.start_tick is not None:
         print(f"  rig at tick {run.start_tick}; {len(run.samples)} samples to "
               f"{run.rel(run.last_tick)} of {run.duration} ticks "
@@ -898,7 +974,7 @@ def print_verdict(run, verdict, result, selfcheck_problems=None):
         print(f"  injected at {run.rel(injection['tick'])}: {injection['text']}")
     print()
     print(f"  {'clause':<12} {'verdict':<8} detail")
-    for name in ("Alive", "Sever", "Stall", "Bounce", "Switch-safe", "vacuity"):
+    for name in CLAUSES + ("vacuity",):
         if name in verdict:
             print(f"  {name:<12} {verdict[name]['verdict']:<8} {verdict[name]['summary']}")
     print(f"  {'overall':<12} {result}")
@@ -963,7 +1039,8 @@ def write_json(run_dir, run, verdict, result, selfcheck_problems):
     path = out_dir / f"{run.mode}-{run.group}-{stamp}.json"
     first = run.samples[0] if run.samples else None
     document = {
-        "mode": run.mode, "group": run.group, "box": fmt_box(run.box), "meta": run.meta,
+        "mode": run.mode, "group": run.group, "box": fmt_box(run.box), "speed": run.speed,
+        "meta": run.meta,
         "start_tick": run.start_tick, "last_tick": run.last_tick, "duration": run.duration,
         "rcon_error": run.rcon_error, "frozen": run.frozen, "interrupted": run.interrupted,
         "crash_reports": run.crash_reports, "injections": run.injections,
@@ -1010,12 +1087,29 @@ def main_commit():
         return "?"
 
 
-def read_rules(rcon):
+def rules_for(speed):
+    """The game rules a run at max_minecart_speed=speed is measured under, as rcon prints them."""
+    return {"minecraft:max_minecart_speed": str(speed), "minecarttweaks:realistic_physics": "false"}
+
+
+def read_rules(rcon, wanted):
     rules = {}
-    for rule in RULES:
+    for rule in wanted:
         match = re.search(r"is currently set to: (\S+)", rcon.cmd(f"gamerule {rule}"))
         rules[rule] = match.group(1) if match else None
     return rules
+
+
+def rule_refusal(rules, wanted):
+    """Why a server holding rules cannot be measured against wanted, and how to set it; or None."""
+    wrong = {rule: value for rule, value in rules.items() if value != wanted[rule]}
+    if not wrong:
+        return None
+    return ("refusing to run: this run is measured at "
+            + ", ".join(f"{rule}={want}" for rule, want in wanted.items()) + "\n"
+            + "".join(f"  {rule} is {value}\n" for rule, value in wrong.items())
+            + "set them with:\n"
+            + "\n".join(f"  gamerule {rule} {wanted[rule]}" for rule in wrong))
 
 
 def count(rcon, selector):
@@ -1087,8 +1181,10 @@ def sample_loop(rcon, run, on_sample=None):
             on_sample(rcon, run, sample)
         elapsed = now - run.start_tick
         if elapsed // 600 != (elapsed - SAMPLE_TICKS) // 600 or elapsed >= run.duration:
+            wide = sum(spread(d) > LINK_DISTANCE for _, _, d in coupled_pairs(sample))
             print(f"  {run.rel(now):>7}: {len(sample.carts)} carts in {len(sample.trains)} trains, "
-                  f"{len(sample.edges)} couplings, {len(run.stalls.active)} stalled", flush=True)
+                  f"{len(sample.edges)} couplings, {wide} past a link, "
+                  f"{len(run.stalls.active)} stalled", flush=True)
         if elapsed >= run.duration:
             return
         next_tick = run.start_tick + min(run.duration, (elapsed // SAMPLE_TICKS + 1) * SAMPLE_TICKS)
@@ -1151,14 +1247,11 @@ class Injector:
 def prepare(rcon, run, run_dir):
     """Checks the rules and the box, marks the log and rigs the group; returns a refusal or None,
     and the log mark."""
-    rules = read_rules(rcon)
-    wrong = {rule: value for rule, value in rules.items() if value != RULES[rule]}
-    if wrong:
-        return ("refusing to run: the bar is measured at "
-                + ", ".join(f"{rule}={want}" for rule, want in RULES.items()) + "\n"
-                + "".join(f"  {rule} is {value}\n" for rule, value in wrong.items())
-                + "set them with:\n"
-                + "\n".join(f"  gamerule {rule} {RULES[rule]}" for rule in wrong)), None
+    wanted = rules_for(run.speed)
+    rules = read_rules(rcon, wanted)
+    refusal = rule_refusal(rules, wanted)
+    if refusal:
+        return refusal, None
 
     others = count(rcon, f"@e[tag=mtx,tag=!mtx_{run.group}]")
     if others and run.mode == "selfcheck":
@@ -1202,7 +1295,7 @@ def session(args, mode):
     group = args.group or (SELFCHECK_GROUP if mode == "selfcheck" else TORTURE_GROUP)
     box = tuple(args.box) if args.box else (YARD_BOX if mode == "selfcheck" else TORTURE_BOX)
     duration = args.ticks or (SELFCHECK_TICKS if mode == "selfcheck" else RUN_TICKS)
-    run = Run(mode, group, box, duration)
+    run = Run(mode, group, box, duration, args.speed)
 
     try:
         rcon = mtxrcon.connect(run_dir, timeout=RCON_TIMEOUT)
@@ -1330,6 +1423,9 @@ def main():
                              "(default: the torture box, or the yard box for --selfcheck)")
     parser.add_argument("--ticks", default=None, type=int, help="game ticks to sample (default: "
                                                                 "12000, or 1800 for --selfcheck)")
+    parser.add_argument("--speed", default=DEFAULT_SPEED, type=int,
+                        help="the max_minecart_speed the server must hold for a run or selfcheck "
+                             f"(default: {DEFAULT_SPEED})")
     args = parser.parse_args()
 
     modes = [m for m, on in (("run", args.mode == "run"), ("selfcheck", args.selfcheck),
@@ -1338,6 +1434,8 @@ def main():
         parser.error("give exactly one of: run, --selfcheck, --roster, --parse-test")
     if args.box is not None and len(args.box) != 5:
         parser.error("--box takes x,y,z,w,d")
+    if args.speed <= 0:
+        parser.error("--speed takes a max_minecart_speed above 0")
     if modes[0] == "parse-test":
         return parse_test()
     args.run_dir = args.run_dir or str(mtxrcon.default_run_dir())
@@ -1395,18 +1493,20 @@ SYNTHETIC = {name: [f"{name}100000{i}-0000-4000-8000-000000000000" for i in rang
 
 
 def synthetic_run():
-    """Four trains over 1500 ticks: a runs and loses its rear coupling at 500, b never moves, c runs
-    up to b's rear and stops two blocks short at 183, and d (no engine) stands still throughout."""
+    """Four trains over 1500 ticks: a runs and loses its rear coupling at 500, its second car
+    lagging past a link from 300 to 340 and exactly a link behind at 400; b never moves; c runs up
+    to b's rear and stops two blocks short at 183; and d (no engine) stands still throughout."""
     a, b, c, d = (SYNTHETIC[k] for k in "abcd")
     run = Run("run", "synthetic", TORTURE_BOX, 1500)
     run.start_tick, run.start_wall = 0, 0.0
     for tick in range(0, 1501, SAMPLE_TICKS):
         x = tick * 0.5
+        lag = {300: 3.4, 320: 3.8, 340: 3.2, 400: LINK_DISTANCE}.get(tick, 1.5)
         c_front = min(96.5, 60 + tick * 0.2)
         c_motion = (0.2, 0, 0) if c_front < 96.5 else (0, 0, 0)
         carts = {
             a[0]: synthetic_cart(a[0], "F", (x, -53, 0), [a[1]], (0.5, 0, 0)),
-            a[1]: synthetic_cart(a[1], "C", (x - 1.5, -53, 0),
+            a[1]: synthetic_cart(a[1], "C", (x - lag, -53, 0),
                                  [a[0]] + ([a[2]] if tick < 500 else []), (0.5, 0, 0)),
             a[2]: synthetic_cart(a[2], "H", (x - 3.0, -53, 0), [a[1]] if tick < 500 else [],
                                  (0.5, 0, 0)),
@@ -1501,6 +1601,14 @@ def parse_test():
           (short(b[0]), "push"))
     check("Stall lead by drift", (by_start[1]["lead"], by_start[1]["heading"]),
           (short(c[0]), "drift"))
+    coupling = verdict["Coupling"]
+    check("Coupling", (coupling["verdict"], coupling["count"]), ("FAIL", 3))
+    check("Coupling episode", [(e["cars"], e["kinds"], e["start_tick"], e["end_tick"],
+                                e["samples"], round(e["worst"], 2), e["worst_tick"])
+                               for e in coupling["details"]],
+          [([short(a[0]), short(a[1])], "FC", 300, 340, 3, 3.8, 320)])
+    check("Coupling worst", coupling["summary"].endswith(
+        f"worst 3.80, {short(a[0])}-{short(a[1])} (FC) at +320"), True)
     check("Bounce", (verdict["Bounce"]["verdict"], len(verdict["Bounce"]["details"])), ("FAIL", 4))
     check("Bounce near strike", [(n["sever_tick"], n["strike_tick"]) for n in
                                  verdict["Bounce"]["details"] if "sever_tick" in n], [(1030, 1020)])
@@ -1517,9 +1625,30 @@ def parse_test():
     clean.log = parse_log("")
     verdict = judge(clean)
     check("clean Alive", verdict["Alive"]["verdict"], "PASS")
+    check("clean Coupling", (verdict["Coupling"]["verdict"], verdict["Coupling"]["summary"]),
+          ("PASS", "0 couplings within 3 blocks at every sample; widest n/a"))
     check("clean Bounce", verdict["Bounce"]["verdict"], "PASS")
     check("clean Switch-safe", verdict["Switch-safe"]["verdict"], "PASS")
     check("clean no vacuity", "vacuity" in verdict, False)
+
+    # A pair a link and a block apart for one sample fails Coupling and nothing else.
+    loose = Run("selfcheck", "synthetic", YARD_BOX, 40)
+    loose.start_tick, loose.start_wall = 0, 0.0
+    for tick, lag in ((0, 1.5), (20, 4.0), (40, 1.5)):
+        loose.add(Sample(tick, tick / 20, {
+            b[0]: synthetic_cart(b[0], "F", (0, -53, 0), [b[1]]),
+            b[1]: synthetic_cart(b[1], "C", (-lag, -53, 0), [b[0]])}))
+    loose.log = parse_log("")
+    verdict = judge(loose)
+    check("Coupling alone", ([name for name in CLAUSES if verdict[name]["verdict"] == "FAIL"],
+                             overall(loose, verdict)), (["Coupling"], "FAIL"))
+    check("selfcheck judges Coupling",
+          [p.split(" ")[0] for p in judge_selfcheck(loose, verdict)][:1], ["Coupling"])
+
+    refusal = rule_refusal(rules_for(DEFAULT_SPEED), rules_for(40)) or ""
+    check("speed refusal", ("gamerule minecraft:max_minecart_speed 40" in refusal,
+                            "gamerule minecarttweaks:realistic_physics" in refusal), (True, False))
+    check("speed held", rule_refusal(rules_for(40), rules_for(40)), None)
 
     if failures:
         print(f"parse-test: {len(failures)} of {checks} checks failed")
