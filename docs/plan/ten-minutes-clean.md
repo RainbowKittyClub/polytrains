@@ -21,7 +21,8 @@ P6 to P8, planned from the runs after P1 to P5, are independent of each other an
 against a dev server of its own; so are P9 and P10, planned from the first run with P6 to P8 in, and
 P11, planned from the first with P9 and P10 in. P12 and P13, and the rest of P5, were planned after
 R1 from what it does not measure; they are independent of each other, and R1 runs again once they
-land. P14, planned from the runs with P13 in, builds on it.
+land. P14, planned from the runs with P13 in, builds on it. P15 to P17, planned from P14's runs, are
+independent of each other, and R1 runs again once they land.
 
 ---
 
@@ -137,6 +138,13 @@ blocks. With P13 in, two consecutive runs at 40 passed every clause, and a run a
 Coupling, widest 2.02, but failed Bounce on 3 overlap lines, one episode of two ticks. Overlaps
 showed in 7 of the 16 runs after P13's tether, against none of 5 before it; each one traced was on a
 slope and involved the lone cart or a car let go. They are planned as P14.
+
+**With P14 in, what is left fails no clause every run.** Jams that hold two trains to the end of a
+run failed Stall in three of the eight runs on P14's server before its last fix, in six of P13's at
+40 and in one of P5's. The corner clips P14's trace found, cars of two trains inside one another by
+up to 0.3 on curves and junctions while `CartInteraction` lets them pass, stay short of the overlap
+line, but one wedged the lone cart into a train's seat. And a car moved off its rails or set back
+onto them is outside every guard a step on the rail has. They are planned as P15 to P17.
 
 ## How these stages get tested
 
@@ -976,6 +984,51 @@ those, and in six of P13's at 40; corner clips of up to 0.3 on curves and juncti
 `CartInteraction` calls IGNORE, never within the overlap line, one of which wedged the lone cart in
 a train's seat for 600 ticks (P11's `RailContext.meets`); and moves off the rails, `comeOffTrack`
 and `adjustToRails`, which lie outside the step wrapper and which `deepens` never sees.
+
+## P15 — A jam that holds two trains breaks — **in progress**
+
+**Build.** The stalls left are jams that hold to the end of a run, in two shapes. At the
+`(-1,-53,-12)` switch, a train caught between two, its engines reversing every 4 to 12 ticks while
+the train behind struck it at 2.50 about every 70 ticks and the meter read no refusal (P5's run on
+`e681e53`), and five trains queued there (a P14 run at 40). On the ascending-east slope at
+`(-5,-53,-20)`, a hopper pressed up into the floor of another train's tail car at roof contact,
+striking every tick and stall-reversing every four to five ticks while neither train moved (a P14
+run at 100 on `4a561c5`, before its fix to the slope step, which may or may not bear on it). P10
+broke a pressing pair and a filled loop, not these. Reproduce each with a probe of its own, find
+what holds it, and break it.
+
+**Done when.** Each probe's jam clears on its own where the code before held it, and four
+consecutive ten-minute runs, two at 100 and two at 40, pass every clause.
+
+## P16 — Cars of two trains do not clip on curves and junctions — **in progress**
+
+**Build.** P14's end-of-tick check of every pair of cars from two trains found vanilla's move of a
+leading or loose car carrying it into another train's car by up to 0.3 blocks on curves and
+junctions, their centres 0.94 to 1.34 apart, for pairs `CartInteraction` answered IGNORE:
+`RailContext.meets` (P11) still misses pairs there. None comes within the 0.5 of an overlap line, so
+no clause sees them, but one wedged the lone cart into a train's seat, which refused `SEAT_FOULED`
+for 600 ticks and failed Stall. Make the check a DEBUG line, `event=clip` when the boxes of two
+trains' cars intersect deeper than 0.01 blocks, edge-triggered per pair, which fails Bounce as an
+overlap does; then find which pairs `meets` misses and why, and make them collide.
+
+**Done when.** A probe of the wedge holds on the code before and not after, and a ten-minute run at
+100 and one at 40 pass every clause, clips included.
+
+## P17 — A car off its rails is never set down inside another — **in progress**
+
+**Build.** A step along the rail is guarded (`SlopeStep`, `deepens`), but two moves are not.
+`AbstractMinecart.comeOffTrack` (AbstractMinecart.java:377-389) moves a car off its rails with
+vanilla's `move`, which lets a box already inside another through, and
+`NewMinecartBehavior.adjustToRails` (NewMinecartBehavior.java:154, called at :243 when a car's rails
+change and at :53 on its first tick) sets a car onto its rail with `setPos`, through anything. In a
+P14 run the roof ride P14 then ended carried a car off its rails 0.31 into another train's car, and
+`adjustToRails` set it down onto its rail inside that car, 0.60 deep. Other ways off the rails
+remain: a track end, a jump, a shove. Keep either move from carrying a car deeper into another
+train's car, as `deepens` does for a step, and show it with a probe that brings a car off or back
+onto its rails at another train's car.
+
+**Done when.** The probe's car ends against the other car rather than inside it, where the code
+before set it inside, and a ten-minute run at 100 and one at 40 pass every clause.
 
 # Part R — The bar
 
