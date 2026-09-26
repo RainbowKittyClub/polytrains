@@ -364,11 +364,6 @@ public final class TrainPlacer {
         // Drawn back no further than any car ran, a car still in contact is let go as before.
         Double laidArc = train.laidLeadArc(leader, leader.level().getGameTime());
 
-        // A car leading since its train turned round was laid last tick where it was seated.
-        if (laidArc == null && seated(leader)) {
-            laidArc = leader.minecarttweaks$seatArc(ribbon.arcEpoch());
-        }
-
         // Which way the cars run to their seats: the way the leading car went since it was laid,
         // which a train stopped this tick by what it met still has and its speed no longer says.
         double runSign = laidArc != null && Math.abs(leadArc - laidArc) > EPSILON
