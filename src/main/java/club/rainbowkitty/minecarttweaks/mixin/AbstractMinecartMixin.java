@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -20,6 +22,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.MinecartFurnace;
@@ -34,6 +37,7 @@ import club.rainbowkitty.minecarttweaks.block.JunctionRailBlock;
 import club.rainbowkitty.minecarttweaks.block.SwitchedRailBlock;
 import club.rainbowkitty.minecarttweaks.collision.CartImpact;
 import club.rainbowkitty.minecarttweaks.collision.CartInteraction;
+import club.rainbowkitty.minecarttweaks.collision.OffRails;
 import club.rainbowkitty.minecarttweaks.display.LinkChain;
 import club.rainbowkitty.minecarttweaks.ext.AbstractMinecartExt;
 import club.rainbowkitty.minecarttweaks.init.EntityAttachments;
@@ -389,6 +393,29 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         if (cir.getReturnValueZ()
                 && !CartInteraction.of(minecarttweaks$self(), entity).blocks()) {
             cir.setReturnValue(false);
+        }
+    }
+
+    // Vanilla's move stops a box only at a face it has yet to cross, so a car off its rails that
+    // is already inside another train's car would be carried on into it. An axis held back loses
+    // its speed, as one a wall stops does.
+    @WrapOperation(method = "comeOffTrack",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/world/entity/vehicle/minecart/AbstractMinecart;"
+                            + "move(Lnet/minecraft/world/entity/MoverType;"
+                            + "Lnet/minecraft/world/phys/Vec3;)V"))
+    private void minecarttweaks$moveOffRails(AbstractMinecart cart, MoverType moverType,
+            Vec3 movement, Operation<Void> move) {
+        Vec3 allowed = OffRails.shallowerPart(cart, movement);
+
+        move.call(cart, moverType, allowed);
+
+        if (!allowed.equals(movement)) {
+            Vec3 speed = cart.getDeltaMovement();
+
+            cart.setDeltaMovement(allowed.x() == movement.x() ? speed.x() : 0.0,
+                    allowed.y() == movement.y() ? speed.y() : 0.0,
+                    allowed.z() == movement.z() ? speed.z() : 0.0);
         }
     }
 

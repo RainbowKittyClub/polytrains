@@ -79,8 +79,10 @@ public enum CartInteraction {
         }
 
         if (other instanceof AbstractMinecart car) {
-            // Carts that merely pass close by on separate track are no concern of each other's.
-            if (!RailContext.sharesTrack(cart, car) && !RailContext.meets(cart, car)) {
+            // Carts that merely pass close by on separate track are no concern of each other's. A
+            // car off its rails shares no track, yet it still lands on or runs into another train.
+            if (!RailContext.sharesTrack(cart, car) && !RailContext.meets(cart, car)
+                    && !OffRails.meet(cart, car)) {
                 return IGNORE;
             }
 

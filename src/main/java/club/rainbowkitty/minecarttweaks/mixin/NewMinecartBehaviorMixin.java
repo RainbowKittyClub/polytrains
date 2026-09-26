@@ -1,5 +1,7 @@
 package club.rainbowkitty.minecarttweaks.mixin;
 
+import java.util.List;
+
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
@@ -20,13 +22,14 @@ import net.minecraft.world.phys.Vec3;
 import club.rainbowkitty.minecarttweaks.block.SwitchedRailBlock;
 import club.rainbowkitty.minecarttweaks.collision.CartImpact;
 import club.rainbowkitty.minecarttweaks.collision.CartInteraction;
+import club.rainbowkitty.minecarttweaks.collision.OffRails;
 import club.rainbowkitty.minecarttweaks.rail.SlopeStep;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /**
  * Holds vanilla's pickup to the speed the resolver allows one at, its track forces to the train
- * rather than to whichever car happens to be leading it, and a car stepping into another cart to
- * its rail.
+ * rather than to whichever car happens to be leading it, a car stepping into another cart to its
+ * rail, and a car set back onto its rails short of another train's car.
  */
 @Mixin(NewMinecartBehavior.class)
 public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccessor {
@@ -97,6 +100,54 @@ public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccess
             RailShape shape, Operation<Boolean> isDecending) {
         return isDecending.call(behavior, movement, shape)
                 || SlopeStep.squareDownSlope(movement, shape);
+    }
+
+    // Vanilla sets a car down onto a rail it has come over wherever the rail is, whatever stands
+    // on it. Cut short at another train's car, the car is marked off its rails, so the set-down is
+    // tried again on the next pass until the rail is clear; meanwhile vanilla steps it along the
+    // rail from where it stands, as it does a car riding a roof.
+    @WrapOperation(
+            method = {"tick", "moveAlongTrack"},
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/world/entity/vehicle/minecart/NewMinecartBehavior;"
+                            + "adjustToRails(Lnet/minecraft/core/BlockPos;"
+                            + "Lnet/minecraft/world/level/block/state/BlockState;Z)V"),
+            require = 2)
+    private void minecarttweaks$setDownShort(NewMinecartBehavior behavior, BlockPos railPos,
+            BlockState state, boolean instant, Operation<Void> adjustToRails) {
+        AbstractMinecart cart = minecarttweaks$cart();
+        Vec3 fromPosition = cart.position();
+        AABB fromBox = cart.getBoundingBox();
+        int stepCount = behavior.lerpSteps.size();
+
+        adjustToRails.call(behavior, railPos, state, instant);
+
+        Vec3 setDown = cart.position().subtract(fromPosition);
+
+        if (setDown.lengthSqr() == 0.0) {
+            return;
+        }
+
+        Vec3 allowed = OffRails.shortOfCars(cart, fromBox, setDown);
+
+        if (allowed.equals(setDown)) {
+            return;
+        }
+
+        cart.setPos(fromPosition.add(allowed));
+        cart.setOnRails(false);
+
+        // The lerp step the set-down added leads the client inside; it is drawn the cut instead.
+        List<NewMinecartBehavior.MinecartStep> steps = behavior.lerpSteps;
+        double cutDistance = allowed.length();
+
+        steps.subList(stepCount, steps.size()).clear();
+
+        if (cutDistance > 0.0) {
+            steps.add(new NewMinecartBehavior.MinecartStep(cart.position(),
+                    cart.getDeltaMovement(), cart.getYRot(), cart.getXRot(),
+                    instant ? 0.0F : (float) cutDistance));
+        }
     }
 
     // A step that meets another cart can leave its car off its line, lifted off a slope or slid
