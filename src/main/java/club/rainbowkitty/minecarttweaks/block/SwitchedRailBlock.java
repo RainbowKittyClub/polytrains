@@ -191,6 +191,16 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
     }
 
     /**
+     * Orients the switch at {@code pos} for {@code cart} arriving on it travelling {@code travel},
+     * as {@link #steerAhead} does for a car stepping onto it: for a car the placer carries, which
+     * steps onto no rail of its own.
+     */
+    public static void steerOnto(
+            ServerLevel level, BlockPos pos, Direction travel, AbstractMinecart cart) {
+        orient(level, pos, travel, cart);
+    }
+
+    /**
      * {@code step}, cut short where it would carry {@code cart}'s box across the edge of the rail
      * at {@code railPos}, laid to {@code shape}, into a switch laid against that edge.
      *
@@ -249,6 +259,14 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
                         && exits.getFirst().getZ() == edge.getStepZ()
                 || exits.getSecond().getX() == edge.getStepX()
                         && exits.getSecond().getZ() == edge.getStepZ();
+    }
+
+    /**
+     * Whether the switch at {@code pos} keeps its shape against a car asking for another: a cart
+     * stands on it or a train lies across it.
+     */
+    public static boolean held(Level level, BlockPos pos) {
+        return occupied(level, pos);
     }
 
     // The switch in the column at pos, level with it or a block either way, if it is laid against

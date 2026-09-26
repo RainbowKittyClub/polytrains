@@ -579,8 +579,9 @@ public final class TrackRibbon {
 
     /**
      * Whether the track ends at this ribbon's far or near end against something solid: the block
-     * past the end node is not rail and has a collision shape. A car seated closer than half its
-     * length to that end would be put inside it, which is where vanilla stops a moving cart.
+     * past the end node is not rail and has a collision shape, or is a switch something holds laid
+     * against the edge the track enters it by, which stops a moving cart at that edge too. A car
+     * seated closer than half its length to that end would be put inside it, or through the switch.
      */
     public boolean blockedBeyond(Level level, boolean farEnd) {
         if (nodes.isEmpty()) {
@@ -598,7 +599,29 @@ public final class TrackRibbon {
 
         BlockState past = level.getBlockState(beyond);
 
-        return !BaseRailBlock.isRail(past) && !past.getCollisionShape(level, beyond).isEmpty();
+        return !enterable(past, outwardDirection) && SwitchedRailBlock.held(level, beyond)
+                || !BaseRailBlock.isRail(past) && !past.getCollisionShape(level, beyond).isEmpty();
+    }
+
+    /**
+     * Asks the switch past this ribbon's far or near end, if one is laid against track running out
+     * through that end, to lie open to it for {@code car}, which is about to run onto it. A switch
+     * something holds as it is stays so, and this ribbon's growth then stops at it as before.
+     */
+    public void openSwitchBeyond(ServerLevel level, boolean farEnd, AbstractMinecart car) {
+        if (nodes.isEmpty()) {
+            return;
+        }
+
+        Node end = farEnd ? nodes.getLast() : nodes.getFirst();
+        Vec3 outwardDirection = outward(end, !farEnd);
+        BlockPos beyond = outwardDirection == null
+                ? null : onward(level, end.block(), outwardDirection);
+
+        if (beyond != null && !enterable(level.getBlockState(beyond), outwardDirection)) {
+            SwitchedRailBlock.steerOnto(level, beyond,
+                    Direction.getApproximateNearest(outwardDirection), car);
+        }
     }
 
     /**

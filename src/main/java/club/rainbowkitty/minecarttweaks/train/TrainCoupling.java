@@ -104,6 +104,10 @@ public final class TrainCoupling {
     // Below this a length is treated as zero.
     private static final double EPSILON = 1.0E-5;
 
+    // How far short of a switch the far car of a train running tail first asks it to open, on top
+    // of a tick's run: a car's length, about where a leading car's step lays the switch ahead.
+    private static final double TAIL_SWITCH_REACH = 1.0;
+
     // Vanilla's own two factors on the downhill pull it works out per tick: how much of the cart's
     // own horizontal speed adds to it, and what being in water leaves of it
     // (NewMinecartBehavior#calculateSlopeSpeed).
@@ -1276,6 +1280,8 @@ public final class TrainCoupling {
         // so the growth below lays it as it now lies instead of a reversal seating cars across it.
         forgetThrownPast(level, train, arc);
 
+        openTailSwitch(level, train, leader, arc);
+
         // Both ways, not just behind: a train reverses by swapping which end leads, and the cars
         // that were behind the old one are ahead of the new.
         // Every gap counted at a full link's worth, not at what it is seated at: a train built this
@@ -1291,6 +1297,33 @@ public final class TrainCoupling {
         if (ribbon.arcEpoch() != previousFrame && movement.lengthSqr() > EPSILON * EPSILON
                 && trailsLeader(train, leader, arc)) {
             train.relaidOn(leader);
+        }
+    }
+
+    // Asks the switch just past the far end of a train running towards that end to lie open for
+    // it, as its leading car asks one it steps onto: the far car is placed and steers nothing.
+    private static void openTailSwitch(
+            ServerLevel level, Train train, AbstractMinecart leader, double leadArc) {
+        TrackRibbon ribbon = train.ribbon();
+        Span span = spanOf(train, leadArc);
+        Vec3 tangent = ribbon.tangentAt(leadArc);
+
+        if (span == null || tangent == null || train.size() < 2) {
+            return;
+        }
+
+        // The far end is whichever end of the span the leading car is not at.
+        boolean tailHigh = leadArc - span.low() < span.high() - leadArc;
+        double tailArc = tailHigh ? span.high() : span.low();
+        double tailSign = tailHigh ? 1.0 : -1.0;
+        double travel = leader.getDeltaMovement().horizontal().dot(tangent) * tailSign;
+        double endArc = tailHigh ? ribbon.farArc() : ribbon.nearArc();
+
+        if (travel > ANY_MOVEMENT && (endArc - tailArc) * tailSign <= travel + TAIL_SWITCH_REACH) {
+            List<AbstractMinecart> cars = train.cars();
+
+            ribbon.openSwitchBeyond(level, tailHigh,
+                    cars.getFirst() == leader ? cars.getLast() : cars.getFirst());
         }
     }
 
