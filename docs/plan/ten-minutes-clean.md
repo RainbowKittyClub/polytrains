@@ -875,7 +875,7 @@ cannot clear the jump, and its leader hangs on the edge of the ramp's support, o
 stall-reversing every four ticks; and an engine loose on a slope while its leading car is on its
 rails could still read the slope's pull as a reversal, which no run showed.
 
-## P13 — A coupled car stays within a link of its train, at any speed — **in progress**
+## P13 — A coupled car stays within a link of its train, at any speed — **done**
 
 **Build.** Give `torture.py` a `--speed` for the value of `max_minecart_speed` a run is checked
 against, and a clause that fails when two coupled cars stand farther apart than a link
@@ -923,7 +923,10 @@ Coupling at 2.02 but failing Bounce on 3 overlap lines, one episode of two ticks
 rammed into a train's leading car on the hill slope. That, and the rise in overlaps since the
 tether, is P14's.
 
-## P14 — Cars on a slope never pass into one another — **in progress**
+Its Done when was met with P14 in, on `b92194a`: two consecutive runs at 40 passed every clause, and
+so did two at 100 (see R1).
+
+## P14 — Cars on a slope never pass into one another — **done**
 
 **Build.** With P13 in, every overlap traced is on a slope and involves the lone cart or a car let
 go: a leading car resting flush on the lone cart's roof on the dip slope, carried down into it by
@@ -940,9 +943,43 @@ after the tether (`3e1d17b`) against none of 5 before it.
 **Done when.** Two consecutive ten-minute runs at 100 and two at 40 pass every clause, Coupling
 included.
 
+### As built
+
+The overlaps were real: an end-of-tick check of every pair of cars from two trains found each
+overlap line's pair already inside one another at the end of the tick before, none only part-way
+through one.
+
+Two things put them there, both on a slope and at a roof. Vanilla's stepper aims 1e-5 past the block
+edge, so its slope line sits 1e-5 off the rail's own, and after the move it lifts a car below that
+line onto it, outside the step `SlopeStep` wraps: a lone cart shoved back and forth was lifted 2e-5
+into the floor of a leading car resting on its roof. That is past `Shapes.EPSILON`, beyond which
+`VoxelShape.collide` lets a box through unstopped, but short of the 1e-4 `deepens` counted, so the
+leading car's next move went straight down into the cart, 0.64 deep. `deepens` now counts a car
+inside another from `Shapes.EPSILON`, as vanilla does. And a step down a slope that met a roof slid
+on across it and was kept for ending within `ON_LINE` of its line, though past where it touched and
+up to 1.4e-3 above its rail; the next step read the car as above its rail and left it there, and it
+rode the roofs of three carts, came off its rails and was set down inside a fourth. A step near its
+line is now kept only if it stopped short of where it touched. The lone cart rammed into a leading
+car on the hill slope, P13's failing case, was not reproduced; its log shows the same squeeze at a
+roof.
+
+P13's holds do not make such meetings more frequent. With the hold and tether switched off, roof
+contacts were about as many, 397 and 552 against 470 and 525 at 40 and 100, twice as many cars were
+let go, and that arm gave the one overlap episode of the four runs; P13's 7 of 16 against none of 5
+is within chance, a one-sided Fisher p of about 0.10.
+
+Observed on a server of its own, on `b92194a`: the self-check exact, then two consecutive ten-minute
+runs at 100 and two at 40 passing every clause, the widest coupling 2.02 and 1.82 blocks. Not fixed:
+jams that hold two trains for the rest of a run, one a hopper pressed up into the floor of another
+train's tail car on a slope, which failed Stall in three of the eight runs on earlier code before
+those, and in six of P13's at 40; corner clips of up to 0.3 on curves and junctions between cars
+`CartInteraction` calls IGNORE, never within the overlap line, one of which wedged the lone cart in
+a train's seat for 600 ticks (P11's `RailContext.meets`); and moves off the rails, `comeOffTrack`
+and `adjustToRails`, which lie outside the step wrapper and which `deepens` never sees.
+
 # Part R — The bar
 
-## R1 — Ten minutes clean, twice — **in progress**
+## R1 — Ten minutes clean, twice — **done**
 
 **Build.** Nothing. `python3 scripts/torture.py run` after each P stage lands, and again at the end.
 
@@ -986,6 +1023,36 @@ the car count plus a margin, read literally, no running train comes near.
 Reopened after P13. Its Coupling clause makes the bar six clauses, which both runs above fail, and
 with P13 in a run at 100 failed Bounce on 3 overlaps; P14 takes them, and its Done when is this
 bar's at both speeds.
+
+Reached again after P14, on six clauses, by the two runs at 100 that followed the self-check on
+P14's server, both against `b92194a`; the two runs at 40 after them passed every clause as well.
+
+Run 1 (`run-torturetrack-20260926-025040.json`):
+
+| Clause | Verdict | Detail |
+|---|---|---|
+| Alive | PASS | ran to +12000 ticks; no crash report; no ERROR or stack trace from the mod |
+| Sever | PASS | 28 couplings held at every sample; no `event=sever` |
+| Coupling | PASS | 28 couplings within 3 blocks at every sample; widest 2.02 |
+| Stall | PASS | no driven train stood within 5 blocks for 600 ticks |
+| Bounce | PASS | 0 overlap, 0 overspeed, 0 sever within 40 ticks of a strike; 15,119 strikes |
+| Switch-safe | PASS | no switch thrown under a spanning train, no `DIVERTED` sever; 245 spanned changes held |
+| vacuity | PASS | 15,119 strikes between trains; driven trains ran 15,788–21,270 blocks; 35 carts |
+
+Run 2 (`run-torturetrack-20260926-030049.json`):
+
+| Clause | Verdict | Detail |
+|---|---|---|
+| Alive | PASS | ran to +12000 ticks; no crash report; no ERROR or stack trace from the mod |
+| Sever | PASS | 28 couplings held at every sample; no `event=sever` |
+| Coupling | PASS | 28 couplings within 3 blocks at every sample; widest 2.02 |
+| Stall | PASS | no driven train stood within 5 blocks for 600 ticks |
+| Bounce | PASS | 0 overlap, 0 overspeed, 0 sever within 40 ticks of a strike; 15,058 strikes |
+| Switch-safe | PASS | no switch thrown under a spanning train, no `DIVERTED` sever; 272 spanned changes held |
+| vacuity | PASS | 15,058 strikes between trains; driven trains ran 16,936–19,947 blocks; 35 carts |
+
+Runs still vary: of the eight runs before these on P14's server, on earlier code, three failed Stall
+on jams that held, and the jams are not fixed (P14).
 
 ---
 
