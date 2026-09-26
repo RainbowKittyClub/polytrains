@@ -13,6 +13,7 @@ import club.rainbowkitty.minecarttweaks.rail.RailContext;
 import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.rule.ModGameRules;
 import club.rainbowkitty.minecarttweaks.rule.PhysicsGameRules;
+import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.train.TrainPlacer;
 
@@ -179,7 +180,19 @@ public enum CartInteraction {
     private static boolean placed(AbstractMinecart cart, AbstractMinecart other) {
         return cart.minecarttweaks$railContext().onRails()
                 && other.minecarttweaks$railContext().onRails()
-                && (TrainPlacer.seated(cart) || TrainPlacer.seated(other));
+                && held(cart) && held(other);
+    }
+
+    // Seated, or the leading car the rest are laid from. A car the placer has let go is neither,
+    // and is stopped by the rest of its train like any cart rather than shoved on through it.
+    private static boolean held(AbstractMinecart car) {
+        if (TrainPlacer.seated(car)) {
+            return true;
+        }
+
+        Train train = Train.peek(car);
+
+        return train != null && train.lastLeader() == car;
     }
 
     // Two trains meeting hard enough to write each other off, judged by closing momentum rather
