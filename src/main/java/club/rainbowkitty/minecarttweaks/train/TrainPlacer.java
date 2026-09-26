@@ -361,12 +361,23 @@ public final class TrainPlacer {
         // it, and the rest of the train stops with it rather than going on without it: held there,
         // its leading car seated too, until the way clears or its engines give up and turn it. It
         // keeps up with the cart holding it and no faster, having struck it at this tick's start.
-        // Drawn back no further than any car ran, a car still in contact is let go as before; off
-        // a blocked end the draw-back above has the train, and this one could undo it.
+        // Drawn back no further than any car ran, a car still in contact is let go as before.
         Double laidArc = train.laidLeadArc(leader, leader.level().getGameTime());
-        double leadRun = laidArc == null ? 0.0 : (leadArc - laidArc) * travelSign;
-        Contact contact = travelSign == 0.0 || blocked
-                ? null : contact(train, cars, seating, leadIndex, travelSign, leadRun);
+
+        // A car leading since its train turned round was laid last tick where it was seated.
+        if (laidArc == null && seated(leader)) {
+            laidArc = leader.minecarttweaks$seatArc(ribbon.arcEpoch());
+        }
+
+        // Which way the cars run to their seats: the way the leading car went since it was laid,
+        // which a train stopped this tick by what it met still has and its speed no longer says.
+        double runSign = laidArc != null && Math.abs(leadArc - laidArc) > EPSILON
+                ? Math.signum(leadArc - laidArc) : travelSign;
+        double leadRun = laidArc == null ? 0.0 : (leadArc - laidArc) * runSign;
+        // Off a blocked end the draw-back above has the train, which a hold against a run away from
+        // that end would undo; one that ran into it is held as any other.
+        Contact contact = runSign == 0.0 || blocked && drawnBack && runSign != tailSign
+                ? null : contact(train, cars, seating, leadIndex, runSign, leadRun);
         boolean held = false;
         double back = 0.0;
 
@@ -379,18 +390,18 @@ public final class TrainPlacer {
                 headArc = arcs.headArc();
                 seating = seatCars(ribbon, cars, headArc, offsets, order, leadIndex, drawnBack,
                         leadArc, travelSign);
-                contact = contact(train, cars, seating, leadIndex, travelSign, leadRun);
+                contact = contact(train, cars, seating, leadIndex, runSign, leadRun);
             }
 
             // Nor into a cart that has come up behind the leading car since, as the draw-back
             // off a blocked end is not: every other car is laid from it.
             back = Math.min(contact.depth(), contact.room());
-            held = back > EPSILON && !seatTaken(train, ribbon, leader, leadArc - travelSign * back);
+            held = back > EPSILON && !seatTaken(train, ribbon, leader, leadArc - runSign * back);
         }
 
         if (held) {
-            leadArc -= travelSign * back;
-            headArc -= travelSign * back;
+            leadArc -= runSign * back;
+            headArc -= runSign * back;
             drawnBack = true;
             speed = Math.min(speed, contact.recede());
             seating = seatCars(ribbon, cars, headArc, offsets, order, leadIndex, drawnBack,
@@ -410,11 +421,11 @@ public final class TrainPlacer {
         // every seat beside it to lie within a link of it, and stops there until the seat clears
         // or its engines turn it. What room the hold above used is not the tether's to use again.
         double tether = foul == null || contact == null ? 0.0 : tetherBack(ribbon, cars, offered,
-                seats, seatArcs, leadIndex, leadArc, travelSign, contact.room() - back);
+                seats, seatArcs, leadIndex, leadArc, runSign, contact.room() - back);
 
-        if (tether > EPSILON && !seatTaken(train, ribbon, leader, leadArc - travelSign * tether)) {
-            leadArc -= travelSign * tether;
-            headArc -= travelSign * tether;
+        if (tether > EPSILON && !seatTaken(train, ribbon, leader, leadArc - runSign * tether)) {
+            leadArc -= runSign * tether;
+            headArc -= runSign * tether;
             drawnBack = true;
             held = true;
             speed = 0.0;
