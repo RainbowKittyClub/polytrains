@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import it.unimi.dsi.fastutil.longs.LongSet;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -41,6 +40,7 @@ import club.rainbowkitty.minecarttweaks.init.EntityAttachments;
 import club.rainbowkitty.minecarttweaks.rail.RailBrake;
 import club.rainbowkitty.minecarttweaks.rail.RailContext;
 import club.rainbowkitty.minecarttweaks.rail.RailForces;
+import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.train.Train;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 import club.rainbowkitty.minecarttweaks.train.TrainPlacer;
@@ -107,10 +107,10 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     @Unique
     private long minecarttweaks$railTick;
 
-    // The rail blocks this cart covers, and the tick, position and movement they were walked from.
-    // The position and movement are null until the first walk, so that walk is never skipped.
+    // The track this cart covers, and the tick, position and movement it was walked from. The
+    // position and movement are null until the first walk, so that walk is never skipped.
     @Unique
-    private @Nullable LongSet minecarttweaks$covered;
+    private RailPath.@Nullable Reach minecarttweaks$covered;
     @Unique
     private long minecarttweaks$coveredTick;
     @Unique
@@ -193,7 +193,7 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     }
 
     @Override
-    public LongSet minecarttweaks$coveredTrack() {
+    public RailPath.Reach minecarttweaks$coveredTrack() {
         long now = level().getGameTime();
         Vec3 standingPosition = position();
         Vec3 movement = getDeltaMovement();

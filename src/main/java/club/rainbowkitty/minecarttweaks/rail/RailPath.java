@@ -1,8 +1,13 @@
 package club.rainbowkitty.minecarttweaks.rail;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 import it.unimi.dsi.fastutil.longs.Long2DoubleMap;
 import it.unimi.dsi.fastutil.longs.Long2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import it.unimi.dsi.fastutil.longs.LongSets;
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
@@ -73,6 +78,22 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     public record Crossing(Vec3 entry, Vec3 exit, Vec3 forward, double span) {}
 
     /**
+     * How far a cart can get along its track before its next move ends.
+     *
+     * @param rails the rail blocks its box can be over, as packed positions
+     * @param runs the straight stretches of line its middle can move along
+     */
+    public record Reach(LongSet rails, List<Segment> runs) {}
+
+    /**
+     * A straight stretch of the line a cart's middle rides, at the height the rail runs there.
+     *
+     * @param from where the stretch starts
+     * @param to where it ends
+     */
+    public record Segment(Vec3 from, Vec3 to) {}
+
+    /**
      * Walks the rails from one cart to the other, or returns null if either is off the track or the
      * other cannot be reached within {@code limit} blocks of track.
      */
@@ -119,44 +140,43 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     }
 
     /**
-     * The rail blocks under the track within {@code ahead} of {@code cart} the way it is moving and
-     * within {@code behind} the other way, or {@code behind} both ways for a cart going nowhere, as
-     * packed positions; empty for a cart off the rails. A junction is crossed straight and a switch
-     * is left by every road it can be thrown to, since which one a cart takes is settled only as it
-     * arrives.
+     * How far {@code cart} gets along its track while its middle moves {@code ahead} the way it is
+     * going and {@code behind} the other way, or {@code behind} both ways for a cart going nowhere:
+     * the rails its box can be over, half its length further, and the line its middle can take;
+     * nothing for a cart off the rails. A junction is crossed straight and a switch is left by
+     * every road it can be thrown to, since which one a cart takes is settled only as it arrives.
      */
-    public static LongSet covered(AbstractMinecart cart, double ahead, double behind) {
+    public static Reach covered(AbstractMinecart cart, double ahead, double behind) {
         Level level = cart.level();
         BlockPos start = cart.getCurrentBlockPosOrRailBelow();
         BlockState state = level.getBlockState(start);
-        // The most reach any walk had left arriving at each block, so that a road reaching a
-        // block a longer one covered first still goes on as far as its own reach allows.
-        Long2DoubleMap reached = new Long2DoubleOpenHashMap();
+        Walk walk = new Walk(level, cart.getBbWidth() * 0.5, new Long2DoubleOpenHashMap(),
+                new ArrayList<>());
 
         if (!BaseRailBlock.isRail(state)) {
-            return reached.keySet();
+            return walk.reach();
         }
 
-        reached.put(start.asLong(), Math.max(ahead, behind));
+        walk.reached().put(start.asLong(), Math.max(ahead, behind) + walk.halfLength());
 
+        Vec3 position = cart.position();
         Vec3 movement = cart.getDeltaMovement().horizontal();
         boolean moving = movement.lengthSqr() > EPSILON * EPSILON;
 
         // Standing on a switch, the car may yet be steered out by any of its three ends.
         if (state.getBlock() instanceof SwitchedRailBlock) {
-            Vec3 centrePosition = Vec3.atCenterOf(start).horizontal();
-
             for (Direction end : switchEnds(state)) {
-                Vec3 edgePosition = centrePosition.add(
-                        new Vec3(end.getStepX(), 0.0, end.getStepZ()).scale(0.5));
+                Vec3 edgePosition = edgePosition(start, end.getUnitVec3(), RAIL_LIFT);
+                double reach = moving ? ahead : behind;
 
-                cover(level, start, neighbour(level, start, end.getUnitVec3i(), false),
-                        (moving ? ahead : behind)
-                                - cart.position().horizontal().distanceTo(edgePosition),
-                        reached);
+                walk.run(position, edgePosition, reach);
+                cover(start, neighbour(level, start, end.getUnitVec3i(), false),
+                        reach + walk.halfLength()
+                                - position.horizontal().distanceTo(edgePosition.horizontal()),
+                        walk);
             }
 
-            return reached.keySet();
+            return walk.reach();
         }
 
         // A junction is left by the axis it is laid to when the cart moves, which a crossing cart
@@ -172,16 +192,21 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
             BlockPos[] around = neighboursFor(level, start, railShape);
             BlockPos aheadExit = along ? exitTaken(around, start, movement) : around[0];
             BlockPos behindExit = aheadExit == around[0] ? around[1] : around[0];
+            Vec3 aheadDirection = direction(start, aheadExit);
+            Vec3 behindDirection = direction(start, behindExit);
+            double aheadReach = along ? ahead : behind;
 
-            cover(level, start, aheadExit, (along ? ahead : behind)
-                    - distanceToExit(cart.position(), start, around, direction(start, aheadExit)),
-                    reached);
-            cover(level, start, behindExit, behind
-                    - distanceToExit(cart.position(), start, around, direction(start, behindExit)),
-                    reached);
+            walk.run(position, edgePosition(start, aheadDirection,
+                    edgeHeight(railShape, aheadDirection)), aheadReach);
+            walk.run(position, edgePosition(start, behindDirection,
+                    edgeHeight(railShape, behindDirection)), behind);
+            cover(start, aheadExit, aheadReach + walk.halfLength()
+                    - distanceToExit(position, start, around, aheadDirection), walk);
+            cover(start, behindExit, behind + walk.halfLength()
+                    - distanceToExit(position, start, around, behindDirection), walk);
         }
 
-        return reached.keySet();
+        return walk.reach();
     }
 
     /**
@@ -404,49 +429,88 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         return null;
     }
 
-    // Adds to reached every rail a walk from previous onto current enters with reach left over,
-    // budget being what is left of it at current's near edge. Every block costs at least a
-    // corner's worth, so the walk ends however the track loops.
-    private static void cover(Level level, BlockPos previous, BlockPos current, double budget,
-            Long2DoubleMap reached) {
+    // A walk under way: the most reach any road had left arriving at each rail block, so that a
+    // road reaching a block a longer one covered first still goes on as far as its own reach
+    // allows, and the runs of line found so far. A rail counts halfLength past the line's end.
+    private record Walk(Level level, double halfLength, Long2DoubleMap reached,
+            List<Segment> runs) {
+
+        // Adds the stretch from from towards to that a middle with reach left can cover.
+        private void run(Vec3 from, Vec3 to, double reach) {
+            if (!(reach > 0.0)) {
+                return;
+            }
+
+            double length = from.horizontal().distanceTo(to.horizontal());
+
+            runs.add(new Segment(from, length <= reach ? to : from.lerp(to, reach / length)));
+        }
+
+        // What the walk found, read-only: a cart holds it as a memo every pair it meets reads.
+        private Reach reach() {
+            return new Reach(LongSets.unmodifiable(reached.keySet()),
+                    Collections.unmodifiableList(runs));
+        }
+    }
+
+    // Adds to the walk every rail a road from previous onto current enters with reach left over,
+    // budget being what is left of it at current's near edge, and the line across each. Every
+    // block costs at least a corner's worth, so the walk ends however the track loops.
+    private static void cover(BlockPos previous, BlockPos current, double budget, Walk walk) {
+        Level level = walk.level();
+
         while (budget > 0.0) {
             BlockState state = level.getBlockState(current);
 
             // A block some walk reached with as much reach left has been walked on from there.
             if (!BaseRailBlock.isRail(state)
-                    || reached.getOrDefault(current.asLong(), -1.0) >= budget) {
+                    || walk.reached().getOrDefault(current.asLong(), -1.0) >= budget) {
                 return;
             }
 
-            reached.put(current.asLong(), budget);
+            walk.reached().put(current.asLong(), budget);
 
             Vec3 movement = direction(previous, current);
+            Vec3 entryDirection = movement.reverse();
 
             if (state.getBlock() instanceof SwitchedRailBlock) {
+                Vec3 entryPosition = edgePosition(current, entryDirection, RAIL_LIFT);
+
                 for (Direction end : switchEnds(state)) {
                     BlockPos onward = neighbour(level, current, end.getUnitVec3i(), false);
 
                     if (!onward.equals(previous)) {
-                        cover(level, current, onward, budget - MIN_BLOCK_SPAN, reached);
+                        walk.run(entryPosition, edgePosition(current, end.getUnitVec3(), RAIL_LIFT),
+                                budget - walk.halfLength());
+                        cover(current, onward, budget - MIN_BLOCK_SPAN, walk);
                     }
                 }
 
                 return;
             }
 
-            BlockPos[] around = neighbours(level, current, movement, Switches.LAID);
+            RailShape railShape = shape(state, movement, Switches.LAID);
 
-            if (around == null) {
+            if (railShape == null) {
                 return;
             }
 
+            BlockPos[] around = neighboursFor(level, current, railShape);
             BlockPos onward = exitTaken(around, current, movement);
+            Vec3 exitDirection = direction(current, onward);
 
-            budget -= Math.max(span(around, current, direction(current, onward)),
-                    MIN_BLOCK_SPAN);
+            walk.run(edgePosition(current, entryDirection, edgeHeight(railShape, entryDirection)),
+                    edgePosition(current, exitDirection, edgeHeight(railShape, exitDirection)),
+                    budget - walk.halfLength());
+            budget -= Math.max(span(around, current, exitDirection), MIN_BLOCK_SPAN);
             previous = current;
             current = onward;
         }
+    }
+
+    // The middle of the edge of block the way direction points, height above its floor.
+    private static Vec3 edgePosition(BlockPos block, Vec3 direction, double height) {
+        return Vec3.atBottomCenterOf(block).add(direction.scale(0.5)).add(0.0, height, 0.0);
     }
 
     // The three ends a switch joins, whichever way it is thrown.

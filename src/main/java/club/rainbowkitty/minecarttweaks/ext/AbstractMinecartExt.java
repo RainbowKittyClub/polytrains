@@ -1,6 +1,5 @@
 package club.rainbowkitty.minecarttweaks.ext;
 
-import it.unimi.dsi.fastutil.longs.LongSet;
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.server.level.ServerLevel;
@@ -8,6 +7,7 @@ import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.rail.RailContext;
+import club.rainbowkitty.minecarttweaks.rail.RailPath;
 import club.rainbowkitty.minecarttweaks.train.Train;
 
 /**
@@ -80,11 +80,11 @@ public interface AbstractMinecartExt extends Linkable {
     public RailContext minecarttweaks$railContext();
 
     /**
-     * The rail blocks this cart can be over before its next move ends, as packed positions: see
-     * {@link RailContext#covering}. Held until the cart moves, its movement changes or the tick
-     * does, since collision asks it of every candidate pair.
+     * The track this cart can be over before its next move ends: see {@link RailContext#covering}.
+     * Held until the cart moves, its movement changes or the tick does, since collision asks it of
+     * every candidate pair.
      */
-    public LongSet minecarttweaks$coveredTrack();
+    public RailPath.Reach minecarttweaks$coveredTrack();
 
     /** The train this cart was last placed in, whether or not it is still good to use. */
     public @Nullable Train minecarttweaks$train();
