@@ -168,7 +168,7 @@ The bar is six clauses and three vacuity checks, each machine-checked by M5:
 | Sever | the set of link edges — unordered pairs of cart UUIDs from the `minecarttweaks:link` slots — at any sample differs from the set at the first sample; or an `event=sever` line appears. | per-second link dump; M4 |
 | Coupling | two coupled cars stand more than a link (`maxLinkDistance`, 3 blocks) apart at any sample, with no allowance. The worst pair is named. | per-second positions and link dump |
 | Stall | a train with at least one furnace car has every car within 5 blocks of where it stood 600 ticks earlier. Reported per train; a train queued behind a stalled one is reported too, and named as queued. | per-second positions |
-| Bounce | an `event=overlap` (cars of two trains within 0.5 blocks); or an `event=overspeed` (horizontal speed above the cart's own ceiling by more than 1%); or a sever within 40 ticks of a strike. Momentum sharing at each strike is reported, not judged. | M4 |
+| Bounce | an `event=overlap` (cars of two trains within 0.5 blocks); or an `event=clip` (their boxes inside each other deeper than 0.01 at the end of a tick, P16); or an `event=overspeed` (horizontal speed above the cart's own ceiling by more than 1%); or a sever within 40 ticks of a strike. Momentum sharing at each strike is reported, not judged. | M4 |
 | Switch-safe | an `event=switch` with `spanned=true`; or a sever whose reason is the diverted-track one. | M4 |
 
 Vacuity: fewer than ten strikes between different trains, any driven train travelling under 100
@@ -330,6 +330,7 @@ M3's ids, prose after the tokens where the line already has some:
 | `stall_reverse` | MinecartFurnaceMixin.java:334-347, when the reversal fires | `train= cart= pos= rail=` |
 | `strike` | CartImpact.java:160-168, when `gained > 0` | `striker=<cart> struck=<cart> trains=<idA>,<idB> closing= shared= gained=` |
 | `overlap` | CartImpact.java:88-91, a struck cart of another train within 0.5 blocks horizontally | `cart= other= trains= distance=` |
+| `clip` | TrainMeter.sample at the end of each level's tick (added by P16), once per pair as two trains' cars come to intersect deeper than 0.01, the least of the three axis overlaps | `cart= other= trains=<idA>,<idB> depth=` |
 | `overspeed` | the per-tick observation of M3, when a cart's horizontal speed exceeds its own ceiling (`AbstractMinecartExt` :56; the mod's inject at AbstractMinecartMixin.java:335) by more than 1% | `cart= train= speed= ceiling=` |
 | `switch` | SwitchedRailBlock.java:292 and :347 | `pos= from= to= spanned=<TrainCoupling.crossedByTrain(level, pos)>` (TrainCoupling.java:745) |
 | `refusal` | TrainPlacer.java:116, on change only as now | `train= why=<Bail> car=` |
@@ -1000,7 +1001,7 @@ what holds it, and break it.
 **Done when.** Each probe's jam clears on its own where the code before held it, and four
 consecutive ten-minute runs, two at 100 and two at 40, pass every clause.
 
-## P16 — Cars of two trains do not clip on curves and junctions — **in progress**
+## P16 — Cars of two trains do not clip on curves and junctions — **done**
 
 **Build.** P14's end-of-tick check of every pair of cars from two trains found vanilla's move of a
 leading or loose car carrying it into another train's car by up to 0.3 blocks on curves and
@@ -1013,6 +1014,27 @@ overlap does; then find which pairs `meets` misses and why, and make them collid
 
 **Done when.** A probe of the wedge holds on the code before and not after, and a ten-minute run at
 100 and one at 40 pass every clause, clips included.
+
+### As built
+
+`TrainMeter` writes `event=clip` once as two trains' cars come to stand inside each other deeper
+than 0.01 at the end of a level's tick, the depth being the least of the three axis overlaps of
+their boxes, and `torture.py` fails Bounce on it. The code before logged 34 and 30 clips at 100 and
+40, deepest 0.15, every one across a block corner with the centres 0.92 to 1.34 apart: at a curve's
+inside corner beside another line, and across the two legs of one-row U-turns. There each car's
+covered rails stopped short of the other's, while a box riding a curve's chord spills 0.24 into the
+diagonal block. `RailPath.covered` now also records the runs of line a car's middle can take before
+its next move ends, and `meets` answers yes where the two boxes ridden along those runs overlap past
+`Shapes.EPSILON`, tested exactly and asked in entity-id order so both cars get the same answer;
+parallel track, 0.02 apart, stays IGNORE.
+
+Observed on a server of its own: the wedge replica held its train 400 ticks on the code before, the
+lone cart 0.04 inside its third car and the train refusing `SEAT_FOULED`; on `a995165` the cart
+stopped flush at the car's face and the train was 16 blocks on by +80. A run at 100 and one at 40
+passed every clause with no clip. Not fixed: a car off its rails has no runs and stays IGNORE (P17),
+and under realistic physics a hard meeting at such a corner can now WRECK, as any COLLIDE pair can.
+One run of the fix before its review gridlocked three trains, 20 cars, in the bottom balloon loop,
+which holds about 13; it did not recur in the two runs after, and that kind of jam is P15's.
 
 ## P17 — A car off its rails is never set down inside another — **in progress**
 
