@@ -137,6 +137,13 @@ public final class Train {
     // only so the meter can report it.
     private double turn;
 
+    // Where the leading car stood when this train was last laid out, which car that was, the tick,
+    // and the arc frame: how far that car has run since, which a draw-back may not exceed.
+    private double laidLeadArc;
+    private @Nullable AbstractMinecart laidLeader;
+    private long laidTick = Long.MIN_VALUE;
+    private int laidLeadArcAt = -1;
+
     // How the last seating attempt went, so only a change of answer is worth reporting, and
     // whether one has been made at all — a train built this tick has been neither placed nor
     // refused, which is not the same as having been placed.
@@ -770,6 +777,23 @@ public final class Train {
     /** How far this train's head turned on its last seating, in right angles. */
     public double turn() {
         return turn;
+    }
+
+    /** Records that {@code leader} stood at {@code arc} when this train was laid out at tick. */
+    public void setLaidLead(AbstractMinecart leader, double arc, long tick) {
+        laidLeader = leader;
+        laidLeadArc = arc;
+        laidTick = tick;
+        laidLeadArcAt = ribbon.arcEpoch();
+    }
+
+    /**
+     * Where {@code leader} stood when this train was laid out on the tick before {@code tick}, or
+     * null if it was not, {@code leader} was not leading it then, or the arcs have been renumbered.
+     */
+    public @Nullable Double laidLeadArc(AbstractMinecart leader, long tick) {
+        return leader == laidLeader && laidTick == tick - 1 && laidLeadArcAt == ribbon.arcEpoch()
+                ? laidLeadArc : null;
     }
 
     /** Records how far this train's head has just turned, in right angles. */

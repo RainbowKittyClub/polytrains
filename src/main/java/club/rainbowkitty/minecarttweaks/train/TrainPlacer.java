@@ -197,6 +197,8 @@ public final class TrainPlacer {
         }
 
         int leadIndex = cars.indexOf(leader);
+        // Where vanilla left the leading car, which stays its place unless it is seated elsewhere.
+        double standingLeadArc = leadArc;
 
         // +1 when the leading car is the list's head, so a step toward the tail is a step up the
         // list; -1 at the other end.
@@ -352,6 +354,118 @@ public final class TrainPlacer {
             }
         }
 
+        Seating seating = seatCars(ribbon, cars, headArc, offsets, order, leadIndex, drawnBack,
+                leadArc, travelSign);
+
+        // A car whose run to its seat meets another train's cart stops where its box first touches
+        // it, and the rest of the train stops with it rather than going on without it: held there,
+        // its leading car seated too, until the way clears or its engines give up and turn it. It
+        // keeps up with the cart holding it and no faster, having struck it at this tick's start.
+        // Drawn back no further than any car ran, a car still in contact is let go as before; off
+        // a blocked end the draw-back above has the train, and this one could undo it.
+        Double laidArc = train.laidLeadArc(leader, leader.level().getGameTime());
+        double leadRun = laidArc == null ? 0.0 : (leadArc - laidArc) * travelSign;
+        Contact contact = travelSign == 0.0 || blocked
+                ? null : contact(train, cars, seating, leadIndex, travelSign, leadRun);
+        boolean held = false;
+        double back = 0.0;
+
+        if (contact != null && contact.depth() > EPSILON) {
+            // Run into something, a train lengthens no further into it.
+            if (!pressing && !packing) {
+                gaps = train.nextGaps(target, maxLinkDistance, 0.0);
+                arcs = arcsFor(ribbon, gaps, leadArc, order, fromHead, leadIndex, tailIndex);
+                offsets = arcs.offsets();
+                headArc = arcs.headArc();
+                seating = seatCars(ribbon, cars, headArc, offsets, order, leadIndex, drawnBack,
+                        leadArc, travelSign);
+                contact = contact(train, cars, seating, leadIndex, travelSign, leadRun);
+            }
+
+            // Nor into a cart that has come up behind the leading car since, as the draw-back
+            // off a blocked end is not: every other car is laid from it.
+            back = Math.min(contact.depth(), contact.room());
+            held = back > EPSILON && !seatTaken(train, ribbon, leader, leadArc - travelSign * back);
+        }
+
+        if (held) {
+            leadArc -= travelSign * back;
+            headArc -= travelSign * back;
+            drawnBack = true;
+            speed = Math.min(speed, contact.recede());
+            seating = seatCars(ribbon, cars, headArc, offsets, order, leadIndex, drawnBack,
+                    leadArc, travelSign);
+        }
+
+        Seat[] seats = seating.seats();
+        double[] seatArcs = seating.seatArcs();
+        Refusal refusal = seating.refusal();
+
+        // Waits rather than counts against the train. A cart on this track past either end has
+        // shortened it already; what is left stands off this track or between the train's own cars.
+        Foul foul = fouled(train, cars, seats, seatArcs, leadIndex);
+
+        if (foul != null && refusal == null) {
+            refusal = new Refusal(Bail.SEAT_FOULED, Refusal.NONE, "a cart of another train lies at "
+                    + foul.foulingCart().getCurrentBlockPosOrRailBelow()
+                    + ", across the seat of car " + foul.carIndex() + "/" + (cars.size() - 1));
+        }
+
+        // A train too slow to read a heading keeps facing whichever end nominally leads, rather
+        // than reading a direction out of noise.
+        double faceSign = travelSign != 0.0 ? travelSign : order * fromHead;
+
+        for (int i = 0; i < cars.size(); i++) {
+            if (i == leadIndex && !drawnBack) {
+                continue;
+            }
+
+            if (seats[i] == null) {
+                loosen(cars.get(i));
+                continue;
+            }
+
+            place(train, cars.get(i), seats[i], seatArcs[i], faceSign, speed, i != leadIndex);
+
+            // Drawn back off an end the train is leaving, the leading car stays vanilla's: seated,
+            // it skips vanilla's move and is drawn back again every tick that end still presses.
+            if (i == leadIndex && !pressing && !held) {
+                loosen(cars.get(i));
+            }
+        }
+
+        train.setGaps(gaps);
+
+        if (closed) {
+            train.setPacked(leader.level().getGameTime());
+        }
+
+        // Billed once at the head rather than once per car: every car crosses the same joints the
+        // head already did, so the total comes out the same either way.
+        Double previousHeadArc = train.headArc();
+        double turn = previousHeadArc == null ? 0.0 : ribbon.turnBetween(previousHeadArc, headArc);
+
+        train.setHeadArc(headArc);
+        train.setTurn(turn);
+        train.setLaidLead(leader, drawnBack && seats[leadIndex] != null ? leadArc : standingLeadArc,
+                leader.level().getGameTime());
+        RailDrag.bend(leader, turn);
+
+        if (refusal != null) {
+            return refusal;
+        }
+
+        return null;
+    }
+
+    // Where each car goes with the head at a given arc, and the first reason one has no seat.
+    private record Seating(Seat[] seats, double[] seatArcs, @Nullable Refusal refusal) {}
+
+    // Seats every car at its offset from headArc, the leading car only when drawn back, leaving
+    // null the seats the ribbon cannot reach or has no rail at.
+    private static Seating seatCars(TrackRibbon ribbon, List<AbstractMinecart> cars,
+            double headArc, double[] offsets, int order, int leadIndex, boolean drawnBack,
+            double leadArc, double travelSign) {
         Seat[] seats = new Seat[cars.size()];
         double[] seatArcs = new double[cars.size()];
         Refusal refusal = null;
@@ -389,60 +503,125 @@ public final class TrainPlacer {
             }
         }
 
-        // Waits rather than counts against the train. A cart on this track past either end has
-        // shortened it already; what is left stands off this track or between the train's own cars.
-        Foul foul = fouled(train, cars, seats, seatArcs, leadIndex);
+        return new Seating(seats, seatArcs, refusal);
+    }
 
-        if (foul != null && refusal == null) {
-            refusal = new Refusal(Bail.SEAT_FOULED, Refusal.NONE, "a cart of another train lies at "
-                    + foul.foulingCart().getCurrentBlockPosOrRailBelow()
-                    + ", across the seat of car " + foul.carIndex() + "/" + (cars.size() - 1));
+    // A seated car's run to its seat along the ribbon: the arc it stands at, the way it goes, and
+    // how far.
+    private record SeatRun(double startArc, double sign, double length) {}
+
+    // The run car makes to a seat at seatArc; null for a car not seated last tick, standing off
+    // the ribbon, or further from its seat than a tick can carry it.
+    private static @Nullable SeatRun runOf(
+            TrackRibbon ribbon, AbstractMinecart car, double seatArc, double runLimit) {
+        Double startArc = seated(car) ? ribbon.arcNear(car, seatArc) : null;
+
+        if (startArc == null || Math.abs(seatArc - startArc) > runLimit) {
+            return null;
         }
 
-        // A train too slow to read a heading keeps facing whichever end nominally leads, rather
-        // than reading a direction out of noise.
-        double faceSign = travelSign != 0.0 ? travelSign : order * fromHead;
+        return new SeatRun(startArc, Math.signum(seatArc - startArc), Math.abs(seatArc - startArc));
+    }
+
+    // How far the cars' runs to their seats reach past where each first meets another train's
+    // cart, at most; how far back against their travel the train can be drawn without taking any
+    // car behind where it stood; and the least any cart met is moving on out of those runs' way.
+    private record Contact(double depth, double room, double recede) {}
+
+    // The contact the train makes running travelSign to these seats, its leading car having run
+    // leadRun of the way; a run against the travel is give taken up, not ground to stop short on.
+    private static Contact contact(Train train, List<AbstractMinecart> cars, Seating seating,
+            int leadIndex, double travelSign, double leadRun) {
+        TrackRibbon ribbon = train.ribbon();
+        double runLimit = furthestRun(cars.get(leadIndex));
+        double depth = 0.0;
+        double room = Math.max(0.0, leadRun);
+        double recede = Double.POSITIVE_INFINITY;
 
         for (int i = 0; i < cars.size(); i++) {
-            if (i == leadIndex && !drawnBack) {
+            Seat seat = seating.seats()[i];
+            AbstractMinecart car = cars.get(i);
+            SeatRun run = i == leadIndex || seat == null
+                    ? null : runOf(ribbon, car, seating.seatArcs()[i], runLimit);
+
+            if (run == null) {
                 continue;
             }
 
-            if (seats[i] == null) {
-                loosen(cars.get(i));
+            double forward = run.sign() * travelSign * run.length();
+
+            room = Math.min(room, Math.max(0.0, forward));
+
+            if (forward <= EPSILON) {
                 continue;
             }
 
-            place(train, cars.get(i), seats[i], headArc - order * offsets[i],
-                    faceSign, speed, i != leadIndex);
+            AABB reachBox = car.getBoundingBox().minmax(boxAt(car, seat.position()));
+            Vec3 runDirection = seat.position().subtract(car.position()).horizontal();
 
-            // Drawn back off an end the train is leaving, the leading car stays vanilla's: seated,
-            // it skips vanilla's move and is drawn back again every tick that end still presses.
-            if (i == leadIndex && !pressing) {
-                loosen(cars.get(i));
+            for (AbstractMinecart other : foreignCarts(train, reachBox.inflate(RUN_SHELL))) {
+                double past = forward - clearRun(ribbon, car, run, other);
+
+                if (past > EPSILON) {
+                    depth = Math.max(depth, past);
+                    recede = Math.min(recede, runDirection.lengthSqr() < EPSILON * EPSILON ? 0.0
+                            : other.getDeltaMovement().horizontal().dot(runDirection.normalize()));
+                }
             }
         }
 
-        train.setGaps(gaps);
+        return new Contact(depth, room, Math.max(0.0, recede));
+    }
 
-        if (closed) {
-            train.setPacked(leader.level().getGameTime());
+    // How far along run car goes before its box meets other's on ground it did not already cover:
+    // all of it if it never does, none if other already lies inside it on the side it runs to.
+    private static double clearRun(
+            TrackRibbon ribbon, AbstractMinecart car, SeatRun run, AbstractMinecart other) {
+        AABB otherBox = other.getBoundingBox();
+
+        if (car.getBoundingBox().intersects(otherBox)) {
+            Vec3 endPosition = ribbon.positionAt(run.startArc() + run.sign() * run.length());
+            Vec3 runDirection = endPosition == null
+                    ? Vec3.ZERO : endPosition.subtract(car.position()).horizontal();
+
+            return other.position().subtract(car.position()).horizontal().dot(runDirection) > 0.0
+                    ? 0.0 : run.length();
         }
 
-        // Billed once at the head rather than once per car: every car crosses the same joints the
-        // head already did, so the total comes out the same either way.
-        Double previousHeadArc = train.headArc();
-        double turn = previousHeadArc == null ? 0.0 : ribbon.turnBetween(previousHeadArc, headArc);
+        double clear = 0.0;
 
-        train.setHeadArc(headArc);
-        train.setTurn(turn);
-        RailDrag.bend(leader, turn);
+        while (clear < run.length()) {
+            double along = Math.min(clear + PATH_STEP, run.length());
 
-        if (refusal != null) {
-            return refusal;
+            if (touches(ribbon, car, run, along, otherBox)) {
+                // Halved down between the last step that was clear and this one, which is not.
+                double touching = along;
+
+                for (int halving = 0; halving < CLEAR_HALVINGS; halving++) {
+                    double middle = (clear + touching) * 0.5;
+
+                    if (touches(ribbon, car, run, middle, otherBox)) {
+                        touching = middle;
+                    } else {
+                        clear = middle;
+                    }
+                }
+
+                return clear;
+            }
+
+            clear = along;
         }
 
-        return null;
+        return run.length();
+    }
+
+    // Whether car's box, along run by along, meets otherBox; not where the ribbon has no track.
+    private static boolean touches(TrackRibbon ribbon, AbstractMinecart car, SeatRun run,
+            double along, AABB otherBox) {
+        Vec3 position = ribbon.positionAt(run.startArc() + run.sign() * along);
+
+        return position != null && boxAt(car, position).intersects(otherBox);
     }
 
     // The first foreign cart lying across one of these seats, or across the ground reaching it.
