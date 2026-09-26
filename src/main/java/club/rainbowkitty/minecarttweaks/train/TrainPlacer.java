@@ -372,7 +372,7 @@ public final class TrainPlacer {
         // Off a blocked end the draw-back above has the train, which a hold against a run away from
         // that end would undo; one that ran into it is held as any other.
         Contact contact = runSign == 0.0 || blocked && drawnBack && runSign != tailSign
-                ? null : contact(train, cars, seating, leadIndex, runSign, leadRun);
+                ? null : contactOf(train, cars, seating, leadIndex, runSign, leadRun);
         boolean held = false;
         double back = 0.0;
 
@@ -385,12 +385,12 @@ public final class TrainPlacer {
                 headArc = arcs.headArc();
                 seating = seatCars(ribbon, cars, headArc, offsets, order, leadIndex, drawnBack,
                         leadArc, travelSign);
-                contact = contact(train, cars, seating, leadIndex, runSign, leadRun);
+                contact = contactOf(train, cars, seating, leadIndex, runSign, leadRun);
             }
 
             // Nor into a cart that has come up behind the leading car since, as the draw-back
             // off a blocked end is not: every other car is laid from it.
-            back = Math.min(contact.depth(), contact.room());
+            back = Math.min(contact.depth(), contact.backRoom());
             held = back > EPSILON && !seatTaken(train, ribbon, leader, leadArc - runSign * back);
         }
 
@@ -416,7 +416,7 @@ public final class TrainPlacer {
         // every seat beside it to lie within a link of it, and stops there until the seat clears
         // or its engines turn it. What room the hold above used is not the tether's to use again.
         double tether = foul == null || contact == null ? 0.0 : tetherBack(ribbon, cars, offered,
-                seats, seatArcs, leadIndex, leadArc, runSign, contact.room() - back);
+                seats, seatArcs, leadIndex, leadArc, runSign, contact.backRoom() - back);
 
         if (tether > EPSILON && !seatTaken(train, ribbon, leader, leadArc - runSign * tether)) {
             leadArc -= runSign * tether;
@@ -558,18 +558,18 @@ public final class TrainPlacer {
     }
 
     // How far the cars' runs to their seats reach past where each first meets another train's
-    // cart, at most; how far back against their travel the train can be drawn without taking any
+    // cart, at most; how far back against their run the train can be drawn without taking any
     // car behind where it stood; and the least any cart met is moving on out of those runs' way.
-    private record Contact(double depth, double room, double recede) {}
+    private record Contact(double depth, double backRoom, double recede) {}
 
-    // The contact the train makes running travelSign to these seats, its leading car having run
-    // leadRun of the way; a run against the travel is give taken up, not ground to stop short on.
-    private static Contact contact(Train train, List<AbstractMinecart> cars, Seating seating,
-            int leadIndex, double travelSign, double leadRun) {
+    // The contact the train makes running runSign to these seats, its leading car having run
+    // leadRun of the way; a run against runSign is give taken up, not ground to stop short on.
+    private static Contact contactOf(Train train, List<AbstractMinecart> cars, Seating seating,
+            int leadIndex, double runSign, double leadRun) {
         TrackRibbon ribbon = train.ribbon();
         double runLimit = furthestRun(cars.get(leadIndex));
         double depth = 0.0;
-        double room = Math.max(0.0, leadRun);
+        double backRoom = Math.max(0.0, leadRun);
         double recede = Double.POSITIVE_INFINITY;
 
         for (int i = 0; i < cars.size(); i++) {
@@ -582,11 +582,11 @@ public final class TrainPlacer {
                 continue;
             }
 
-            double forward = run.sign() * travelSign * run.length();
+            double forwardRun = run.sign() * runSign * run.length();
 
-            room = Math.min(room, Math.max(0.0, forward));
+            backRoom = Math.min(backRoom, Math.max(0.0, forwardRun));
 
-            if (forward <= EPSILON) {
+            if (forwardRun <= EPSILON) {
                 continue;
             }
 
@@ -594,7 +594,7 @@ public final class TrainPlacer {
             Vec3 runDirection = seat.position().subtract(car.position()).horizontal();
 
             for (AbstractMinecart other : foreignCarts(train, reachBox.inflate(RUN_SHELL))) {
-                double past = forward - clearRun(ribbon, car, run, other);
+                double past = forwardRun - clearRun(ribbon, car, run, other);
 
                 if (past > EPSILON) {
                     depth = Math.max(depth, past);
@@ -604,14 +604,14 @@ public final class TrainPlacer {
             }
         }
 
-        return new Contact(depth, room, Math.max(0.0, recede));
+        return new Contact(depth, backRoom, Math.max(0.0, recede));
     }
 
-    // How far, up to room, the train is drawn back against travelSign for every seat beside a car
+    // How far, up to room, the train is drawn back against runSign for every seat beside a car
     // let go for a fouled seat to lie within a link of it; room where no draw-back is enough.
     private static double tetherBack(TrackRibbon ribbon, List<AbstractMinecart> cars,
             Seat[] offered, Seat[] seats, double[] seatArcs, int leadIndex, double leadArc,
-            double travelSign, double room) {
+            double runSign, double room) {
         double link = TrainCoupling.maxLinkDistance();
         double back = 0.0;
 
@@ -627,7 +627,7 @@ public final class TrainPlacer {
 
                 if (placed) {
                     back = Math.max(back, backWithin(ribbon, j == leadIndex ? leadArc : seatArcs[j],
-                            travelSign, loosePosition, link, Math.max(0.0, room)));
+                            runSign, loosePosition, link, Math.max(0.0, room)));
                 }
             }
         }
@@ -637,7 +637,7 @@ public final class TrainPlacer {
 
     // The least draw-back, from nought to room, that brings the track at arc within reach of
     // position; room where none does.
-    private static double backWithin(TrackRibbon ribbon, double arc, double travelSign,
+    private static double backWithin(TrackRibbon ribbon, double arc, double runSign,
             Vec3 position, double reach, double room) {
         if (within(ribbon, arc, position, reach)) {
             return 0.0;
@@ -648,12 +648,12 @@ public final class TrainPlacer {
         for (double drawn = CLEAR_STEP; drawn < room + CLEAR_STEP; drawn += CLEAR_STEP) {
             double tried = Math.min(drawn, room);
 
-            if (within(ribbon, arc - travelSign * tried, position, reach)) {
+            if (within(ribbon, arc - runSign * tried, position, reach)) {
                 // Halved down between the last draw-back that fell short and this one.
                 for (int halving = 0; halving < CLEAR_HALVINGS; halving++) {
                     double middle = (outside + tried) * 0.5;
 
-                    if (within(ribbon, arc - travelSign * middle, position, reach)) {
+                    if (within(ribbon, arc - runSign * middle, position, reach)) {
                         tried = middle;
                     } else {
                         outside = middle;
