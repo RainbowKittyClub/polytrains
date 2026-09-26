@@ -896,7 +896,7 @@ public final class TrainCoupling {
                 ? serverLevel.getGameRules().get(GameRules.MAX_MINECART_SPEED) / 20.0 : 0.0);
 
         anyTrainNear(level, pos, reach, Train::of, train -> {
-            forgetThrownPast(level, train, null);
+            forgetThrownPast(level, train, spanOf(train, null));
             return false;
         });
     }
@@ -1249,10 +1249,9 @@ public final class TrainCoupling {
         return arc != null ? arc : seatArc;
     }
 
-    // Has a train's ribbon forget each switch thrown past its cars, once it can read all of them.
-    private static void forgetThrownPast(Level level, Train train, @Nullable Double leadArc) {
-        Span span = spanOf(train, leadArc);
-
+    // Has a train's ribbon forget each switch thrown past its cars, spanning span, once span reads
+    // all of them.
+    private static void forgetThrownPast(Level level, Train train, @Nullable Span span) {
         if (span != null && span.whole()) {
             train.ribbon().forgetThrown(level, span.low(), span.high());
         }
@@ -1299,11 +1298,14 @@ public final class TrainCoupling {
             return;
         }
 
+        // Where the cars stand, read once for both checks below: forgetting trims only the ends.
+        Span span = spanOf(train, arc);
+
         // A switch thrown past either end since it was recorded is forgotten from there outward,
         // so the growth below lays it as it now lies instead of a reversal seating cars across it.
-        forgetThrownPast(level, train, arc);
+        forgetThrownPast(level, train, span);
 
-        openTailSwitch(level, train, leader, arc);
+        openTailSwitch(level, train, leader, arc, span);
 
         // Both ways, not just behind: a train reverses by swapping which end leads, and the cars
         // that were behind the old one are ahead of the new.
@@ -1323,12 +1325,11 @@ public final class TrainCoupling {
         }
     }
 
-    // Asks the switch just past the far end of a train running towards that end to lie open for
-    // it, as its leading car asks one it steps onto: the far car is placed and steers nothing.
-    private static void openTailSwitch(
-            ServerLevel level, Train train, AbstractMinecart leader, double leadArc) {
+    // Asks the switch just past the far end of span, which a train is running towards, to lie
+    // open for it, as its leading car asks one it steps onto: the far car steers nothing.
+    private static void openTailSwitch(ServerLevel level, Train train, AbstractMinecart leader,
+            double leadArc, @Nullable Span span) {
         TrackRibbon ribbon = train.ribbon();
-        Span span = spanOf(train, leadArc);
         Vec3 tangent = ribbon.tangentAt(leadArc);
 
         if (span == null || tangent == null || train.size() < 2) {
