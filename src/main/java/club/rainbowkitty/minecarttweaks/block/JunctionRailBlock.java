@@ -67,13 +67,20 @@ public class JunctionRailBlock extends BaseRailBlock implements PolymerTexturedB
      * other arm lays the junction its own way, and a car standing there takes its drive only after
      * vanilla has read the shape, so a restart would turn it onto the other arm and off the track
      * its train recorded.
+     *
+     * <p>A train's leading car is laid by the track its train recorded there instead, since a knock
+     * from a train on the other arm, or an engine round a bend aiming along it, would turn it onto
+     * that arm and off its train's track.
      */
     public static void steer(Level level, AbstractMinecart cart) {
         BlockPos pos = cart.getCurrentBlockPosOrRailBelow();
 
         // Asked here first: the heading below walks the train, and most carts are on no junction.
         if (level.getBlockState(pos).getBlock() instanceof JunctionRailBlock) {
-            lay(level, pos, TrainCoupling.leavingHeading(cart, cart.getDeltaMovement()));
+            Vec3 recordedHeading = TrainCoupling.recordedHeading(cart, pos);
+
+            lay(level, pos, recordedHeading != null ? recordedHeading
+                    : TrainCoupling.leavingHeading(cart, cart.getDeltaMovement()));
         }
     }
 

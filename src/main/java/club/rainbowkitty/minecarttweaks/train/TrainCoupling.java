@@ -241,6 +241,29 @@ public final class TrainCoupling {
     }
 
     /**
+     * The way {@code cart}'s train recorded its track through {@code pos}, where {@code cart} leads
+     * a train whose ribbon holds that block where the car stands; null otherwise. The arm of a
+     * junction a train is on stays its own, whatever a knock from the other arm or an engine aimed
+     * round a bend does to its leading car's movement.
+     */
+    public static @Nullable Vec3 recordedHeading(AbstractMinecart cart, BlockPos pos) {
+        if (!cart.hasLink() || !ModGameRules.trainsEnabled(cart.level())) {
+            return null;
+        }
+
+        Train train = Train.peek(cart);
+
+        if (train == null || train.lastLeader() != cart || train.ribbon().isEmpty()) {
+            return null;
+        }
+
+        TrackRibbon ribbon = train.ribbon();
+        Double arc = ribbon.arcNear(cart, ribbon.leaderArc());
+
+        return arc == null || !pos.equals(ribbon.blockAt(arc)) ? null : ribbon.tangentAt(arc);
+    }
+
+    /**
      * Which way {@code cart} is about to move given {@code movement}: along that movement, or,
      * all but standing, the way its train's engines aim at it wherever they aim at all.
      */
