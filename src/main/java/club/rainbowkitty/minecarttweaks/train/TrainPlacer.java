@@ -725,6 +725,12 @@ public final class TrainPlacer {
             boolean pathRead = false;
 
             for (AbstractMinecart other : others) {
+                // Nothing is seated into a cart, but a car wedged in one is let back out of it:
+                // held fouled, its train is tethered to it and can never leave.
+                if (backsOut(car, seats[i], other)) {
+                    continue;
+                }
+
                 AABB otherBox = other.getBoundingBox();
                 boolean fouls = seatBox.intersects(otherBox);
 
@@ -774,6 +780,16 @@ public final class TrainPlacer {
         }
 
         return boxes;
+    }
+
+    // Whether car, its box already inside other's, runs to seat without closing on other's middle:
+    // a car standing still in it has not moved out, so it still fouls.
+    private static boolean backsOut(AbstractMinecart car, Seat seat, AbstractMinecart other) {
+        Vec3 runDirection = seat.position().subtract(car.position()).horizontal();
+
+        return runDirection.lengthSqr() > EPSILON * EPSILON
+                && car.getBoundingBox().intersects(other.getBoundingBox())
+                && other.position().subtract(car.position()).horizontal().dot(runDirection) <= 0.0;
     }
 
     // Whether car, running to its seat, meets other on ground its box did not already cover, or
