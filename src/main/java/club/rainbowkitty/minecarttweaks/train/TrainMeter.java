@@ -28,6 +28,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.level.entity.EntityTypeTest;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
@@ -41,10 +42,10 @@ import club.rainbowkitty.minecarttweaks.rule.ModGameRules;
 /**
  * What the trains in a level are doing, in lines a script reads back: once a second a
  * {@code meter} line for every train and every loose cart, and an {@code event=} line for each
- * sever, strike, overlap, overspeed, stalled engine turning round, switch change and change of
- * seating. Every line names its trains and carts by {@link Train#id} and {@link Train#cartId}, so
- * one train can be followed from line to line and two of the same length told apart. All of it is
- * written at DEBUG and costs nothing below it.
+ * sever, strike, overlap, clip, overspeed, stalled engine turning round, switch change and change
+ * of seating. Every line names its trains and carts by {@link Train#id} and
+ * {@link Train#cartId}, so one train can be followed from line to line and two of the same length
+ * told apart. All of it is written at DEBUG and costs nothing below it.
  *
  * <p>The sample is taken after the level's tick and settles nothing on the way: it rebuilds no
  * train and names no leading end, so the tick after it runs as it would have run without it.
@@ -76,6 +77,10 @@ public final class TrainMeter {
     // Horizontal centre distance inside which two carts of different trains are inside each other.
     private static final double OVERLAP_DISTANCE = 0.5;
 
+    // How deep two trains' cars may stand inside each other at the end of a tick before it is a
+    // clip: the least of the three axis overlaps, how far one box must move to clear the other.
+    private static final double CLIP_DEPTH = 0.01;
+
     // Beyond this a figure is written in exponent form: a runaway would print a hundred digits.
     private static final double PLAIN_LIMIT = 1.0E6;
 
@@ -86,6 +91,9 @@ public final class TrainMeter {
     // The last tick each cart was seen over its ceiling, so an overspeed is written once when it
     // starts rather than on every tick it lasts.
     private static final Map<AbstractMinecart, Long> OVER = new IdentityHashMap<>();
+
+    // The last tick each pair of cars was seen clipping, the same way.
+    private static final Map<Clip, Long> CLIPPING = new HashMap<>();
 
     // The game time each level was last sampled at. A frozen tick rate still runs the end of each
     // level's tick without advancing the time that picks a sample.
@@ -101,8 +109,9 @@ public final class TrainMeter {
 
     /**
      * Writes a {@code meter} line for every train of two or more cars in {@code level} and one for
-     * every cart in no train, every {@link #LOG_PERIOD_TICKS} ticks while DEBUG is on. For the end
-     * of the level's tick, when every car has moved.
+     * every cart in no train, every {@link #LOG_PERIOD_TICKS} ticks while DEBUG is on, and a
+     * {@code clip} line every tick for each pair of two trains' cars that has just come to stand
+     * inside each other. For the end of the level's tick, when every car has moved.
      *
      * <p>Reads each train as its cars last left it. A train whose links have changed since any of
      * its cars last asked for it is skipped, and read at the next sample once they have rebuilt it.
@@ -116,7 +125,13 @@ public final class TrainMeter {
         long tick = level.getGameTime();
         Long sampledTick = SAMPLED.put(level.dimension(), tick);
 
-        if (tick % LOG_PERIOD_TICKS != 0 || (sampledTick != null && sampledTick == tick)) {
+        if (sampledTick != null && sampledTick == tick) {
+            return;
+        }
+
+        clips(level, tick);
+
+        if (tick % LOG_PERIOD_TICKS != 0) {
             return;
         }
 
@@ -382,6 +397,72 @@ public final class TrainMeter {
                 && other.getBoundingBox().maxY > cart.getBoundingBox().minY;
     }
 
+    // Writes a clip line for each pair of two trains' cars inside each other deeper than
+    // CLIP_DEPTH, once as it starts. Read after every car's move, so never part-way through one.
+    private static void clips(ServerLevel level, long tick) {
+        for (AbstractMinecart cart : level.getEntities(
+                EntityTypeTest.forClass(AbstractMinecart.class), Entity::isAlive)) {
+            AABB box = cart.getBoundingBox();
+
+            // Each pair once, from the car whose UUID sorts first.
+            for (AbstractMinecart other : level.getEntitiesOfClass(AbstractMinecart.class, box,
+                    candidate -> candidate.isAlive()
+                            && candidate.getUUID().compareTo(cart.getUUID()) > 0)) {
+                double depth = depth(box, other.getBoundingBox());
+
+                if (!(depth > CLIP_DEPTH) || !twoTrains(level, cart, other)) {
+                    continue;
+                }
+
+                Long lastTick = CLIPPING.put(new Clip(cart, other), tick);
+
+                if (lastTick == null || lastTick < tick - 1) {
+                    LOGGER.debug(Line.event("clip")
+                            .count("tick", tick)
+                            .text("cart", Train.cartId(cart))
+                            .text("other", Train.cartId(other))
+                            .text("trains", trainIdOf(cart) + "," + trainIdOf(other))
+                            .text("depth", String.format(Locale.ROOT, "%.3f", depth))
+                            .prose("at " + xyz(cart.position()) + " and " + xyz(other.position()))
+                            .toString());
+                }
+            }
+        }
+
+        CLIPPING.values().removeIf(lastTick -> lastTick < tick - 1);
+    }
+
+    // Whether the two are cars of two trains, read without rebuilding either. No for a pair whose
+    // train cannot be read this tick, its links having changed since its cars last asked for it.
+    private static boolean twoTrains(ServerLevel level, AbstractMinecart cart,
+            AbstractMinecart other) {
+        if (Linkable.coupled(cart, other) || Linkable.coupled(other, cart)) {
+            return false;
+        }
+
+        if (!ModGameRules.trainsEnabled(level)) {
+            return true;
+        }
+
+        Train train = cart.hasLink() ? Train.peek(cart) : null;
+        Train otherTrain = other.hasLink() ? Train.peek(other) : null;
+
+        if (cart.hasLink() && train == null || other.hasLink() && otherTrain == null) {
+            return false;
+        }
+
+        return train == null || train != otherTrain;
+    }
+
+    // How far one box must move to clear the other: the least of their three axis overlaps.
+    private static double depth(AABB box, AABB otherBox) {
+        double eastward = Math.min(box.maxX, otherBox.maxX) - Math.max(box.minX, otherBox.minX);
+        double upward = Math.min(box.maxY, otherBox.maxY) - Math.max(box.minY, otherBox.minY);
+        double southward = Math.min(box.maxZ, otherBox.maxZ) - Math.max(box.minZ, otherBox.minZ);
+
+        return Math.min(eastward, Math.min(upward, southward));
+    }
+
     // One train's line: which train, where its leading car is and how fast it has run, what the
     // placer is making of it, and how far its cars stand from where the track says they should.
     private static void writeTrain(ServerLevel level, long tick, Train train) {
@@ -621,7 +702,14 @@ public final class TrainMeter {
         if (!OVER.isEmpty()) {
             OVER.clear();
         }
+
+        if (!CLIPPING.isEmpty()) {
+            CLIPPING.clear();
+        }
     }
+
+    // Two cars of different trains, the first the one whose UUID sorts first.
+    private record Clip(AbstractMinecart cart, AbstractMinecart other) {}
 
     // One line in the format every meter and event line shares: a leading word, then key=value
     // tokens whose values hold no spaces, then free prose.

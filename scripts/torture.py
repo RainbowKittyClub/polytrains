@@ -31,6 +31,9 @@ Definitions this file settles beyond the plan's clause table:
   travel    per car, speed integrated over time from each sample's Motion; a train's travel is the
             median of its cars'. A chord sum between samples is kept as a lower bound, but at up to
             50 blocks a sample on loops of 26 it says nothing about distance run.
+  clip      an event=clip line: two trains' cars whose boxes intersect deeper than 0.01 blocks at
+            the end of a tick, depth being the least of the three axis overlaps. Written once as a
+            pair starts clipping, it fails Bounce as an overlap does
 """
 
 import argparse
@@ -470,6 +473,7 @@ EVENT_KEYS = {
     "stall_reverse": ("tick", "train", "cart", "pos", "rail"),
     "strike": ("tick", "striker", "struck", "trains", "closing", "shared", "gained"),
     "overlap": ("tick", "cart", "other", "trains", "distance"),
+    "clip": ("tick", "cart", "other", "trains", "depth"),
     "overspeed": ("tick", "cart", "train", "speed", "ceiling", "clamped"),
     "switch": ("tick", "pos", "from", "to", "spanned", "applied"),
     "refusal": ("tick", "train", "why", "car"),
@@ -755,15 +759,20 @@ def judge(run):
     problems = []
     if log.events["overlap"]:
         problems.append(f"{len(log.events['overlap'])} overlap(s)")
+    if log.events["clip"]:
+        deepest = max((num(e.get("depth")) or 0.0 for e in log.events["clip"]))
+        problems.append(f"{len(log.events['clip'])} clip(s), deepest {deepest:.3f}")
     if log.events["overspeed"]:
         worst = max((num(e.get("speed")) for e in log.events["overspeed"]),
                     key=lambda v: -1 if v is None else (math.inf if math.isnan(v) else v))
         problems.append(f"{len(log.events['overspeed'])} overspeed(s), worst {worst}")
     if near:
         problems.append(f"{len(near)} sever(s) within {STRIKE_WINDOW} ticks of a strike")
-    verdict["Bounce"] = clause(problems, f"0 overlap, 0 overspeed, 0 sever within {STRIKE_WINDOW} "
-                                         f"ticks of a strike; {len(strikes)} strike(s)",
-                               log.events["overlap"][:20] + log.events["overspeed"][:20] + near)
+    verdict["Bounce"] = clause(problems, f"0 overlap, 0 clip, 0 overspeed, 0 sever within "
+                                         f"{STRIKE_WINDOW} ticks of a strike; {len(strikes)} "
+                                         f"strike(s)",
+                               log.events["overlap"][:20] + log.events["clip"][:20]
+                               + log.events["overspeed"][:20] + near)
 
     thrown = [e for e in log.events["switch"]
               if e.get("spanned") == "true" and e.get("applied") == "true"]
@@ -1480,6 +1489,7 @@ java.io.IOException: disk full
 [12:00:11] [Server thread/INFO] (Minecraft) event=strike tick=5 not the mod's logger
 [12:00:12] [RCON Client /127.0.0.1 #30/INFO] (net.minecraft.server.rcon.thread.RconClient) Thread RCON Client /127.0.0.1 shutting down
 [12:00:13] [Server thread/DEBUG] (club.rainbowkitty.minecarttweaks.train.TrainPlacer) event=refusal tick=2100 train=99990000 why=SEAT_FOULED car=1 a cart of [x/DEBUG] (y) lies across
+[12:00:14] [Server thread/DEBUG] (club.rainbowkitty.minecarttweaks.train.TrainMeter) event=clip tick=2200 cart=0a1b2c3d other=f0e1d2c3 trains=0a1b2c3d,f0e1d2c3 depth=0.044 at -13.50,-52.90,-11.04 and -12.53,-52.90,-10.97
 """
 
 
@@ -1538,8 +1548,12 @@ def parse_test():
     check("meter n/a", num(log.meters["train"][1]["maxspeed"]), None)
     # The malformed strike still counts: its tick is readable, and a strike it hides could matter.
     check("event counts", {k: len(v) for k, v in log.events.items()},
-          {"sever": 2, "stall_reverse": 1, "strike": 3, "overlap": 1, "overspeed": 2, "switch": 3,
-           "refusal": 3})
+          {"sever": 2, "stall_reverse": 1, "strike": 3, "overlap": 1, "clip": 1, "overspeed": 2,
+           "switch": 3, "refusal": 3})
+    check("clip", [log.events["clip"][0][k] for k in ("tick", "cart", "other", "trains")]
+          + [num(log.events["clip"][0]["depth"]), log.events["clip"][0]["prose"]],
+          [2200, "0a1b2c3d", "f0e1d2c3", "0a1b2c3d,f0e1d2c3", 0.044,
+           "at -13.50,-52.90,-11.04 and -12.53,-52.90,-10.97"])
     check("bracketed prose", (log.events["refusal"][-1]["why"], log.events["refusal"][-1]["prose"]),
           ("SEAT_FOULED", "a cart of [x/DEBUG] (y) lies across"))
     check("strike figures",
@@ -1610,7 +1624,8 @@ def parse_test():
           [([short(a[0]), short(a[1])], "FC", 300, 340, 3, 3.8, 320)])
     check("Coupling worst", coupling["summary"].endswith(
         f"worst 3.80, {short(a[0])}-{short(a[1])} (FC) at +320"), True)
-    check("Bounce", (verdict["Bounce"]["verdict"], len(verdict["Bounce"]["details"])), ("FAIL", 4))
+    check("Bounce", (verdict["Bounce"]["verdict"], len(verdict["Bounce"]["details"])), ("FAIL", 5))
+    check("Bounce clip", "1 clip(s), deepest 0.044" in verdict["Bounce"]["summary"], True)
     check("Bounce near strike", [(n["sever_tick"], n["strike_tick"]) for n in
                                  verdict["Bounce"]["details"] if "sever_tick" in n], [(1030, 1020)])
     switch = verdict["Switch-safe"]
@@ -1631,6 +1646,15 @@ def parse_test():
     check("clean Bounce", verdict["Bounce"]["verdict"], "PASS")
     check("clean Switch-safe", verdict["Switch-safe"]["verdict"], "PASS")
     check("clean no vacuity", "vacuity" in verdict, False)
+
+    # A clip alone fails Bounce and nothing else, as an overlap does.
+    clipped = Run("selfcheck", "synthetic", YARD_BOX, 1500)
+    clipped.start_tick, clipped.start_wall = 0, 0.0
+    clipped.log = parse_log("\n".join(
+        line for line in SYNTHETIC_LOG.splitlines() if "event=clip" in line))
+    verdict = judge(clipped)
+    check("clip alone", ([name for name in CLAUSES if verdict[name]["verdict"] == "FAIL"],
+                         verdict["Bounce"]["summary"]), (["Bounce"], "1 clip(s), deepest 0.044"))
 
     # A pair a link and a block apart for one sample fails Coupling and nothing else.
     loose = Run("selfcheck", "synthetic", YARD_BOX, 40)
