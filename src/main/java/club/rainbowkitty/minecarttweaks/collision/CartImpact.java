@@ -10,6 +10,7 @@ import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.Shapes;
 
 import club.rainbowkitty.minecarttweaks.rule.ModGameRules;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
@@ -27,8 +28,9 @@ public final class CartImpact {
     // Below this a cart is treated as stopped: it neither shoves nor strikes.
     private static final double STILL = 1.0E-4;
 
-    // Closer than this two boxes' faces count as touching rather than overlapping.
-    private static final double OVERLAP_TOLERANCE = 1.0E-4;
+    // Closer than this two boxes' faces count as touching rather than overlapping: the tolerance
+    // VoxelShape.collide settles a face at, past which it lets a box through unstopped.
+    private static final double OVERLAP_TOLERANCE = Shapes.EPSILON;
 
     // Damage per block per tick of impact speed, per point of minecart_damage: the speed in blocks
     // per second halved, so at the rule's default of 20 a cart at vanilla's top speed deals two
