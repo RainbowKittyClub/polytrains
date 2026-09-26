@@ -403,7 +403,28 @@ public final class TrainPlacer {
 
         // Waits rather than counts against the train. A cart on this track past either end has
         // shortened it already; what is left stands off this track or between the train's own cars.
+        Seat[] offered = seats.clone();
         Foul foul = fouled(train, cars, seats, seatArcs, leadIndex);
+
+        // A car let go that way is still coupled: its train is drawn back as far as it can be for
+        // every seat beside it to lie within a link of it, and stops there until the seat clears
+        // or its engines turn it. What room the hold above used is not the tether's to use again.
+        double tether = foul == null || contact == null ? 0.0 : tetherBack(ribbon, cars, offered,
+                seats, seatArcs, leadIndex, leadArc, travelSign, contact.room() - back);
+
+        if (tether > EPSILON && !seatTaken(train, ribbon, leader, leadArc - travelSign * tether)) {
+            leadArc -= travelSign * tether;
+            headArc -= travelSign * tether;
+            drawnBack = true;
+            held = true;
+            speed = 0.0;
+            seating = seatCars(ribbon, cars, headArc, offsets, order, leadIndex, drawnBack,
+                    leadArc, travelSign);
+            seats = seating.seats();
+            seatArcs = seating.seatArcs();
+            refusal = seating.refusal();
+            foul = fouled(train, cars, seats, seatArcs, leadIndex);
+        }
 
         if (foul != null && refusal == null) {
             refusal = new Refusal(Bail.SEAT_FOULED, Refusal.NONE, "a cart of another train lies at "
@@ -571,6 +592,75 @@ public final class TrainPlacer {
         }
 
         return new Contact(depth, room, Math.max(0.0, recede));
+    }
+
+    // How far, up to room, the train is drawn back against travelSign for every seat beside a car
+    // let go for a fouled seat to lie within a link of it; room where no draw-back is enough.
+    private static double tetherBack(TrackRibbon ribbon, List<AbstractMinecart> cars,
+            Seat[] offered, Seat[] seats, double[] seatArcs, int leadIndex, double leadArc,
+            double travelSign, double room) {
+        double link = TrainCoupling.maxLinkDistance();
+        double back = 0.0;
+
+        for (int i = 0; i < cars.size(); i++) {
+            if (i == leadIndex || offered[i] == null || seats[i] != null) {
+                continue;
+            }
+
+            Vec3 loosePosition = cars.get(i).position();
+
+            for (int j = i - 1; j <= i + 1; j += 2) {
+                boolean placed = j >= 0 && j < cars.size() && (j == leadIndex || seats[j] != null);
+
+                if (placed) {
+                    back = Math.max(back, backWithin(ribbon, j == leadIndex ? leadArc : seatArcs[j],
+                            travelSign, loosePosition, link, Math.max(0.0, room)));
+                }
+            }
+        }
+
+        return back;
+    }
+
+    // The least draw-back, from nought to room, that brings the track at arc within reach of
+    // position; room where none does.
+    private static double backWithin(TrackRibbon ribbon, double arc, double travelSign,
+            Vec3 position, double reach, double room) {
+        if (within(ribbon, arc, position, reach)) {
+            return 0.0;
+        }
+
+        double outside = 0.0;
+
+        for (double drawn = CLEAR_STEP; drawn < room + CLEAR_STEP; drawn += CLEAR_STEP) {
+            double tried = Math.min(drawn, room);
+
+            if (within(ribbon, arc - travelSign * tried, position, reach)) {
+                // Halved down between the last draw-back that fell short and this one.
+                for (int halving = 0; halving < CLEAR_HALVINGS; halving++) {
+                    double middle = (outside + tried) * 0.5;
+
+                    if (within(ribbon, arc - travelSign * middle, position, reach)) {
+                        tried = middle;
+                    } else {
+                        outside = middle;
+                    }
+                }
+
+                return tried;
+            }
+
+            outside = tried;
+        }
+
+        return room;
+    }
+
+    // Whether the track at arc lies within reach of position.
+    private static boolean within(TrackRibbon ribbon, double arc, Vec3 position, double reach) {
+        Vec3 trackPosition = ribbon.positionAt(arc);
+
+        return trackPosition != null && trackPosition.distanceTo(position) <= reach;
     }
 
     // How far along run car goes before its box meets other's on ground it did not already cover:
