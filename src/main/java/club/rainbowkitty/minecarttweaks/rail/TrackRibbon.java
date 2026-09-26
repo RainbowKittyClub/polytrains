@@ -63,6 +63,9 @@ public final class TrackRibbon {
     // cumulative length at entry, so a node covers [arc, arc + span].
     private record Node(BlockPos block, Vec3 entry, Vec3 exit, double arc, double span) {}
 
+    // The block past one end of the ribbon that its track would carry on into, and the way out.
+    private record Beyond(BlockPos pos, Vec3 outwardDirection) {}
+
     // The rail blocks and crossing points this train has traversed, in order.
     private final Deque<Node> nodes = new ArrayDeque<>();
 
@@ -584,23 +587,18 @@ public final class TrackRibbon {
      * seated closer than half its length to that end would be put inside it, or through the switch.
      */
     public boolean blockedBeyond(Level level, boolean farEnd) {
-        if (nodes.isEmpty()) {
-            return false;
-        }
-
-        Node end = farEnd ? nodes.getLast() : nodes.getFirst();
-        Vec3 outwardDirection = outward(end, !farEnd);
-        BlockPos beyond = outwardDirection == null
-                ? null : onward(level, end.block(), outwardDirection);
+        Beyond beyond = beyondEnd(level, farEnd);
 
         if (beyond == null) {
             return false;
         }
 
-        BlockState past = level.getBlockState(beyond);
+        BlockState past = level.getBlockState(beyond.pos());
 
-        return !enterable(past, outwardDirection) && SwitchedRailBlock.held(level, beyond)
-                || !BaseRailBlock.isRail(past) && !past.getCollisionShape(level, beyond).isEmpty();
+        return !enterable(past, beyond.outwardDirection())
+                        && SwitchedRailBlock.held(level, beyond.pos())
+                || !BaseRailBlock.isRail(past)
+                        && !past.getCollisionShape(level, beyond.pos()).isEmpty();
     }
 
     /**
@@ -609,18 +607,12 @@ public final class TrackRibbon {
      * something holds as it is stays so, and this ribbon's growth then stops at it as before.
      */
     public void openSwitchBeyond(ServerLevel level, boolean farEnd, AbstractMinecart car) {
-        if (nodes.isEmpty()) {
-            return;
-        }
+        Beyond beyond = beyondEnd(level, farEnd);
 
-        Node end = farEnd ? nodes.getLast() : nodes.getFirst();
-        Vec3 outwardDirection = outward(end, !farEnd);
-        BlockPos beyond = outwardDirection == null
-                ? null : onward(level, end.block(), outwardDirection);
-
-        if (beyond != null && !enterable(level.getBlockState(beyond), outwardDirection)) {
-            SwitchedRailBlock.steerOnto(level, beyond,
-                    Direction.getApproximateNearest(outwardDirection), car);
+        if (beyond != null
+                && !enterable(level.getBlockState(beyond.pos()), beyond.outwardDirection())) {
+            SwitchedRailBlock.steerOnto(level, beyond.pos(),
+                    Direction.getApproximateNearest(beyond.outwardDirection()), car);
         }
     }
 
@@ -920,6 +912,21 @@ public final class TrackRibbon {
 
         return outwardEdge == null ? null
                 : new Vec3(outwardEdge.getStepX(), 0.0, outwardEdge.getStepZ());
+    }
+
+    // The block past the far or near end that its track would carry on into, and the way out
+    // through that end; null for an empty ribbon or an end whose track goes no further.
+    private @Nullable Beyond beyondEnd(Level level, boolean farEnd) {
+        if (nodes.isEmpty()) {
+            return null;
+        }
+
+        Node end = farEnd ? nodes.getLast() : nodes.getFirst();
+        Vec3 outwardDirection = outward(end, !farEnd);
+        BlockPos pos = outwardDirection == null
+                ? null : onward(level, end.block(), outwardDirection);
+
+        return pos == null ? null : new Beyond(pos, outwardDirection);
     }
 
     // Whichever rail the block at fromBlock exits onto in the direction of outwardDirection, or
