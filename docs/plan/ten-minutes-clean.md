@@ -18,10 +18,10 @@ the line format M3 and M4 define and can be built alongside them. X1 shares a si
 overspeed line and is built with it; X2 is independent. P1 to P5 are independent of each other
 except that P1 rebases on M4's edit to the same method. R1 is the bar and makes the work complete.
 P6 to P8, planned from the runs after P1 to P5, are independent of each other and each is built
-against a dev server of its own; so are P9 and P10, planned from the first run with P6 to P8 in,
-and P11, planned from the first with P9 and P10 in. P12 and P13, and the rest of P5, were planned
-after R1 from what it does not measure; they are independent of each other, and R1 runs again once
-they land.
+against a dev server of its own; so are P9 and P10, planned from the first run with P6 to P8 in, and
+P11, planned from the first with P9 and P10 in. P12 and P13, and the rest of P5, were planned after
+R1 from what it does not measure; they are independent of each other, and R1 runs again once they
+land. P14, planned from the runs with P13 in, builds on it.
 
 ---
 
@@ -131,6 +131,13 @@ overlaps and 4 overspeeds, worst 2.52, the overspeeds from the ceilings dropping
 already moving, so it says nothing clean about low speed. They are planned as P12 and P13, and P5's
 bound is settled as the trim window.
 
+**With P12 and P13 in, coupling holds and overlap is back.** Read through P13's Coupling clause,
+both R1 runs fail it: a coupled pair past a link in 30 and 26 of 601 samples, worst 8.29 and 9.39
+blocks. With P13 in, two consecutive runs at 40 passed every clause, and a run at 100 passed
+Coupling, widest 2.02, but failed Bounce on 3 overlap lines, one episode of two ticks. Overlaps
+showed in 7 of the 16 runs after P13's tether, against none of 5 before it; each one traced was on a
+slope and involved the lone cart or a car let go. They are planned as P14.
+
 ## How these stages get tested
 
 On the mod's own dev server (`run/server.properties`: game port 25603, rcon 25579, password in the
@@ -145,12 +152,13 @@ the stage names. The user's in-world confirmation is waived for every stage in t
 waiver rests on M5's self-check, which has to catch an injected sever and an injected stall before
 any verdict from it is believed.
 
-The bar is five clauses and three vacuity checks, each machine-checked by M5:
+The bar is six clauses and three vacuity checks, each machine-checked by M5:
 
 | Clause | Fails when | Read from |
 |---|---|---|
 | Alive | rcon stops answering before game time has advanced 12,000 ticks from the rig call; or `run/crash-reports/` gains a file; or the log gains an `ERROR` or a stack trace from the mod's package. | heartbeat, directory listing, log scan |
 | Sever | the set of link edges — unordered pairs of cart UUIDs from the `minecarttweaks:link` slots — at any sample differs from the set at the first sample; or an `event=sever` line appears. | per-second link dump; M4 |
+| Coupling | two coupled cars stand more than a link (`maxLinkDistance`, 3 blocks) apart at any sample, with no allowance. The worst pair is named. | per-second positions and link dump |
 | Stall | a train with at least one furnace car has every car within 5 blocks of where it stood 600 ticks earlier. Reported per train; a train queued behind a stalled one is reported too, and named as queued. | per-second positions |
 | Bounce | an `event=overlap` (cars of two trains within 0.5 blocks); or an `event=overspeed` (horizontal speed above the cart's own ceiling by more than 1%); or a sever within 40 ticks of a strike. Momentum sharing at each strike is reported, not judged. | M4 |
 | Switch-safe | an `event=switch` with `spanned=true`; or a sever whose reason is the diverted-track one. | M4 |
@@ -160,11 +168,12 @@ blocks, or fewer than 35 carts at the end fails the run as "not a torture", what
 say — the abtestloop control passed every clause in September precisely because its trains never
 met.
 
-The protocol, which M5 automates: check the two rules over rcon; set the box; reset and rig the
-group; record the log line count and the game time; sample every second until game time has
-advanced 12,000 ticks or rcon dies; then parse the log from the mark, print the verdict table, save
-the series, reset the group and restore the yard box `{x:-44,y:-53,z:-4,w:25,d:25}`. After a
-crash: `devserver.sh restart`, then kill `@e[tag=mtx]` before the reloaded carts re-accelerate.
+The protocol, which M5 automates: check the two rules over rcon, `max_minecart_speed` against
+`--speed` (100 unless given); set the box; reset and rig the group; record the log line count and
+the game time; sample every second until game time has advanced 12,000 ticks or rcon dies; then
+parse the log from the mark, print the verdict table, save the series, reset the group and restore
+the yard box `{x:-44,y:-53,z:-4,w:25,d:25}`. After a crash: `devserver.sh restart`, then kill
+`@e[tag=mtx]` before the reloaded carts re-accelerate.
 
 Working in a worktree, as `/batch` does. `build.gradle`, `settings.gradle` and `gradlew` are
 symlinks into the `gradle/` submodule, so a fresh worktree builds nothing until
@@ -878,14 +887,67 @@ and stop each where it happens.
 **Done when.** Two consecutive ten-minute runs at 40 pass every clause, the new one included, and a
 run at 100 still does.
 
+### As built
+
+`torture.py` takes `--speed`, the `max_minecart_speed` a run is checked against, 100 unless given,
+refuses a server set otherwise and records the speed in the header and the JSON. The Coupling clause
+fails a run on any sample with two coupled cars more than a link apart, with no allowance, and names
+the worst pair. At 40 on the code before, runs read 15 to 82 such readings, worst 20.05 blocks.
+
+Every car found apart from its train was one the placer had let go and nothing held near it.
+Junctions and switches let cars go: a crossing train, or a standing leading car's own engines aimed
+round a bend, relaid a junction under a standing car, which restarted onto the other arm; and a
+switch held against an arriving car turned it onto a leg it had not come by, past which the ribbon
+could not grow. A junction is now laid by a standing car's drive and a leading car keeps the arm its
+train recorded; a car stops short of a switch laid against it, which is an end its train packs short
+of, and a train running tail first asks the switch past its far car to open. Trains ran on without
+the cars they let go: a car refused `SEAT_FOULED` was left behind, and the hold that should have
+stopped its train read its direction off the leading car's speed, which a train stopped that tick by
+what it met no longer has. The train is now drawn back to the car's first contact, the hold reads
+the way the leading car ran, and while a car stays let go its train is tethered to it, drawn back
+until that car's seat is where it stands. Cars let go ran off on their own: at the speed they were
+last placed with, 2.45 blocks a tick while their train stood; on their own engine under the vanilla
+force model; or through their own train's seated cars, which `CartInteraction` let pass whenever
+either car was seated. A car is let go no faster than its train now runs, a furnace car let go
+coasts, and only cars the placer holds pass through one another. The activator sweep reaches as far
+as one tick can carry a car.
+
+A code review of the work up to `368af0b` found six faults. Five were fixed, one with an edge left:
+a leading car that ran less than a let-go car's seat is ahead is drawn back only part of the way,
+and `fouled` checks only other trains' carts. The sixth was left as it is: a blocked train pushed
+off its end is not tethered, since drawing it back would undo the push-off.
+
+Observed on a server of its own, on `dd1cc7d`: the self-check exact; two consecutive ten-minute runs
+at 40 passing every clause, the widest coupling 2.17 and 1.72 blocks; and a run at 100 passing
+Coupling at 2.02 but failing Bounce on 3 overlap lines, one episode of two ticks, the lone cart
+rammed into a train's leading car on the hill slope. That, and the rise in overlaps since the
+tether, is P14's.
+
+## P14 — Cars on a slope never pass into one another — **in progress**
+
+**Build.** With P13 in, every overlap traced is on a slope and involves the lone cart or a car let
+go: a leading car resting flush on the lone cart's roof on the dip slope, carried down into it by
+vanilla's move on the third tick and held there six ticks, 0.47 blocks apart; a car let go riding
+the roofs of another train's cars after both trains let cars go on the same slope, 19 lines; and the
+lone cart rammed into a train's leading car on the hill slope, two ticks, 0.22 apart. P13's lead:
+vanilla's collision lets a box through an overlap above 1e-7 (`Shapes.EPSILON`) while
+`CartImpact.deepens` counts only one above 1e-4 (CartImpact.java:31 and :164 at `dd1cc7d`), and
+`SlopeStep.moveOnRail` returns early on a step that stays on its line without checking `reach`
+(SlopeStep.java:51). Find which code puts each car inside the other and stop it there, and find
+whether P13's holds and tether make such meetings more frequent: overlaps showed in 7 of 16 runs
+after the tether (`3e1d17b`) against none of 5 before it.
+
+**Done when.** Two consecutive ten-minute runs at 100 and two at 40 pass every clause, Coupling
+included.
+
 # Part R — The bar
 
-## R1 — Ten minutes clean, twice — **done**
+## R1 — Ten minutes clean, twice — **in progress**
 
 **Build.** Nothing. `python3 scripts/torture.py run` after each P stage lands, and again at the end.
 
-**Done when.** Two consecutive runs pass all five clauses and the three vacuity checks. The two
-verdict tables are pasted into this stage's "As built", with the commit each ran against.
+**Done when.** Two consecutive runs pass every clause and the three vacuity checks. The two verdict
+tables are pasted into this stage's "As built", with the commit each ran against.
 
 ### As built
 
@@ -920,6 +982,10 @@ P4 and P5 read R1 for their own Done when; each is recorded under its own headin
 ribbons were 46, 59 and 71 nodes for trains of 4, 6 and 8 cars, spanning 44.0, 53.1 and 64.6 blocks
 in run 1 and 37.5, 51.6 and 63.9 in run 2, against the `6n + 16` blocks of the trim window; twice
 the car count plus a margin, read literally, no running train comes near.
+
+Reopened after P13. Its Coupling clause makes the bar six clauses, which both runs above fail, and
+with P13 in a run at 100 failed Bounce on 3 overlaps; P14 takes them, and its Done when is this
+bar's at both speeds.
 
 ---
 
