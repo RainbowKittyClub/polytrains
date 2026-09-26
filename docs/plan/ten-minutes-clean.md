@@ -1036,7 +1036,7 @@ and under realistic physics a hard meeting at such a corner can now WRECK, as an
 One run of the fix before its review gridlocked three trains, 20 cars, in the bottom balloon loop,
 which holds about 13; it did not recur in the two runs after, and that kind of jam is P15's.
 
-## P17 — A car off its rails is never set down inside another — **in progress**
+## P17 — A car off its rails is never set down inside another — **done**
 
 **Build.** A step along the rail is guarded (`SlopeStep`, `deepens`), but two moves are not.
 `AbstractMinecart.comeOffTrack` (AbstractMinecart.java:377-389) moves a car off its rails with
@@ -1051,6 +1051,32 @@ onto its rails at another train's car.
 
 **Done when.** The probe's car ends against the other car rather than inside it, where the code
 before set it inside, and a ten-minute run at 100 and one at 40 pass every clause.
+
+### As built
+
+The move P14 saw was not vanilla letting a box already inside another through. A car off its rails
+shares track with no cart, so `CartInteraction` answered IGNORE between it and every cart, and the
+move in `comeOffTrack` carried it 2.33 west into two cars it had stood clear of; `adjustToRails`
+then set it down 0.60 deep. Two cars of different trains, one of them off its rails by vanilla's
+`isOnRails`, now COLLIDE, or WRECK under physics. Two new injections guard the moves: a
+`@WrapOperation` on the `move` in `AbstractMinecart.comeOffTrack` takes each axis of a move by a car
+already inside another train's car only where it does not deepen the overlap, and one on both calls
+of `adjustToRails` in `NewMinecartBehavior` (`tick` and `moveAlongTrack`) replays a set-down against
+other trains' cars axis by axis, stops it where the car first meets one, and marks the car off its
+rails so the set-down is tried again until the rail is clear. Stopping short follows vanilla's move,
+`SlopeStep` and the placer; a car left where it was, above a roof with no speed along its rail,
+would hang in the air.
+
+Observed on a server of its own: every probe, a car run off a rail's end or its rails into a
+standing cart, dropped onto one or summoned above one, ended 0.30 to 0.70 inside the other car on
+the code before and against it or on its roof after; a run at 100 and one at 40 passed every clause,
+and `3bjump` turned only at its eastern end. Another run at 100 failed Stall on two trains jammed on
+their rails at the corner by `(-2,-53,-26)`. On `e80d980`, with P16 in, a run at 100 passed every
+clause with no clip, and one at 40 failed Stall on jams at two one-row U-turns, the bottom balloon
+loop and the serpentine, every car on its rails: P15's kind. Not fixed: the stepper's hill lift
+(NewMinecartBehavior.java:457) is still a bare `setPos`, and `3bjump` fails Coupling, 53 readings in
+ten minutes up to 12.59 blocks, as it did before P17: while the leading car flies, the rest of its
+train is loose.
 
 # Part R — The bar
 
