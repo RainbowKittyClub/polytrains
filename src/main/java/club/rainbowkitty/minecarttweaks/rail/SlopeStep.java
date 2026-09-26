@@ -31,8 +31,8 @@ public final class SlopeStep {
     /**
      * Runs {@code move}, the stepper moving {@code cart} by {@code step} along the rail at
      * {@code railPos} laid to {@code shape}, and puts the car back on the step's line where it
-     * first touched another cart if the move left that line. The move stands otherwise, with the
-     * collisions and pushes it reported.
+     * first touched another cart if the move left that line or carried it past there. The move
+     * stands otherwise, with the collisions and pushes it reported.
      *
      * <p>{@code Entity.move} settles height first, so a step up a slope into another cart's box
      * rises without advancing, one down a slope onto a cart's roof slides across it, and one up a
@@ -48,17 +48,23 @@ public final class SlopeStep {
 
         move.run();
 
-        if (reach >= 1.0 || onLine(start, step, cart.position())) {
+        if (reach >= 1.0) {
             return;
         }
 
-        // No further along the step than the move itself took the car, which may have been
-        // held back more.
         Vec3 flatStep = step.horizontal();
         double progress = flatStep.lengthSqr() < TOUCH * TOUCH ? 0.0
                 : cart.position().subtract(start).horizontal().dot(flatStep)
                         / flatStep.lengthSqr();
 
+        // Near its line counts as on it only short of where it touched: past there it slid over
+        // a roof, which can leave it far enough above its rail for the next step to lose it.
+        if (progress <= reach && onLine(start, step, cart.position())) {
+            return;
+        }
+
+        // No further along the step than the move itself took the car, which may have been
+        // held back more.
         cart.setPos(start.add(step.scale(Math.clamp(Math.min(reach, progress), 0.0, 1.0))));
         // A car on its rail stands on the rail, not on the roof the move set it down on.
         cart.setOnGround(false);
