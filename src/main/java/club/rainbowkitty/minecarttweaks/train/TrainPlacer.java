@@ -446,6 +446,9 @@ public final class TrainPlacer {
         // A train too slow to read a heading keeps facing whichever end nominally leads, rather
         // than reading a direction out of noise.
         double faceSign = travelSign != 0.0 ? travelSign : order * fromHead;
+        // How far a car can have run to its seat this tick: as far as its leading car ran, which a
+        // hold does not undo however far it cuts the speed the train is laid with.
+        double reach = Math.max(speed, Math.abs(leadRun));
 
         for (int i = 0; i < cars.size(); i++) {
             if (i == leadIndex && !drawnBack) {
@@ -460,7 +463,8 @@ public final class TrainPlacer {
                 continue;
             }
 
-            place(train, cars.get(i), seats[i], seatArcs[i], faceSign, speed, i != leadIndex);
+            place(train, cars.get(i), seats[i], seatArcs[i], faceSign, speed, reach,
+                    i != leadIndex);
 
             // Drawn back off an end the train is leaving, the leading car stays vanilla's: seated,
             // it skips vanilla's move and is drawn back again every tick that end still presses.
@@ -1158,12 +1162,12 @@ public final class TrainPlacer {
 
     // Puts one car on its seat and does by hand everything vanilla would have done moving it there.
     private static void place(Train train, AbstractMinecart car, Seat seat, double arc,
-            double faceSign, double speed, boolean shouldAim) {
+            double faceSign, double speed, double reach, boolean shouldAim) {
         Vec3 previousPosition = car.position();
         Vec3 forward = seat.tangent().scale(faceSign);
 
         // Fires activator rails and the like before the car's position changes underneath them.
-        sweep(train, car, arc, speed);
+        sweep(train, car, arc, reach);
 
         car.setOldPosAndRot();
         car.setOnRails(true);
@@ -1202,8 +1206,9 @@ public final class TrainPlacer {
         car.applyEffectsFromBlocks(previousPosition, car.position());
     }
 
-    // Fires every activator rail a car crosses reaching its seat, then records where it ended up.
-    private static void sweep(Train train, AbstractMinecart car, double arc, double speed) {
+    // Fires every activator rail a car crosses reaching its seat, up to reach past a node's slack,
+    // then records where it ended up.
+    private static void sweep(Train train, AbstractMinecart car, double arc, double reach) {
         if (!(car.level() instanceof ServerLevel level)
                 || !(car instanceof AbstractMinecartExt ext)) {
             return;
@@ -1216,7 +1221,7 @@ public final class TrainPlacer {
 
         // Further apart than a tick's travel and the track between is not crossed ground but merely
         // unaccounted for, so only the rail the car lands on is owed anything.
-        double from = was == null || Math.abs(was - arc) > speed + SWEEP_SLACK ? arc : was;
+        double from = was == null || Math.abs(was - arc) > reach + SWEEP_SLACK ? arc : was;
 
         train.ribbon().blocksBetween(from, arc, block -> {
             BlockState crossed = level.getBlockState(block);
