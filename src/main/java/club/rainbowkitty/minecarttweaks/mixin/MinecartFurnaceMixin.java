@@ -237,7 +237,14 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         }
 
         // Vanilla's engine, when the model keeps it: its own branch supplies the force from here.
+        // A car its train let go of coasts instead, its drive being the leading car's to spend,
+        // or it runs off along the track under its own power while its train stands.
         if (!RailForces.forLevel(level()).drivesEngine()) {
+            if (minecarttweaks$letGo()) {
+                cir.setReturnValue(RailForces.forLevel(level()).retarded(this, deltaMovement,
+                        super.applyNaturalSlowdown(deltaMovement.multiply(0.98, 0.0, 0.98))));
+            }
+
             return;
         }
 
@@ -266,6 +273,19 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
             Vec3 deltaMovement, CallbackInfoReturnable<Vec3> cir) {
         cir.setReturnValue(
                 RailForces.forLevel(level()).retarded(this, deltaMovement, cir.getReturnValue()));
+    }
+
+    // Whether this car moves while its train is held without leading it, which a seated car never
+    // does: one the placer has let go of.
+    @Unique
+    private boolean minecarttweaks$letGo() {
+        if (!hasLink() || !ModGameRules.trainsEnabled(level())) {
+            return false;
+        }
+
+        Train train = Train.of(this);
+
+        return train.holding() && train.leader() != this;
     }
 
     // Aims the engine along a heading read off the cart's movement. A reversal without leaving the
