@@ -14,6 +14,7 @@ import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Vec3i;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
@@ -72,6 +73,10 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
 
     // Below this a cart is treated as stopped and steer() leaves its facing alone.
     private static final double MOVING_EPSILON = 1.0E-6;
+
+    // How far short of a closed switch's edge a car is stopped: vanilla aims each step 1.0E-5 past
+    // an edge, so from here its next step reads as no progress and it halts rather than loops.
+    private static final double CLOSED_MARGIN = 1.0E-4;
 
     // Both textures are drawn with the bottom edge toward the placer, so each is rotated half a
     // turn from FACING's own y-rotation to bring that edge round to FACING's opposite.
@@ -183,6 +188,81 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
             orient(level, nextPos,
                     Direction.getApproximateNearest(eastDelta, 0.0, southDelta), cart);
         }
+    }
+
+    /**
+     * {@code step}, cut short where it would carry {@code cart}'s box across the edge of the rail
+     * at {@code railPos}, laid to {@code shape}, into a switch laid against that edge.
+     *
+     * <p>A switch another car rides, or a train lies across, keeps its curve against a car that
+     * arrives by the end the curve does not join. Let in, vanilla turns that car onto a leg it did
+     * not come by, into whatever is crossing, and it stands there with no rail back out. Its box
+     * is kept out as well as its middle: a car poking into the switch fouls the curve through it.
+     */
+    public static Vec3 shortOfClosed(
+            AbstractMinecart cart, BlockPos railPos, RailShape shape, Vec3 step) {
+        Vec3 runDirection = step.horizontal();
+
+        if (runDirection.lengthSqr() <= MOVING_EPSILON
+                || !(cart.level() instanceof ServerLevel level)) {
+            return step;
+        }
+
+        var exits = AbstractMinecart.exits(shape);
+        Vec3i exit = Vec3.atLowerCornerOf(exits.getFirst()).horizontal().dot(runDirection)
+                >= Vec3.atLowerCornerOf(exits.getSecond()).horizontal().dot(runDirection)
+                ? exits.getFirst() : exits.getSecond();
+        Direction travel = Direction.getApproximateNearest(exit.getX(), 0.0, exit.getZ());
+        BlockPos nextPos = closedSwitch(level, railPos.offset(exit.getX(), 0, exit.getZ()), travel);
+        double across = exit.getX() != 0 ? step.x() * exit.getX() : step.z() * exit.getZ();
+
+        if (nextPos == null || across <= 0.0) {
+            return step;
+        }
+
+        // Asked first, as a car stepping onto it asks, in case nothing holds it: laid for this car,
+        // it lets the car on.
+        orient(level, nextPos, travel, cart);
+
+        if (openTo(level.getBlockState(nextPos), travel.getOpposite())) {
+            return step;
+        }
+
+        // How far the box's leading face may still go towards the edge, and the step's share of it.
+        double toEdge = exit.getX() != 0
+                ? (exit.getX() > 0 ? nextPos.getX() - cart.getBoundingBox().maxX
+                        : cart.getBoundingBox().minX - railPos.getX())
+                : (exit.getZ() > 0 ? nextPos.getZ() - cart.getBoundingBox().maxZ
+                        : cart.getBoundingBox().minZ - railPos.getZ());
+
+        return step.scale(Math.clamp((toEdge - CLOSED_MARGIN) / across, 0.0, 1.0));
+    }
+
+    /**
+     * Whether the switch in {@code state} is laid with an end at {@code edge} of its block, so a
+     * car can come on or go off it there.
+     */
+    public static boolean openTo(BlockState state, Direction edge) {
+        var exits = AbstractMinecart.exits(state.getValue(SHAPE));
+
+        return exits.getFirst().getX() == edge.getStepX()
+                        && exits.getFirst().getZ() == edge.getStepZ()
+                || exits.getSecond().getX() == edge.getStepX()
+                        && exits.getSecond().getZ() == edge.getStepZ();
+    }
+
+    // The switch in the column at pos, level with it or a block either way, if it is laid against
+    // a car arriving travelling travel; null otherwise.
+    private static @Nullable BlockPos closedSwitch(Level level, BlockPos pos, Direction travel) {
+        for (BlockPos candidate : new BlockPos[] {pos, pos.above(), pos.below()}) {
+            BlockState state = level.getBlockState(candidate);
+
+            if (state.getBlock() instanceof SwitchedRailBlock) {
+                return openTo(state, travel.getOpposite()) ? null : candidate;
+            }
+        }
+
+        return null;
     }
 
     @Override

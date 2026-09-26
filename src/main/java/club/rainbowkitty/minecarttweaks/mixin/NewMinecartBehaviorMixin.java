@@ -17,6 +17,7 @@ import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
+import club.rainbowkitty.minecarttweaks.block.SwitchedRailBlock;
 import club.rainbowkitty.minecarttweaks.collision.CartImpact;
 import club.rainbowkitty.minecarttweaks.collision.CartInteraction;
 import club.rainbowkitty.minecarttweaks.rail.SlopeStep;
@@ -100,7 +101,7 @@ public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccess
 
     // A step that meets another cart can leave its car off its line, lifted off a slope or slid
     // off a corner; SlopeStep puts it back where the step first touched. A step deeper into a
-    // cart the car is already inside is not taken at all.
+    // cart the car is already inside is not taken at all, nor one into a switch closed against it.
     @WrapOperation(
             method = "stepAlongTrack",
             at = @At(value = "INVOKE",
@@ -110,9 +111,11 @@ public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccess
     private void minecarttweaks$moveOnRail(AbstractMinecart cart, MoverType moverType, Vec3 step,
             Operation<Void> move, @Local(argsOnly = true) BlockPos railPos,
             @Local(argsOnly = true) RailShape shape) {
-        SlopeStep.moveOnRail(cart, step, railPos, shape, () -> {
-            if (!CartImpact.deepens(cart, step)) {
-                move.call(cart, moverType, step);
+        Vec3 openStep = SwitchedRailBlock.shortOfClosed(cart, railPos, shape, step);
+
+        SlopeStep.moveOnRail(cart, openStep, railPos, shape, () -> {
+            if (!CartImpact.deepens(cart, openStep)) {
+                move.call(cart, moverType, openStep);
             }
         });
     }

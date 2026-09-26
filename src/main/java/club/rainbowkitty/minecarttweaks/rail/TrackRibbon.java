@@ -884,10 +884,8 @@ public final class TrackRibbon {
 
         // A switch only as laid, the shape it holds while a train lies across it. With no car and
         // one end walked backwards, a guessed approach can lay the ribbon down the other leg.
-        Direction inEdge = Direction.getApproximateNearest(outwardDirection.reverse());
-        var exits = AbstractMinecart.exits(state.getValue(SwitchedRailBlock.SHAPE));
-
-        return joins(exits.getFirst(), inEdge) || joins(exits.getSecond(), inEdge);
+        return SwitchedRailBlock.openTo(
+                state, Direction.getApproximateNearest(outwardDirection.reverse()));
     }
 
     // The flat unit axis out of a node through its entry edge or its exit edge, or null where the
