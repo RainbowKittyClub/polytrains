@@ -410,7 +410,17 @@ public final class TrainMeter {
                             && candidate.getUUID().compareTo(cart.getUUID()) > 0)) {
                 double depth = depth(box, other.getBoundingBox());
 
-                if (!(depth > CLIP_DEPTH) || !twoTrains(level, cart, other)) {
+                if (!(depth > CLIP_DEPTH)) {
+                    continue;
+                }
+
+                // Judged again next tick, and a clip the pair was already in goes on meanwhile.
+                if (unreadable(level, cart) || unreadable(level, other)) {
+                    CLIPPING.computeIfPresent(new Clip(cart, other), (pair, seenTick) -> tick);
+                    continue;
+                }
+
+                if (!twoTrains(level, cart, other)) {
                     continue;
                 }
 
@@ -432,8 +442,13 @@ public final class TrainMeter {
         CLIPPING.values().removeIf(lastTick -> lastTick < tick - 1);
     }
 
-    // Whether the two are cars of two trains, read without rebuilding either. No for a pair whose
-    // train cannot be read this tick, its links having changed since its cars last asked for it.
+    // Whether car's train cannot be read this tick, its links having changed since its cars last
+    // asked for it.
+    private static boolean unreadable(ServerLevel level, AbstractMinecart car) {
+        return ModGameRules.trainsEnabled(level) && car.hasLink() && Train.peek(car) == null;
+    }
+
+    // Whether the two are cars of two trains, read without rebuilding either, both readable.
     private static boolean twoTrains(ServerLevel level, AbstractMinecart cart,
             AbstractMinecart other) {
         if (Linkable.coupled(cart, other) || Linkable.coupled(other, cart)) {
@@ -445,13 +460,8 @@ public final class TrainMeter {
         }
 
         Train train = cart.hasLink() ? Train.peek(cart) : null;
-        Train otherTrain = other.hasLink() ? Train.peek(other) : null;
 
-        if (cart.hasLink() && train == null || other.hasLink() && otherTrain == null) {
-            return false;
-        }
-
-        return train == null || train != otherTrain;
+        return train == null || train != (other.hasLink() ? Train.peek(other) : null);
     }
 
     // How far one box must move to clear the other: the least of their three axis overlaps.
