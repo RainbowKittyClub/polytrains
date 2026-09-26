@@ -1074,15 +1074,16 @@ def listing(directory):
         return set()
 
 
-def main_commit():
-    # The main checkout's HEAD, the code the dev server builds from, read through the shared git
-    # dir so a run started from a worktree names the same commit.
-    try:
-        head = (mtxrcon.git_common_dir() / "HEAD").read_text().strip()
-        ref = head[5:] if head.startswith("ref: ") else head
-        here = str(Path(__file__).resolve().parent)
-        return subprocess.run(["git", "-C", here, "rev-parse", "--short", ref], check=True,
+def run_commit(run_dir):
+    # HEAD of the checkout the run dir belongs to, whose code its server runs, so a run on a
+    # worktree's server names that worktree's commit; "+" marks uncommitted changes under src/.
+    def git(*args):
+        return subprocess.run(["git", "-C", str(run_dir), *args], check=True,
                               capture_output=True, text=True).stdout.strip()
+
+    try:
+        dirty = git("status", "--porcelain", "--", ":/src")
+        return git("rev-parse", "--short", "HEAD") + ("+" if dirty else "")
     except (OSError, subprocess.CalledProcessError):
         return "?"
 
@@ -1265,7 +1266,7 @@ def prepare(rcon, run, run_dir):
         return f"refusing to run: no [mtxrig] sign naming {run.group} in {fmt_box(run.box)}", None
 
     crash_dir = run_dir / "crash-reports"
-    run.meta = {"commit": main_commit(), "run_dir": str(run_dir), "rules": rules,
+    run.meta = {"commit": run_commit(run_dir), "run_dir": str(run_dir), "rules": rules,
                 "players": rcon.cmd("list"), "other_rig_carts": others,
                 "signs": [list(s) for s in signs], "crash_dir": str(crash_dir),
                 "started": datetime.datetime.now().isoformat(timespec="seconds")}
