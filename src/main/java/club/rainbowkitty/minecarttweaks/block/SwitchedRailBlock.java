@@ -223,7 +223,8 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
                 >= Vec3.atLowerCornerOf(exits.getSecond()).horizontal().dot(runDirection)
                 ? exits.getFirst() : exits.getSecond();
         Direction travel = Direction.getApproximateNearest(exit.getX(), 0.0, exit.getZ());
-        BlockPos nextPos = closedSwitch(level, railPos.offset(exit.getX(), 0, exit.getZ()), travel);
+        BlockPos aheadPos = RailPath.ahead(level, railPos, runDirection);
+        BlockPos nextPos = aheadPos == null ? null : closedSwitch(level, aheadPos, travel);
         double across = exit.getX() != 0 ? step.x() * exit.getX() : step.z() * exit.getZ();
 
         if (nextPos == null || across <= 0.0) {
@@ -269,18 +270,13 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
         return occupied(level, pos);
     }
 
-    // The switch in the column at pos, level with it or a block either way, if it is laid against
-    // a car arriving travelling travel; null otherwise.
+    // Pos, if the block there is a switch laid against a car arriving travelling travel; null
+    // otherwise.
     private static @Nullable BlockPos closedSwitch(Level level, BlockPos pos, Direction travel) {
-        for (BlockPos candidate : new BlockPos[] {pos, pos.above(), pos.below()}) {
-            BlockState state = level.getBlockState(candidate);
+        BlockState state = level.getBlockState(pos);
 
-            if (state.getBlock() instanceof SwitchedRailBlock) {
-                return openTo(state, travel.getOpposite()) ? null : candidate;
-            }
-        }
-
-        return null;
+        return state.getBlock() instanceof SwitchedRailBlock
+                && !openTo(state, travel.getOpposite()) ? pos : null;
     }
 
     @Override
