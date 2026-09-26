@@ -24,6 +24,7 @@ import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.minecarttweaks.MinecartTweaks;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
+import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 
 /** A rail block that allows carts to pass through in both axes without turning. */
 public class JunctionRailBlock extends BaseRailBlock implements PolymerTexturedBlock {
@@ -59,11 +60,21 @@ public class JunctionRailBlock extends BaseRailBlock implements PolymerTexturedB
 
     /**
      * Lays the junction rail under {@code cart} along the axis the cart is travelling, so that it
-     * passes straight through rather than being turned. Does nothing if the cart is stopped or is
-     * not standing on one.
+     * passes straight through rather than being turned. Does nothing if the cart is stopped with
+     * nothing to drive it, or is not standing on one.
+     *
+     * <p>A car all but standing is laid by the drive it is about to leave on: a train crossing the
+     * other arm lays the junction its own way, and a car standing there takes its drive only after
+     * vanilla has read the shape, so a restart would turn it onto the other arm and off the track
+     * its train recorded.
      */
     public static void steer(Level level, AbstractMinecart cart) {
-        lay(level, cart.getCurrentBlockPosOrRailBelow(), cart.getDeltaMovement());
+        BlockPos pos = cart.getCurrentBlockPosOrRailBelow();
+
+        // Asked here first: the heading below walks the train, and most carts are on no junction.
+        if (level.getBlockState(pos).getBlock() instanceof JunctionRailBlock) {
+            lay(level, pos, TrainCoupling.leavingHeading(cart, cart.getDeltaMovement()));
+        }
     }
 
     /**

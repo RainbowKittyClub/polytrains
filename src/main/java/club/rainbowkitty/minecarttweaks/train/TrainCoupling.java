@@ -229,19 +229,28 @@ public final class TrainCoupling {
         // they are the carts the placer is not moving, so it never gets going at all. All but
         // standing counts: a car pressed into what stopped it is shoved a crawl towards it every
         // tick, and read as a heading, that crawl drives it back in however its engines turn.
-        Vec3 headingDirection = resisted.horizontal();
-
-        if (headingDirection.lengthSqr() <= STANDING_SPEED * STANDING_SPEED) {
-            Vec3 aimedDirection = driveHeading(cart);
-
-            if (aimedDirection.lengthSqr() > ANY_MOVEMENT) {
-                headingDirection = aimedDirection;
-            }
-        }
+        Vec3 headingDirection = leavingHeading(cart, resisted);
 
         return headingDirection.lengthSqr() > ANY_MOVEMENT
                 ? resisted.add(headingDirection.normalize().scale(drive))
                 : resisted;
+    }
+
+    /**
+     * Which way {@code cart} is about to move given {@code movement}: along that movement, or,
+     * all but standing, the way its train's engines aim at it wherever they aim at all.
+     */
+    public static Vec3 leavingHeading(AbstractMinecart cart, Vec3 movement) {
+        Vec3 headingDirection = movement.horizontal();
+
+        if (headingDirection.lengthSqr() > STANDING_SPEED * STANDING_SPEED) {
+            return headingDirection;
+        }
+
+        Vec3 aimedDirection = cart.hasLink() && ModGameRules.trainsEnabled(cart.level())
+                ? driveHeading(cart) : cart.minecarttweaks$driveHeading().horizontal();
+
+        return aimedDirection.lengthSqr() > ANY_MOVEMENT ? aimedDirection : headingDirection;
     }
 
     /**
