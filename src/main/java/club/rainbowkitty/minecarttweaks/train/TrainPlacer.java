@@ -453,7 +453,10 @@ public final class TrainPlacer {
             }
 
             if (seats[i] == null) {
+                // It still holds the movement it was last placed with, which a train stopped since
+                // no longer has: let go, it runs no faster than its train now does.
                 loosen(cars.get(i));
+                slowTo(cars.get(i), speed);
                 continue;
             }
 
@@ -1081,6 +1084,18 @@ public final class TrainPlacer {
     private static void loosen(AbstractMinecart car) {
         if (car instanceof AbstractMinecartExt ext) {
             ext.minecarttweaks$setSeatedAt(0L);
+        }
+    }
+
+    // Slows car to speed along the way it is already going, if it is going any faster.
+    private static void slowTo(AbstractMinecart car, double speed) {
+        Vec3 movement = car.getDeltaMovement();
+        double carSpeed = movement.horizontalDistance();
+
+        if (carSpeed > speed + EPSILON) {
+            double scale = speed / carSpeed;
+
+            car.setDeltaMovement(movement.x * scale, movement.y, movement.z * scale);
         }
     }
 
