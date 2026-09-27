@@ -610,6 +610,29 @@ public final class Train {
         return tick < turnHeldTick;
     }
 
+    /**
+     * Leads this train from the end {@code heading} drives it towards at {@code engine}, at once:
+     * for a train its engines have just turned round, which stands still and so names no new
+     * front of its own, while the car at that end is placed, and a placed car pushes nothing.
+     */
+    public void leadTowards(AbstractMinecart engine, Vec3 heading) {
+        Double arc = ribbon.arcOf(engine);
+        Vec3 tangent = arc == null ? null : ribbon.tangentAt(arc);
+        double along = tangent == null ? 0.0 : heading.horizontal().dot(tangent.horizontal());
+        int order = orderSign();
+
+        // A train the placer has let go keeps the end it had, as settledLeader keeps it.
+        if (cars.size() < 2 || order == 0 || Math.abs(along) < EPSILON || !holding()) {
+            return;
+        }
+
+        // The head sits at the higher arc when the order is positive.
+        leader = along * order > 0.0 ? cars.getFirst() : cars.getLast();
+        leaderTick = engine.level().getGameTime();
+        flipTo = null;
+        flipHeld = 0;
+    }
+
     // The tightest a pair may be seated: two cars closer than this are inside each other, which
     // vanilla's own shove is left to separate.
     private double floor(double target) {

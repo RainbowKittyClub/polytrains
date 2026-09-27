@@ -372,8 +372,9 @@ public final class TrainCoupling {
 
     /**
      * Turns {@code engine}'s train round, aiming every engine of it along its own rails the way
-     * {@code heading} points at {@code engine}, and holds the turn of every train it was pressing
-     * nose to nose, which a turn made first can leave unseen.
+     * {@code heading} points at {@code engine} and leading it from the end that now faces, and
+     * holds the turn of every train it was pressing nose to nose, which a turn made first can leave
+     * unseen.
      */
     public static void turnRound(AbstractMinecart engine, Vec3 heading) {
         Train train = Train.of(engine);
@@ -390,6 +391,12 @@ public final class TrainCoupling {
         for (AbstractMinecart car : train.cars()) {
             car.minecarttweaks$turnEngine(
                     trains && car != engine ? headingAt(engine, car, heading) : heading);
+        }
+
+        // Led on from the end it turned from, a train with a cart against its other end packs
+        // short of that cart for good rather than pushing it.
+        if (trains) {
+            train.leadTowards(engine, heading);
         }
     }
 
