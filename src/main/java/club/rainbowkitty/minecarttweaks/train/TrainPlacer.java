@@ -70,11 +70,13 @@ public final class TrainPlacer {
 
     /**
      * Why a train could not be seated. {@link #RIBBON_SHORT} and {@link #CAR_OFF_RIBBON} name one
-     * car's own track; the rest leave the placer with no frame of reference for the train at all.
+     * car's own track; {@link #LEADER_IN_AIR} a leading car flown off the end of its track, which
+     * the rest still follow off it; the rest leave the placer with no frame of reference at all.
      */
     public enum Bail {
         NO_LEADING_END(true),
         LEADER_OFF_RIBBON(true),
+        LEADER_IN_AIR(false),
         ORDER_UNREADABLE(true),
         RIBBON_SHORT(false),
         CAR_OFF_RIBBON(false),
@@ -190,6 +192,14 @@ public final class TrainPlacer {
         Double leadArc = ribbon.arcOfLeader(leader);
 
         if (leadArc == null) {
+            // Released, the cars behind stand a tick where they were seated if they tick before
+            // it, then shunt each other to a stop on the ramp, solid to one another once let go.
+            if (followOff(train, leader)) {
+                return new Refusal(Bail.LEADER_IN_AIR, cars.indexOf(leader), "leader at "
+                        + leader.getCurrentBlockPosOrRailBelow() + ", left the ribbon at "
+                        + round(ribbon.leaderArc()) + " of " + span(ribbon));
+            }
+
             return new Refusal(Bail.LEADER_OFF_RIBBON,
                     ribbon.isEmpty() ? Refusal.NONE : cars.indexOf(leader), "leader on "
                     + leader.getCurrentBlockPosOrRailBelow() + ", ribbon of " + ribbon.size()
@@ -493,6 +503,131 @@ public final class TrainPlacer {
         }
 
         return null;
+    }
+
+    // Runs the cars still seated on after a leading car flown off the ribbon's end, and has each
+    // leave the track at that end as the leading car did, one a tick. False, having moved nothing,
+    // for a leader knocked off mid-track or run into a wall, which releases.
+    private static boolean followOff(Train train, AbstractMinecart leader) {
+        TrackRibbon ribbon = train.ribbon();
+
+        // The old movement casts whatever block a car stands on to a rail, so it releases instead.
+        if (!(leader.level() instanceof ServerLevel level)
+                || !(leader.getBehavior() instanceof NewMinecartBehavior)
+                || leader.isOnRails() || leader.onGround() || ribbon.isEmpty()) {
+            return false;
+        }
+
+        double runSign = travelSign(leader, ribbon.tangentAt(ribbon.leaderArc()));
+        boolean farEnd = runSign > 0.0;
+        double endArc = farEnd ? ribbon.farArc() : ribbon.nearArc();
+        Vec3 endPosition = ribbon.positionAt(endArc);
+        Vec3 endTangent = ribbon.tangentAt(endArc);
+
+        if (runSign == 0.0 || endPosition == null || endTangent == null
+                || leader.position().subtract(endPosition).horizontal().dot(endTangent)
+                        * runSign <= 0.0
+                || ribbon.blockedBeyond(level, farEnd)) {
+            return false;
+        }
+
+        List<AbstractMinecart> cars = train.cars();
+        int leadIndex = cars.indexOf(leader);
+        int fromHead = leadIndex == 0 ? 1 : -1;
+        // What the train ran at off the rails, not what the air has left the leader: each car then
+        // leaves at the leader's speed and flies its path a tick or two behind it.
+        double speed = Math.min(train.carried(), leader.minecarttweaks$ownMaxSpeed(level));
+        Seat[] seats = new Seat[cars.size()];
+        double[] seatArcs = new double[cars.size()];
+        int leavingIndex = Refusal.NONE;
+        // Where the seated car ahead goes this tick and where it stood, which the next keeps its
+        // gap to; none past a car leaving, whose way off the end is its own.
+        Double aheadArc = null;
+        double aheadSeatArc = 0.0;
+
+        for (int i = leadIndex + fromHead; i >= 0 && i < cars.size(); i += fromHead) {
+            AbstractMinecart car = cars.get(i);
+            Double seatArc = seated(car) ? car.minecarttweaks$seatArc(ribbon.arcEpoch()) : null;
+
+            // A car let go is fine gone ahead off the end, not loose on the track or behind one.
+            if (seatArc == null) {
+                if (car.isOnRails() || aheadArc != null || leavingIndex != Refusal.NONE) {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (aheadArc != null && (aheadSeatArc - seatArc) * runSign < 0.0) {
+                return false;
+            }
+
+            // Along the rails, as offsets are: kept in arc, a gap shuts up coming off a slope.
+            double gap = aheadArc == null ? 0.0 : ribbon.trackBetween(aheadSeatArc, seatArc);
+            double limitArc = aheadArc == null
+                    ? endArc : aheadArc - runSign * ribbon.arcAlong(aheadArc, gap, -runSign);
+            double arc = seatArc + runSign * ribbon.arcAlong(seatArc, speed, runSign);
+            boolean leaving = false;
+
+            // Two leaving one tick would both come down where vanilla sets a car off an end.
+            if ((arc - limitArc) * runSign > EPSILON) {
+                leaving = aheadArc == null && leavingIndex == Refusal.NONE;
+                arc = limitArc;
+            }
+
+            seats[i] = seatAt(ribbon, car, arc);
+            seatArcs[i] = arc;
+
+            if (seats[i] == null) {
+                return false;
+            }
+
+            if (leaving) {
+                leavingIndex = i;
+            } else {
+                aheadArc = arc;
+                aheadSeatArc = seatArc;
+            }
+        }
+
+        if (fouled(train, cars, seats, seatArcs, leadIndex) != null) {
+            return false;
+        }
+
+        double runLimit = furthestRun(leader);
+
+        // The car leaving goes first, off the end before the car behind is seated up to it.
+        if (leavingIndex != Refusal.NONE) {
+            place(train, cars.get(leavingIndex), seats[leavingIndex], seatArcs[leavingIndex],
+                    runSign, speed, runLimit, true);
+            leaveTrack(level, cars.get(leavingIndex));
+        }
+
+        for (int i = 0; i < cars.size(); i++) {
+            if (seats[i] != null && i != leavingIndex) {
+                place(train, cars.get(i), seats[i], seatArcs[i], runSign, speed, runLimit, true);
+            }
+        }
+
+        // As a release does: the head's last arc is no turn to charge from once it lands.
+        train.setHeadArc(null);
+        train.setTurn(0.0);
+
+        return true;
+    }
+
+    // Has vanilla move car off the end now, a whole tick's run past it as it did the leading car;
+    // seated to the tick's end, it moves once whichever of the two ticks first.
+    private static void leaveTrack(ServerLevel level, AbstractMinecart car) {
+        loosen(car);
+
+        if (car.getBehavior() instanceof NewMinecartBehavior behavior) {
+            behavior.moveAlongTrack(level);
+        }
+
+        if (car instanceof AbstractMinecartExt ext) {
+            ext.minecarttweaks$setSeatedAt(level.getGameTime() - 1);
+        }
     }
 
     // Where each car goes with the head at a given arc, and the first reason one has no seat.

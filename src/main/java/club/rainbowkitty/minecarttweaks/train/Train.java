@@ -576,6 +576,11 @@ public final class Train {
         carried = speed;
     }
 
+    /** How fast this train was running on the last tick it had room to run in. */
+    public double carried() {
+        return carried;
+    }
+
     /** Records that this train closed up on this tick. */
     public void setPacked(long tick) {
         packedTick = tick;
