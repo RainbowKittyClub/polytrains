@@ -1110,7 +1110,7 @@ loop and the serpentine, every car on its rails: P15's kind. Not fixed: the step
 ten minutes up to 12.59 blocks, as it did before P17: while the leading car flies, the rest of its
 train is loose.
 
-## P18 — A train keeps its leading end through a jump — **in progress**
+## P18 — A train keeps its leading end through a jump — **done**
 
 **Build.** On `3bjump` the train leaves the lip with the car that led it up the ramp in front, and
 while it flies `holdTrain` refuses `LEADER_OFF_RIBBON` with three cars loose. About eleven ticks
@@ -1126,6 +1126,28 @@ keep the end that left the lip in front when it lands.
 **Done when.** Ten minutes on `3bjump` at 40 and at 100, traced tick by tick, land every jump with
 the car that led up the ramp in front, and a ten-minute torture run at each speed still passes every
 clause.
+
+### As built
+
+It was the ribbon, not the leader decision: the ribbon failed to start over where it should have.
+The U-turn and ramp are short enough that the ribbon still held the landing track from the train's
+run west, so at 40 the leading car came down on a block it knew and `record` read a revisit, moving
+its arc from about 2, where it left the lip, to about 20 on the old pass with no reset, and so with
+the old lie, right on the ramp and backwards there. The placer laid the other three cars ahead of
+it, and three ticks later `settledLeader` handed the lead to the car now in front. At 100 the car
+lands past the ribbon's far end, on a block it does not know, which restarts the ribbon, so 100
+never showed it. The ribbon now keeps whether its leading car stands off every block it records;
+while it does, a reading more than 1.5 behind where the car left, against the way it runs, is a
+landing on another pass, and the ribbon starts over at the landing block, its lie settled as after
+any reset.
+
+Observed on a server of its own, traced tick by tick for ten minutes at each speed: at 40, none of
+133 jumps landed with the car that led up the ramp in front before and all 130 after, the car first
+at the eastern stop alternating on 129 of 129 laps where it had on none; at 100, all 275 before and
+after. The self-check was exact, and a ten-minute torture run at 100 and one at 40 passed every
+clause. Not fixed: the cars still spread apart in the air, the rear ones stopped on the ramp while
+the leader flies, so `3bjump` still fails Coupling, up to 12.24 blocks at 40 and 13.46 at 100,
+though at 40 the readings halved.
 
 # Part R — The bar
 
