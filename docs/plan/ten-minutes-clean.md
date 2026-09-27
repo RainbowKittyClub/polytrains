@@ -1365,6 +1365,10 @@ Run 2 (`run-torturetrack-20260926-174253.json`):
 
 - **The lone chest cart at `(-14,-53,-14)`.** A one-cart strip with its own sign, so treated as
   an intended obstacle. Settled by the user.
+- **The leap off a rail's end.** Vanilla moves a car leaving a rail's end its whole movement again
+  after the run along the rail that tick (NewMinecartBehavior.java:265), so it lands up to a tick's
+  run past the car behind for one tick (P19). Moving it only what is left would shorten every jump,
+  by up to 5 blocks at 100. Left as vanilla's by the user's decision.
 - **The audit's remaining findings.** S2 (restart), U2 (stale held heading — the track has no
   station), K1, L1, L2, L5 and D3 are outside this bar and stay in the audit.
 
