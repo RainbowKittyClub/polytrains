@@ -1238,7 +1238,7 @@ not this stage's.
 shows from the runs and probes that none holds with P21 in; four consecutive ten-minute runs, two at
 100 and two at 40, pass every clause.
 
-## P23 — The stepper's hill lift never sets a car inside another — **in progress**
+## P23 — The stepper's hill lift never sets a car inside another — **done**
 
 **Build.** `NewMinecartBehavior.stepAlongTrack` lifts a car it finds below its slope's line straight
 up onto it with a bare `setPos` (NewMinecartBehavior.java:457), after the move `SlopeStep` wraps, so
@@ -1253,6 +1253,32 @@ lifted again once clear.
 **Done when.** The probe's car ends against the other car rather than inside it, where the code
 before lifted it inside, or the stage shows by probe that the lift cannot set a car inside another
 on main and says what stops it; a ten-minute torture run at 100 and one at 40 pass every clause.
+
+### As built
+
+The lift did set a car inside another on main, in two probes of lone carts. A car rolled off its
+rails along the ground into a slope rail under a car braked on it: P17's guard cut its climb onto
+the slope at that car's floor, and the stepper then lifted it 0.12 inside. A car run off a flat
+rail's end into the side of a slope under a braked car began its step, square to the slope, half a
+block below the line, and the lift raised it 0.47 inside. Each logged a clip and overlaps. A car
+climbing from a flat, or shoved up a slope beneath another, is stopped on its line at the touch by
+`SlopeStep`, so the lift finds nothing to do. A car can still start below its line wherever
+vanilla's `adjustToRails` sets it onto a slope, at the height its line has at the point mirrored
+about the block's middle, as a probe showed for a car standing on an ascending-east rail.
+
+A new `@WrapOperation` on the `setPos` in `stepAlongTrack` replays the lift through
+`OffRails.shortOfCars`, so it stops at the first car of another train, or is not taken if it would
+carry the car deeper into one it is inside. A car held short stays on its rail below its line and is
+lifted again on its next step; one standing still, on a brake, stays low until it moves, as vanilla
+leaves a car it sets down too low.
+
+Observed on a server of its own: both probes ended with the car's roof against the other car's
+floor, and with the other car gone the side probe's car was lifted onto its line at its next step.
+P17's probes were unchanged, the self-check was exact, and a ten-minute run at 40 and one at 100
+passed every clause, on the code landed as `d8ad2b2`. An earlier run at 100 failed Coupling once, at
+3.27 on flat track, on two cars let go for four ticks when a train refused `SEAT_FOULED` at the
+`(-16,-53,-11)` junction: P13's release, which the lift never reaches. Not fixed: vanilla's mirrored
+set-down height on a slope.
 
 # Part R — The bar
 
