@@ -1188,7 +1188,7 @@ was exact, and a ten-minute torture run at 100 and one at 40 passed every clause
 leap, which sets a car leaving an end a full tick's run past it; and at 40, cars leaving a tick
 apart overlap in the air, fewer than before.
 
-## P20 — Cars of a train stay clear of one another in the air — **in progress**
+## P20 — Cars of a train stay clear of one another in the air — **done**
 
 **Build.** With P19 in, the cars of `3bjump`'s train leave the lip one a tick, and at 40 they fly
 about 0.95 blocks apart, close enough that their boxes overlap. Air drag then closes them further:
@@ -1204,6 +1204,35 @@ each other in the air, and keep P12's in-air rules, P18's landing and P19's run 
 the train inside each other deeper than 0.01 in the air, every car leaving the lip on every jump,
 and every landing led by the car that led up the ramp; Coupling on `3bjump` is reported; a
 ten-minute torture run at each speed passes every clause.
+
+### As built
+
+The cars went into each other because a train leaves the lip in whole ticks and flies in drag.
+Vanilla sets each car a full tick's run past the end, so at 40, where the train runs a block a tick
+with seats a block and a half apart, one pair in every jump left a tick apart and flew 0.95 apart,
+its boxes 0.03 inside each other. Every car flies the same path, so drag shortened that gap by a
+twentieth a tick, to 0.317 deep by the landing, and `CartInteraction` answered IGNORE between two
+cars of one train off their rails. At 60 the same pairs closed, and the leading car also stopped
+dead against the face of the hump at `x=12.5` with the cars behind flying into it.
+
+A car flown off a jump behind its train's leading car now stops where it first touches the car of
+its own train ahead, axis by axis in vanilla's order, and keeps no speed closing on it
+(`OffRails.behindOwnTrain`, in P17's `comeOffTrack` wrap). Making the cars solid would take the
+speed and strand a car at the lip, as a first draft did in 10 of 21 jumps, and no timing of when
+cars leave holds against drag or a car ahead that has hit a wall. The hold needs the car ahead
+already moved, so while the leading car flies the placer moves the cars already off the lip itself,
+front first, ahead of the car leaving and the seated ones, and stamps each so its own tick does not
+move it again.
+
+Observed on a server of its own, ten minutes traced tick by tick at each speed: at 40, in-air
+overlap fell from 1,040 pair-ticks, deepest 0.317, to none, the cars held touching on 260; at 100
+there was none before or after; at 60, over 2,000 ticks, 174 fell to none. All four cars left the
+lip on all 130 and 275 jumps, every landing was led by the car that led up the ramp, and Coupling on
+`3bjump` read none at 40, widest 1.98, and 21 at 100, widest 3.90, as before. The self-check was
+exact, and a ten-minute torture run at 100 and one at 40 passed every clause, on the code landed as
+`7f421d3`. Not fixed: seated cars of one train overlap on the tight U-turn at `(-6,-53,27)`, up to
+0.24, standing an arc apart but a shorter chord apart; a flight that ends in a release hangs a car
+that ticked before the leader for one tick, as seated cars already are; the leap at 100.
 
 ## P21 — Two trains pressing at a U-turn are found pressing — **in progress**
 
