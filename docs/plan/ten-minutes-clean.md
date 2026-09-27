@@ -1149,7 +1149,7 @@ clause. Not fixed: the cars still spread apart in the air, the rear ones stopped
 the leader flies, so `3bjump` still fails Coupling, up to 12.24 blocks at 40 and 13.46 at 100,
 though at 40 the readings halved.
 
-## P19 — Every car of a train follows it off a jump — **in progress**
+## P19 — Every car of a train follows it off a jump — **done**
 
 **Build.** With P18 in, the train lands the right way round, but its last car is left at the foot of
 the ramp every jump. As the leading car leaves the lip, `holdTrain` refuses `LEADER_OFF_RIBBON` and
@@ -1165,6 +1165,27 @@ the tick is lost.
 **Done when.** Ten minutes on `3bjump` at 40 and at 100, traced tick by tick, see every car of the
 train leave the lip on every jump and none stop on the ramp, and a ten-minute torture run at each
 speed still passes every clause. Coupling on `3bjump` is reported.
+
+### As built
+
+Two things left the car at the foot of the ramp, both from `holdTrain` releasing the train as its
+leader flew. Cars ticking before the leader had already skipped vanilla's move as seated, so they
+stood a tick; then, loose and solid to one another, vanilla moved them rear first, each running into
+the car ahead before that car moved and shunting its speed forward, which stranded the last on the
+ramp. At 40 this happened only in jumps led by the car that ticks last; at 100, in every jump. A
+leading car in the air past the unblocked end of its ribbon now leaves the rest seated: they run on
+along the ribbon, each the same distance along the rails, at the speed the train carried off them,
+and at the end vanilla moves each off as it moved the leader, one a tick, stamped so it moves once
+whatever the tick order. Any other case releases as before; the refusal is `LEADER_IN_AIR`.
+
+Observed on a server of its own, ten minutes traced tick by tick at each speed: at 40 all four cars
+left the lip on all 130 jumps, where 65 had left one behind, and Coupling on `3bjump` fell from 39
+readings, widest 12.24, to none, widest 2.01; at 100 all four left on all 275 jumps, where every
+jump had left one or two behind, and Coupling fell from 131 readings, widest 13.46, to 21, widest
+3.90, each the tick of vanilla's leap off the end. P18's landing held on every jump, the self-check
+was exact, and a ten-minute torture run at 100 and one at 40 passed every clause. Not fixed: that
+leap, which sets a car leaving an end a full tick's run past it; and at 40, cars leaving a tick
+apart overlap in the air, fewer than before.
 
 # Part R — The bar
 
@@ -1277,9 +1298,6 @@ Run 2 (`run-torturetrack-20260926-174253.json`):
 
 - **The lone chest cart at `(-14,-53,-14)`.** A one-cart strip with its own sign, so treated as
   an intended obstacle. Settled by the user.
-- **A train through a jump.** On `3bjump` the cars behind an airborne leading car are loose, and
-  Coupling reads up to 12.59 blocks; P13's clause came after P12's runs. Keeping a train within a
-  link in the air is not planned.
 - **The audit's remaining findings.** S2 (restart), U2 (stale held heading — the track has no
   station), K1, L1, L2, L5 and D3 are outside this bar and stay in the audit.
 
