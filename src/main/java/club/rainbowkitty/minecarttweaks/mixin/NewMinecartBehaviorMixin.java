@@ -29,7 +29,7 @@ import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
 /**
  * Holds vanilla's pickup to the speed the resolver allows one at, its track forces to the train
  * rather than to whichever car happens to be leading it, a car stepping into another cart to its
- * rail, and a car set back onto its rails short of another train's car.
+ * rail, and a car set back onto its rails or lifted onto a slope short of another train's car.
  */
 @Mixin(NewMinecartBehavior.class)
 public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccessor {
@@ -169,5 +169,23 @@ public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccess
                 move.call(cart, moverType, openStep);
             }
         });
+    }
+
+    // After the move vanilla lifts a car it finds below a slope's line straight up onto it, through
+    // whatever stands above. Cut at another train's car, it is lifted again on its next step.
+    @WrapOperation(
+            method = "stepAlongTrack",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/world/entity/vehicle/minecart/NewMinecartBehavior;"
+                            + "setPos(DDD)V"))
+    private void minecarttweaks$liftShort(NewMinecartBehavior behavior, double x, double y,
+            double z, Operation<Void> setPos) {
+        AbstractMinecart cart = minecarttweaks$cart();
+        Vec3 from = cart.position();
+        Vec3 lift = new Vec3(x, y, z).subtract(from);
+        Vec3 allowed = OffRails.shortOfCars(cart, cart.getBoundingBox(), lift);
+        Vec3 to = allowed.equals(lift) ? new Vec3(x, y, z) : from.add(allowed);
+
+        setPos.call(behavior, to.x(), to.y(), to.z());
     }
 }

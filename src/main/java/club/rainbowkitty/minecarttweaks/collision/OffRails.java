@@ -78,8 +78,9 @@ public final class OffRails {
 
     /**
      * {@code setDown}, the set-down of {@code cart} from where its box was {@code fromBox} onto its
-     * rail, cut short where the box first meets a car of another train, as vanilla's move stops
-     * a box at a face, or cut to nothing if it would take the box deeper into one it is inside.
+     * rail, or the stepper's lift of it onto a slope's line, cut short where the box first meets a
+     * car of another train, as vanilla's move stops a box at a face, or cut to nothing if it would
+     * take the box deeper into one it is inside.
      */
     public static Vec3 shortOfCars(AbstractMinecart cart, AABB fromBox, Vec3 setDown) {
         List<VoxelShape> solids = new ArrayList<>();
