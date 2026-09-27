@@ -25,7 +25,6 @@ import net.minecraft.world.phys.Vec3;
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
 import club.rainbowkitty.minecarttweaks.link.LinkAction;
 import club.rainbowkitty.minecarttweaks.rail.RailBrake;
-import club.rainbowkitty.minecarttweaks.rail.RailContext;
 import club.rainbowkitty.minecarttweaks.rail.RailDrag;
 import club.rainbowkitty.minecarttweaks.rail.RailForces;
 import club.rainbowkitty.minecarttweaks.rail.RailPath;
@@ -265,12 +264,15 @@ public final class TrainCoupling {
 
     /**
      * Which way {@code cart} is about to move given {@code movement}: along that movement, or,
-     * all but standing, the way its train's engines aim at it wherever they aim at all.
+     * all but standing or just turned round, the way its train's engines aim at it wherever they
+     * aim at all.
      */
     public static Vec3 leavingHeading(AbstractMinecart cart, Vec3 movement) {
         Vec3 headingDirection = movement.horizontal();
 
-        if (headingDirection.lengthSqr() > STANDING_SPEED * STANDING_SPEED) {
+        // Just turned round, a train leaves on its engines' aim whatever it holds: its crawl into
+        // what stopped it, or vanilla's push from the train it pressed, laid on it round a U-turn.
+        if (headingDirection.lengthSqr() > STANDING_SPEED * STANDING_SPEED && !justTurned(cart)) {
             return headingDirection;
         }
 
@@ -278,6 +280,15 @@ public final class TrainCoupling {
                 ? driveHeading(cart) : cart.minecarttweaks$driveHeading().horizontal();
 
         return aimedDirection.lengthSqr() > ANY_MOVEMENT ? aimedDirection : headingDirection;
+    }
+
+    /**
+     * Whether {@code cart}'s train turned round on a stall within the last few ticks, and so is
+     * going where its engines now aim rather than where anything it still holds says.
+     */
+    public static boolean justTurned(AbstractMinecart cart) {
+        return cart.hasLink() && ModGameRules.trainsEnabled(cart.level())
+                && Train.of(cart).turnedWithin(cart.level().getGameTime(), TURN_HOLD_TICKS);
     }
 
     /**
@@ -1405,8 +1416,7 @@ public final class TrainCoupling {
             for (AbstractMinecart other : TrainPlacer.cartsAgainst(train, end)) {
                 Train otherTrain = Train.of(other);
 
-                if (RailContext.sharesTrack(end, other) && otherTrain.driving()
-                        && drivesInto(end, other) && drivesInto(other, end)
+                if (otherTrain.driving() && drivesInto(end, other) && drivesInto(other, end)
                         && !pressing.contains(otherTrain)) {
                     pressing.add(otherTrain);
                 }
@@ -1416,9 +1426,10 @@ public final class TrainCoupling {
         return pressing;
     }
 
-    // Whether car's train drives it towards target, going by its engines' aim at car.
+    // Whether car's train drives it along the rails onto target, by its engines' aim at car: two
+    // cars side by side at a one-row U-turn each drive square to the line between them.
     private static boolean drivesInto(AbstractMinecart car, AbstractMinecart target) {
-        return driveHeading(car).dot(target.position().subtract(car.position()).horizontal()) > 0.0;
+        return RailPath.leadsTo(car, target, driveHeading(car), MAX_LINK_DISTANCE);
     }
 
     // heading at engine laid along the rails to car, or left as it is when square across them.

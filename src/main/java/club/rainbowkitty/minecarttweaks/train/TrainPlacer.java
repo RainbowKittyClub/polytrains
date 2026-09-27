@@ -298,9 +298,11 @@ public final class TrainPlacer {
         // past its tail comes out of its couplings rather than out of the end ahead of it.
         boolean squeezed = blocked && jammed;
 
-        // A train too slow to read a heading counts as pressing: it has nowhere to lengthen
-        // either way, so holding it still is correct either way this reads.
-        boolean pressing = blocked && (squeezed || travelSign == 0.0 || travelSign == tailSign);
+        // A train too slow to read a heading presses, unless it has just turned away from the
+        // blocked end: then it leaves on its engines' aim rather than held against what is there.
+        double leaveSign = TrainCoupling.justTurned(leader)
+                ? leaveSign(leader, ribbon.tangentAt(leadArc)) : travelSign;
+        boolean pressing = blocked && (squeezed || leaveSign == 0.0 || leaveSign == tailSign);
 
         // Only a train something is actually pushing packs, and only as far back as that reaches.
         int packReach = jammed
@@ -1278,6 +1280,19 @@ public final class TrainPlacer {
         double travelComponent = leader.getDeltaMovement().horizontal().dot(tangent);
 
         return Math.abs(travelComponent) < EPSILON ? 0.0 : Math.signum(travelComponent);
+    }
+
+    // Which way along tangent the leading car is about to go, as TrainCoupling.hauled lays the
+    // train's drive on it: its movement, or, all but standing or just turned, its engines' aim.
+    private static double leaveSign(AbstractMinecart leader, @Nullable Vec3 tangent) {
+        if (tangent == null) {
+            return 0.0;
+        }
+
+        double leaveComponent =
+                TrainCoupling.leavingHeading(leader, leader.getDeltaMovement()).dot(tangent);
+
+        return Math.abs(leaveComponent) < EPSILON ? 0.0 : Math.signum(leaveComponent);
     }
 
     // Where one car would sit on recorded track, or null if that track is gone.

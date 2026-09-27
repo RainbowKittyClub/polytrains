@@ -129,7 +129,7 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         RailPath nearest = null;
 
         for (BlockPos firstStep : firstSteps) {
-            RailPath path = walk(level, from, to, start, firstStep, goal, limit);
+            RailPath path = walk(level, from, to, start, firstStep, goal, limit, Switches.JOINED);
 
             if (path != null && (nearest == null || path.distance() < nearest.distance())) {
                 nearest = path;
@@ -137,6 +137,47 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         }
 
         return nearest;
+    }
+
+    /**
+     * Whether {@code from}, going {@code heading}, runs along the rails onto the block {@code to}
+     * stands on within {@code limit} blocks of track between the two, taking each switch as it is
+     * laid; on one block, whether {@code heading} points at {@code to}. Asked both ways round, a
+     * walk the one way is the other's walk reversed, so two carts get one answer.
+     */
+    public static boolean leadsTo(
+            AbstractMinecart from, AbstractMinecart to, Vec3 heading, double limit) {
+        Level level = from.level();
+        BlockPos start = from.getCurrentBlockPosOrRailBelow();
+        BlockPos goal = to.getCurrentBlockPosOrRailBelow();
+        Vec3 direction = heading.horizontal();
+
+        if (!railAt(level, goal) || direction.lengthSqr() < EPSILON * EPSILON) {
+            return false;
+        }
+
+        if (start.equals(goal)) {
+            return direction.dot(to.position().subtract(from.position())) > 0.0;
+        }
+
+        BlockPos[] around = neighbours(level, start, direction, Switches.LAID);
+
+        if (around == null) {
+            return false;
+        }
+
+        // A heading read on the straight before a corner is square to the line on, but still
+        // names the corner's exit it runs towards over the one it came in by.
+        double firstAlignment = direction(start, around[0]).dot(direction);
+        double secondAlignment = direction(start, around[1]).dot(direction);
+
+        if (Math.abs(firstAlignment - secondAlignment) < EPSILON) {
+            return false;
+        }
+
+        BlockPos firstStep = firstAlignment > secondAlignment ? around[0] : around[1];
+
+        return walk(level, from, to, start, firstStep, goal, limit, Switches.LAID) != null;
     }
 
     /**
@@ -378,8 +419,8 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
 
     // Walks the track from start out through firstStep, returning the path to goal or null if the
     // walk runs off the rails, dead-ends or passes the limit.
-    private static @Nullable RailPath walk(Level level, Entity from, Entity to,
-            BlockPos start, BlockPos firstStep, BlockPos goal, double limit) {
+    private static @Nullable RailPath walk(Level level, Entity from, Entity to, BlockPos start,
+            BlockPos firstStep, BlockPos goal, double limit, Switches switches) {
         Vec3 fromExit = direction(start, firstStep);
         BlockPos previous = start;
         BlockPos current = firstStep;
@@ -393,8 +434,8 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         for (int steps = 1; steps <= maxSteps && walkedDistance <= limit; steps++) {
             if (current.equals(goal)) {
                 Vec3 toEntry = direction(current, previous);
-                BlockPos[] aroundStart = neighbours(level, start, fromExit, Switches.JOINED);
-                BlockPos[] aroundGoal = neighbours(level, goal, toEntry, Switches.JOINED);
+                BlockPos[] aroundStart = neighbours(level, start, fromExit, switches);
+                BlockPos[] aroundGoal = neighbours(level, goal, toEntry, switches);
 
                 // A formality: between walks only from rail to rail.
                 if (aroundStart == null || aroundGoal == null) {
@@ -413,7 +454,7 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
             // One reading of the block's exits serves both the run of track across it and the step
             // off it — the whole per-block cost of the walk.
             Vec3 movement = direction(previous, current);
-            BlockPos[] around = neighbours(level, current, movement, Switches.JOINED);
+            BlockPos[] around = neighbours(level, current, movement, switches);
 
             if (around == null) {
                 return null;
