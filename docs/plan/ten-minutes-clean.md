@@ -22,8 +22,8 @@ against a dev server of its own; so are P9 and P10, planned from the first run w
 P11, planned from the first with P9 and P10 in. P12 and P13, and the rest of P5, were planned after
 R1 from what it does not measure; they are independent of each other, and R1 runs again once they
 land. P14, planned from the runs with P13 in, builds on it. P15 to P17, planned from P14's runs, are
-independent of each other, and R1 runs again once they land. P18 comes from the user's report of
-`3bjump` after them.
+independent of each other, and R1 runs again once they land. P18 and P19 come from the user's
+reports of `3bjump` after them, P19 building on P18.
 
 ---
 
@@ -1148,6 +1148,23 @@ after. The self-check was exact, and a ten-minute torture run at 100 and one at 
 clause. Not fixed: the cars still spread apart in the air, the rear ones stopped on the ramp while
 the leader flies, so `3bjump` still fails Coupling, up to 12.24 blocks at 40 and 13.46 at 100,
 though at 40 the readings halved.
+
+## P19 — Every car of a train follows it off a jump — **in progress**
+
+**Build.** With P18 in, the train lands the right way round, but its last car is left at the foot of
+the ramp every jump. As the leading car leaves the lip, `holdTrain` refuses `LEADER_OFF_RIBBON` and
+the three cars behind stand one tick where they were seated, nothing moving them, then go on loose.
+Loose cars of one train are solid to each other, so the last, climbing faster than the car ahead,
+strikes it: at 40 it goes from 0.97 blocks a tick to nothing in one tick while the car it struck
+goes from 1.20 to 1.43, and it slides back down the ramp while the others fly, until the placer lays
+it 8.5 blocks on at the landing. That is most of `3bjump`'s Coupling failure. Keep the cars still on
+the track moving with the train while its leading car flies, so each follows it off the lip, whether
+by driving them on along the ribbon, by what cars of one train let go do to each other, or by where
+the tick is lost.
+
+**Done when.** Ten minutes on `3bjump` at 40 and at 100, traced tick by tick, see every car of the
+train leave the lip on every jump and none stop on the ramp, and a ten-minute torture run at each
+speed still passes every clause. Coupling on `3bjump` is reported.
 
 # Part R — The bar
 
