@@ -986,7 +986,7 @@ those, and in six of P13's at 40; corner clips of up to 0.3 on curves and juncti
 a train's seat for 600 ticks (P11's `RailContext.meets`); and moves off the rails, `comeOffTrack`
 and `adjustToRails`, which lie outside the step wrapper and which `deepens` never sees.
 
-## P15 — A jam that holds two trains breaks — **in progress**
+## P15 — A jam that holds two trains breaks — **done**
 
 **Build.** The stalls left are jams that hold to the end of a run, in two shapes. At the
 `(-1,-53,-12)` switch, a train caught between two, its engines reversing every 4 to 12 ticks while
@@ -1000,6 +1000,36 @@ what holds it, and break it.
 
 **Done when.** Each probe's jam clears on its own where the code before held it, and four
 consecutive ten-minute runs, two at 100 and two at 40, pass every clause.
+
+### As built
+
+Of the three jams named, none held on main in a probe of its own. The switch jam was a car arriving
+by the switch's unjoined leg and pressing the train standing on the switch: a probe of that
+formation held it 761 of 800 ticks on `e681e53` and at most 20 on `96c4958`, where P13's stop short
+of a switch laid against a car keeps it off. The five trains queued at the switch and the hopper on
+the slope cleared within 20 to 100 ticks from every restored sample, on their own code and on main;
+the samples do not carry what held them, and they have no mechanism.
+
+Two other jams held, and both are fixed. A car whose box was already inside another train's cart had
+every seat refused, so it was let go every tick and P13's tether held its train to it for good: a
+hopper stood inside the lone chest at the `(-3,-27)` hairpin for 560 ticks. Such a car is now seated
+where its run to the seat leads away from the cart's middle; one standing still, or running towards
+it, still fouls. And a stall turn left a standing train led from the end it turned from, since a
+standing train reads no new front from its movement, so the car at its new front stayed placed and
+packed short of a cart against it as an end of track, reversing every four ticks while nothing
+moved: the part the lone chest played in the serpentine and hairpin gridlocks of the runs with P16
+and P17. A stall turn now leads a held train at once from the end its engines face, whose car
+vanilla then drives into what it meets; back-to-back reversals of trains with several engines fell
+by three quarters.
+
+Observed on a server of its own, rebased onto P16 and P17: the wedge probe stood 10 of 600 ticks
+where it had stood 580, and a train with a chest at its tail pushed it the length of a 57-block line
+where it had reversed 99 times without moving; P10's loop and line probes still circulated and
+cleared. Four consecutive ten-minute runs on `b535ea0`, two at 100 and two at 40, passed every
+clause, clips included, as the same four had on `f63afcb`. Not fixed: a pressing pair at a one-row
+U-turn, two leading cars side by side, is judged ahead through space and so never yields (P10);
+trains that all push back at both ends gridlock with nothing local to break it; and the queue and
+slope jams have no mechanism.
 
 ## P16 — Cars of two trains do not clip on curves and junctions — **done**
 
@@ -1155,12 +1185,43 @@ Run 2 (`run-torturetrack-20260926-030049.json`):
 Runs still vary: of the eight runs before these on P14's server, on earlier code, three failed Stall
 on jams that held, and the jams are not fixed (P14).
 
+Reached again after P15 to P17, on six clauses with clips counted in Bounce, by the two runs at 100
+that followed the self-check on P15's server, both against `b535ea0`, which is main with all three
+in; the two runs at 40 after them passed every clause as well, the widest coupling 1.82 and 1.73.
+
+Run 1 (`run-torturetrack-20260926-173235.json`):
+
+| Clause | Verdict | Detail |
+|---|---|---|
+| Alive | PASS | ran to +12000 ticks; no crash report; no ERROR or stack trace from the mod |
+| Sever | PASS | 28 couplings held at every sample; no `event=sever` |
+| Coupling | PASS | 28 couplings within 3 blocks at every sample; widest 1.98 |
+| Stall | PASS | no driven train stood within 5 blocks for 600 ticks |
+| Bounce | PASS | 0 overlap, 0 clip, 0 overspeed, 0 sever within 40 ticks of a strike; 14,521 strikes |
+| Switch-safe | PASS | no switch thrown under a spanning train, no `DIVERTED` sever; 239 spanned changes held |
+| vacuity | PASS | 14,521 strikes between trains; driven trains ran 16,152–19,583 blocks; 35 carts |
+
+Run 2 (`run-torturetrack-20260926-174253.json`):
+
+| Clause | Verdict | Detail |
+|---|---|---|
+| Alive | PASS | ran to +12000 ticks; no crash report; no ERROR or stack trace from the mod |
+| Sever | PASS | 28 couplings held at every sample; no `event=sever` |
+| Coupling | PASS | 28 couplings within 3 blocks at every sample; widest 2.02 |
+| Stall | PASS | no driven train stood within 5 blocks for 600 ticks |
+| Bounce | PASS | 0 overlap, 0 clip, 0 overspeed, 0 sever within 40 ticks of a strike; 15,532 strikes |
+| Switch-safe | PASS | no switch thrown under a spanning train, no `DIVERTED` sever; 213 spanned changes held |
+| vacuity | PASS | 15,532 strikes between trains; driven trains ran 16,788–18,966 blocks; 35 carts |
+
 ---
 
 ## Open decisions
 
 - **The lone chest cart at `(-14,-53,-14)`.** A one-cart strip with its own sign, so treated as
   an intended obstacle. Settled by the user.
+- **A train through a jump.** On `3bjump` the cars behind an airborne leading car are loose, and
+  Coupling reads up to 12.59 blocks; P13's clause came after P12's runs. Keeping a train within a
+  link in the air is not planned.
 - **The audit's remaining findings.** S2 (restart), U2 (stale held heading — the track has no
   station), K1, L1, L2, L5 and D3 are outside this bar and stay in the audit.
 
