@@ -93,6 +93,10 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     @Unique
     private long minecarttweaks$seatedTick;
 
+    // The tick the placer last flew this cart on through the air, zero for never, as above.
+    @Unique
+    private long minecarttweaks$flownTick;
+
     // Which arc numbering the seat arc above was measured in. Zero works as "never stamped" on its
     // own: epochs are handed out from a counter that starts at one, so no ribbon ever answers zero.
     @Unique
@@ -235,6 +239,16 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     }
 
     @Override
+    public long minecarttweaks$flownAt() {
+        return minecarttweaks$flownTick;
+    }
+
+    @Override
+    public void minecarttweaks$setFlownAt(long gameTime) {
+        minecarttweaks$flownTick = gameTime;
+    }
+
+    @Override
     public @Nullable Double minecarttweaks$seatArc(int arcEpoch) {
         return minecarttweaks$seatedArcEpoch == arcEpoch ? minecarttweaks$seatedArc : null;
     }
@@ -269,10 +283,13 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
 
     // A seated cart is placed along its train's track, so vanilla moving it too would leave it
     // wherever the two land — decided by entity tick order, which nothing here controls. Only the
-    // movement is refused; everything else the stepper does belongs to the placer.
+    // movement is refused; everything else the stepper does belongs to the placer. A car the
+    // placer flies through the air behind its train's leading car is moved once, by it, too.
     @Inject(method = "moveAlongTrack", at = @At("HEAD"), cancellable = true)
     private void minecarttweaks$placedInstead(ServerLevel level, CallbackInfo info) {
-        if (TrainPlacer.seated(minecarttweaks$self())) {
+        AbstractMinecart self = minecarttweaks$self();
+
+        if (TrainPlacer.seated(self) || TrainPlacer.flown(self)) {
             info.cancel();
         }
     }
@@ -398,7 +415,8 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
 
     // Vanilla's move stops a box only at a face it has yet to cross, so a car off its rails that
     // is already inside another train's car would be carried on into it. An axis held back loses
-    // its speed, as one a wall stops does.
+    // its speed, as one a wall stops does. A car flown off a jump passes its own train's cars in
+    // vanilla's move, so those stop it first, its speed matched: lost, it would drop short.
     @WrapOperation(method = "comeOffTrack",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/world/entity/vehicle/minecart/AbstractMinecart;"
@@ -406,16 +424,17 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
                             + "Lnet/minecraft/world/phys/Vec3;)V"))
     private void minecarttweaks$moveOffRails(AbstractMinecart cart, MoverType moverType,
             Vec3 movement, Operation<Void> move) {
-        Vec3 allowed = OffRails.shallowerPart(cart, movement);
+        Vec3 held = OffRails.behindOwnTrain(cart, movement);
+        Vec3 allowed = OffRails.shallowerPart(cart, held);
 
         move.call(cart, moverType, allowed);
 
-        if (!allowed.equals(movement)) {
+        if (!allowed.equals(held)) {
             Vec3 speed = cart.getDeltaMovement();
 
-            cart.setDeltaMovement(allowed.x() == movement.x() ? speed.x() : 0.0,
-                    allowed.y() == movement.y() ? speed.y() : 0.0,
-                    allowed.z() == movement.z() ? speed.z() : 0.0);
+            cart.setDeltaMovement(allowed.x() == held.x() ? speed.x() : 0.0,
+                    allowed.y() == held.y() ? speed.y() : 0.0,
+                    allowed.z() == held.z() ? speed.z() : 0.0);
         }
     }
 

@@ -98,6 +98,12 @@ public interface AbstractMinecartExt extends Linkable {
     /** Records that the placer seated this cart at {@code gameTime}. */
     public void minecarttweaks$setSeatedAt(long gameTime);
 
+    /** The game time the placer last flew this cart on through the air, or zero for never. */
+    public long minecarttweaks$flownAt();
+
+    /** Records that the placer flew this cart at {@code gameTime}. */
+    public void minecarttweaks$setFlownAt(long gameTime);
+
     /**
      * The arc along its train's ribbon this cart was last seated at, or null if that arc was
      * recorded against a different numbering than {@code arcEpoch} — a reset since renumbered it,

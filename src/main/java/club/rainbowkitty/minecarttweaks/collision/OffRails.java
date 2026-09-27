@@ -2,6 +2,7 @@ package club.rainbowkitty.minecarttweaks.collision;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
@@ -12,6 +13,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 
 import club.rainbowkitty.minecarttweaks.ext.Linkable;
 import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
+import club.rainbowkitty.minecarttweaks.train.TrainPlacer;
 
 /**
  * A car off its rails, and its set-down back onto them. Such a car shares track with no cart, so
@@ -19,7 +21,9 @@ import club.rainbowkitty.minecarttweaks.train.TrainCoupling;
  * box through anything it already overlaps; and vanilla sets a car down onto a rail wherever the
  * rail is. All three are held here to what a step along the rail is held to: another train's car
  * stops the car where the two first touch, and one the car is already inside it goes no deeper
- * into.
+ * into. A car of a train flying a jump is stopped where it first touches the car of its own train
+ * ahead as well, taking only the speed it closes at: the stop and shove that make two cars solid
+ * would strand it short of the landing.
  */
 public final class OffRails {
 
@@ -40,6 +44,61 @@ public final class OffRails {
     }
 
     /**
+     * {@code movement}, a move of {@code cart} flown off a jump behind its train's leading car,
+     * stopped where its box first meets a car of its own train also off its rails, an axis at a
+     * time in the order vanilla's move settles them. The cart keeps no speed closing on the car
+     * that stopped it, so it flies on at that car's pace rather than pressing into it every tick.
+     * Any other move, a derailment's among them, is left as it was.
+     */
+    public static Vec3 behindOwnTrain(AbstractMinecart cart, Vec3 movement) {
+        if (movement.lengthSqr() == 0.0 || !TrainPlacer.flown(cart)) {
+            return movement;
+        }
+
+        AABB box = cart.getBoundingBox();
+        List<AbstractMinecart> mates = carts(cart, box.expandTowards(movement),
+                near -> !near.isOnRails() && !ofAnotherTrain(cart, near));
+
+        if (mates.isEmpty()) {
+            return movement;
+        }
+
+        Vec3 allowed = Vec3.ZERO;
+        Vec3 speed = cart.getDeltaMovement();
+
+        for (Direction.Axis axis : Direction.axisStepOrder(movement)) {
+            double distance = movement.get(axis);
+            AABB fromBox = box.move(allowed);
+            double reach = distance;
+            AbstractMinecart stopper = null;
+
+            // As vanilla's move does, this passes a box the cart is already inside, stranding none.
+            for (AbstractMinecart mate : mates) {
+                double mateReach = Shapes.create(mate.getBoundingBox())
+                        .collide(axis, fromBox, reach);
+
+                if (Math.abs(mateReach) < Math.abs(reach)) {
+                    reach = mateReach;
+                    stopper = mate;
+                }
+            }
+
+            allowed = allowed.with(axis, reach);
+
+            if (stopper != null) {
+                double theirs = stopper.getDeltaMovement().get(axis);
+
+                speed = speed.with(axis, distance > 0.0
+                        ? Math.min(speed.get(axis), theirs) : Math.max(speed.get(axis), theirs));
+            }
+        }
+
+        cart.setDeltaMovement(speed);
+
+        return allowed;
+    }
+
+    /**
      * {@code movement}, a move of {@code cart} off its rails, less each axis that would take its
      * box deeper into a car of another train it is already inside, settled in the order vanilla's
      * move settles them. An axis that brings the two apart is kept, so the car can still get out.
@@ -52,7 +111,7 @@ public final class OffRails {
         AABB box = cart.getBoundingBox();
         List<AABB> insideBoxes = new ArrayList<>();
 
-        for (AbstractMinecart other : carsOfOtherTrains(cart, box)) {
+        for (AbstractMinecart other : carts(cart, box, near -> ofAnotherTrain(cart, near))) {
             if (depth(box, other.getBoundingBox()) > INSIDE) {
                 insideBoxes.add(other.getBoundingBox());
             }
@@ -85,7 +144,8 @@ public final class OffRails {
     public static Vec3 shortOfCars(AbstractMinecart cart, AABB fromBox, Vec3 setDown) {
         List<VoxelShape> solids = new ArrayList<>();
 
-        for (AbstractMinecart other : carsOfOtherTrains(cart, fromBox.expandTowards(setDown))) {
+        for (AbstractMinecart other : carts(cart, fromBox.expandTowards(setDown),
+                near -> ofAnotherTrain(cart, near))) {
             AABB otherBox = other.getBoundingBox();
             double depth = depth(fromBox, otherBox);
 
@@ -121,11 +181,12 @@ public final class OffRails {
         return !Linkable.coupled(cart, other) && !TrainCoupling.sameTrain(cart, other);
     }
 
-    // The carts of other trains whose boxes reach into area.
-    private static List<AbstractMinecart> carsOfOtherTrains(AbstractMinecart cart, AABB area) {
+    // The carts cart can meet at all whose boxes reach into area and that pass test.
+    private static List<AbstractMinecart> carts(
+            AbstractMinecart cart, AABB area, Predicate<AbstractMinecart> test) {
         return cart.level().getEntitiesOfClass(AbstractMinecart.class, area.inflate(INSIDE),
                 other -> other != cart && CartInteraction.participates(cart, other)
-                        && ofAnotherTrain(cart, other));
+                        && test.test(other));
     }
 
     // Whether a box moved from fromBox to toBox stands deeper inside any of boxes than it did.

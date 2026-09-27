@@ -172,6 +172,20 @@ public final class TrainPlacer {
     }
 
     /**
+     * Whether {@code car}, flown off the end of its train's track behind the leading car, is moved
+     * through the air by the placer rather than by its own tick, with the same tick of grace.
+     */
+    public static boolean flown(AbstractMinecart car) {
+        if (!(car instanceof AbstractMinecartExt ext)) {
+            return false;
+        }
+
+        long flownTick = ext.minecarttweaks$flownAt();
+
+        return flownTick != 0 && flownTick + 1 >= car.level().getGameTime();
+    }
+
+    /**
      * Every cart of another train standing against {@code end}, a car of {@code train}: as far past
      * its box as the placer looks for another train's cart to pack short of.
      */
@@ -506,8 +520,8 @@ public final class TrainPlacer {
     }
 
     // Runs the cars still seated on after a leading car flown off the ribbon's end, and has each
-    // leave the track at that end as the leading car did, one a tick. False, having moved nothing,
-    // for a leader knocked off mid-track or run into a wall, which releases.
+    // leave the track at that end as the leading car did, one a tick; those gone ahead it flies on.
+    // False, having moved nothing, for a leader knocked off mid-track or into a wall: it releases.
     private static boolean followOff(Train train, AbstractMinecart leader) {
         TrackRibbon ribbon = train.ribbon();
 
@@ -540,6 +554,7 @@ public final class TrainPlacer {
         Seat[] seats = new Seat[cars.size()];
         double[] seatArcs = new double[cars.size()];
         int leavingIndex = Refusal.NONE;
+        List<AbstractMinecart> flying = new ArrayList<>();
         // Where the seated car ahead goes this tick and where it stood, which the next keeps its
         // gap to; none past a car leaving, whose way off the end is its own.
         Double aheadArc = null;
@@ -555,6 +570,7 @@ public final class TrainPlacer {
                     return false;
                 }
 
+                flying.add(car);
                 continue;
             }
 
@@ -596,7 +612,13 @@ public final class TrainPlacer {
 
         double runLimit = furthestRun(leader);
 
-        // The car leaving goes first, off the end before the car behind is seated up to it.
+        // Front first, each after the car ahead has moved, so each is held behind where that car
+        // is now, not where it stood before a tick that could come either side of this one.
+        for (AbstractMinecart car : flying) {
+            fly(level, car);
+        }
+
+        // The car leaving goes next, off the end before the car behind is seated up to it.
         if (leavingIndex != Refusal.NONE) {
             place(train, cars.get(leavingIndex), seats[leavingIndex], seatArcs[leavingIndex],
                     runSign, speed, runLimit, true);
@@ -617,16 +639,25 @@ public final class TrainPlacer {
     }
 
     // Has vanilla move car off the end now, a whole tick's run past it as it did the leading car;
-    // seated to the tick's end, it moves once whichever of the two ticks first.
+    // seated to the tick's end, it moves once whichever of the two ticks first, and is flown after.
     private static void leaveTrack(ServerLevel level, AbstractMinecart car) {
         loosen(car);
-
-        if (car.getBehavior() instanceof NewMinecartBehavior behavior) {
-            behavior.moveAlongTrack(level);
-        }
+        fly(level, car);
 
         if (car instanceof AbstractMinecartExt ext) {
             ext.minecarttweaks$setSeatedAt(level.getGameTime() - 1);
+        }
+    }
+
+    // Has vanilla move car on now, marked first so the move holds it behind the car ahead and its
+    // own tick, before or after this, does not move it again.
+    private static void fly(ServerLevel level, AbstractMinecart car) {
+        if (car instanceof AbstractMinecartExt ext) {
+            ext.minecarttweaks$setFlownAt(level.getGameTime());
+        }
+
+        if (car.getBehavior() instanceof NewMinecartBehavior behavior) {
+            behavior.moveAlongTrack(level);
         }
     }
 
@@ -1190,6 +1221,7 @@ public final class TrainPlacer {
     private static void loosen(AbstractMinecart car) {
         if (car instanceof AbstractMinecartExt ext) {
             ext.minecarttweaks$setSeatedAt(0L);
+            ext.minecarttweaks$setFlownAt(0L);
         }
     }
 
