@@ -75,6 +75,10 @@ public final class TrackRibbon {
     // only answerable from where it was a moment ago.
     private double leaderArc;
 
+    // Set while the leading car stands off every block recorded here, so the block it comes back
+    // down on is judged as a landing, which can be on another pass of the same track.
+    private boolean leaderLost;
+
     // Set while blocksBetween walks the nodes: its action can throw a switch, and so cut them.
     private boolean walking;
 
@@ -104,6 +108,7 @@ public final class TrackRibbon {
      */
     public TrackRibbon(TrackRibbon other) {
         nodes.addAll(other.nodes);
+        // Not leaderLost: a half is often led by another car, and the next reading sets it again.
         leaderArc = other.leaderArc;
         resets = other.resets;
         revisits = other.revisits;
@@ -167,7 +172,8 @@ public final class TrackRibbon {
      * ignored: whichever car reports it, it is track this ribbon knows, and discarding twenty good
      * nodes over one unremarkable block is the more expensive mistake by far. Only a block the
      * ribbon has never seen is a discontinuity — a reversal onto untracked rail, a teleport, a
-     * reload — and that restarts the ribbon rather than inventing track between the two.
+     * reload — and that restarts the ribbon rather than inventing track between the two. So is a
+     * landing behind where the leading car left the ribbon, on track it recorded on another pass.
      */
     public void record(Level level, BlockPos pos, Vec3 movement) {
         if (!nodes.isEmpty()) {
@@ -178,6 +184,7 @@ public final class TrackRibbon {
             if (nearArc != null) {
                 revisits++;
                 leaderArc = nearArc;
+                leaderLost = false;
                 return;
             }
 
@@ -189,27 +196,36 @@ public final class TrackRibbon {
             if (ahead && adjacent(nodes.getLast().block(), pos)) {
                 append(level, pos, movement);
                 leaderArc = nodes.getLast().arc();
+                leaderLost = false;
                 return;
             }
 
             if (!ahead && adjacent(nodes.getFirst().block(), pos)) {
                 prepend(level, pos, movement);
                 leaderArc = nodes.getFirst().arc();
+                leaderLost = false;
                 return;
             }
 
             if (holds(pos)) {
-                revisits++;
-                leaderArc = nearestOccurrence(pos, leaderArc);
-                return;
+                double heldArc = nearestOccurrence(pos, leaderArc);
+
+                if (!landsBehind(heldArc, movement)) {
+                    revisits++;
+                    leaderArc = heldArc;
+                    leaderLost = false;
+                    return;
+                }
             }
 
             resets++;
             arcEpoch = EPOCH_COUNTER.incrementAndGet();
-            LOGGER.debug("ribbon reset at {}: unknown to its {} nodes, running {} to {}",
+            LOGGER.debug("ribbon reset at {}: no step along its {} nodes, running {} to {}",
                     pos, nodes.size(), nodes.getFirst().block(), nodes.getLast().block());
             nodes.clear();
         }
+
+        leaderLost = false;
 
         RailPath.Crossing crossing = RailPath.crossing(level, pos, movement);
 
@@ -221,7 +237,7 @@ public final class TrackRibbon {
 
     /**
      * Where the leading car sits along this ribbon, or null if the block it stands on is not one
-     * this ribbon records.
+     * this ribbon records, or if the car has come back down behind where it left this ribbon.
      *
      * <p>The same question {@link #arcOf} answers, settled differently where a block appears more
      * than once: by which occurrence the car was last recorded on rather than by which is nearest
@@ -238,11 +254,32 @@ public final class TrackRibbon {
     public @Nullable Double arcOfLeader(AbstractMinecart leader) {
         Double best = arcNear(leader, leaderArc);
 
+        // Not yet on this ribbon: record starts it over from the block the car comes down on.
+        if (best != null && landsBehind(best, leader.getDeltaMovement().horizontal())) {
+            best = null;
+        }
+
+        leaderLost = best == null;
+
         if (best != null) {
             leaderArc = best;
         }
 
         return best;
+    }
+
+    // Whether a leading car that has been off this ribbon comes back at arc behind where it left
+    // it, against the way it is going: onto another pass, where its train lies the other way round.
+    private boolean landsBehind(double arc, Vec3 movement) {
+        Vec3 tangent = tangentAt(leaderArc);
+
+        if (!leaderLost || tangent == null || Math.abs(arc - leaderArc) <= CONTINUITY) {
+            return false;
+        }
+
+        double travel = movement.dot(tangent);
+
+        return Math.abs(travel) > EPSILON && Math.signum(travel) != Math.signum(arc - leaderArc);
     }
 
     /**
