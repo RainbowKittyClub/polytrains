@@ -22,7 +22,8 @@ against a dev server of its own; so are P9 and P10, planned from the first run w
 P11, planned from the first with P9 and P10 in. P12 and P13, and the rest of P5, were planned after
 R1 from what it does not measure; they are independent of each other, and R1 runs again once they
 land. P14, planned from the runs with P13 in, builds on it. P15 to P17, planned from P14's runs, are
-independent of each other, and R1 runs again once they land.
+independent of each other, and R1 runs again once they land. P18 comes from the user's report of
+`3bjump` after them.
 
 ---
 
@@ -1108,6 +1109,23 @@ loop and the serpentine, every car on its rails: P15's kind. Not fixed: the step
 (NewMinecartBehavior.java:457) is still a bare `setPos`, and `3bjump` fails Coupling, 53 readings in
 ten minutes up to 12.59 blocks, as it did before P17: while the leading car flies, the rest of its
 train is loose.
+
+## P18 — A train keeps its leading end through a jump — **in progress**
+
+**Build.** On `3bjump` the train leaves the lip with the car that led it up the ramp in front, and
+while it flies `holdTrain` refuses `LEADER_OFF_RIBBON` with three cars loose. About eleven ticks
+later it is seated again, led from the car at its other end, which the placer lays at the front of
+the landing track, some 17 blocks on from where it stood on the ramp, with the rest behind it. So
+the same end reaches the eastern stop every lap, where the U-turn through the loop, which keeps the
+end in front, should have it alternate lap by lap. P12's check counted where stall turns happened,
+which this never is, and passed. In the air the cars also spread 10 blocks apart, what `3bjump`'s
+Coupling failure reads (P17). Find what hands the lead to the tail end while the leader flies or
+lands — the leader decision, the ribbon started over at the landing, or the order read off it — and
+keep the end that left the lip in front when it lands.
+
+**Done when.** Ten minutes on `3bjump` at 40 and at 100, traced tick by tick, land every jump with
+the car that led up the ramp in front, and a ten-minute torture run at each speed still passes every
+clause.
 
 # Part R — The bar
 
