@@ -1234,7 +1234,7 @@ exact, and a ten-minute torture run at 100 and one at 40 passed every clause, on
 0.24, standing an arc apart but a shorter chord apart; a flight that ends in a release hangs a car
 that ticked before the leader for one tick, as seated cars already are; the leap at 100.
 
-## P21 — Two trains pressing at a U-turn are found pressing — **in progress**
+## P21 — Two trains pressing at a U-turn are found pressing — **done**
 
 **Build.** P10 turns one train of a pressing pair and holds the other. The pair is found by
 `TrainCoupling.pressedAgainst` (TrainCoupling.java:1395), which takes a train whose end car stands
@@ -1252,7 +1252,35 @@ with a probe of two trains meeting at a one-row U-turn.
 code before turned both; P10's loop and line probes still circulate and clear; a ten-minute torture
 run at 100 and one at 40 pass every clause.
 
-## P22 — Trains blocked at both ends clear where there is room — **in progress**
+### As built
+
+The pair was found through space, and a pair found still did not part. `drivesInto` now walks the
+rails from the car the way its train's engines aim at it, each switch as laid, and asks whether the
+walk reaches the other car's block within a link's length of track (`RailPath.leadsTo`); a heading
+read on the straight just short of a corner still names that corner's exit, and the walk one way is
+the other's reversed, so both trains get one answer. The train that turned then stood with its
+engines aimed off its tail and the other train's leading car against that tail, which `foreignEnd`
+finds up to 0.006 short of flush, so it read as blocked; a standing train blocked at its tail
+counted as pressing whichever way its engines aimed, its leading car stayed seated, and its next
+engine turned it back four ticks later, the two turning by turns and never moving. Round a U-turn
+vanilla's push, the mean of two cars both running north on the two legs, also left it a crawl of
+0.08 back into the U. For `TURN_HOLD_TICKS` after a stall turn a train now reads where it is going
+off its engines' aim, in the placer's pressing test and in `hauled`'s drive. Read so for every
+standing train, not only a turned one, a run at 40 failed Coupling once, at 3.09 for one sample,
+while a tail car was let go at the `(-17,-11)` junction; that was not traced.
+
+Observed on a server of its own, on a replica of the serpentine's U with two trains packed and
+standing side by side: on `90e154e` both leading cars stood 580 of 600 ticks when the four-car train
+sorted first and 150 when the eight-car did, and on the replica of the `(-3,-27)` hairpin 580;
+after, the train sorting first turned at +5 or +6 and left, and no leading car stood more than 20
+ticks. P10's loops and lines still circulated and cleared, and four ten-minute runs, two at 100 and
+two at 40, passed every clause. Not fixed: in the east-facing U an eight-car train turning strikes
+the four-car train's car on the other leg with its tail on the corner's chord, and
+`CartImpact.shunt` carries that train back down its leg rather than after it, though the two part;
+and a nearly full loop circulates more slowly, 2.4 laps in 600 ticks where it ran 5.9, since a train
+that turns now leaves at once.
+
+## P22 — Trains blocked at both ends clear where there is room — **done**
 
 **Build.** P15 left gridlocks: trains each blocked at both ends by trains driving into them, which
 nothing local breaks. A draft of P16 locked three trains, 20 cars, in the bottom balloon loop, which
@@ -1266,6 +1294,19 @@ not this stage's.
 **Done when.** Each probe's gridlock clears on its own where the code before held it, or the stage
 shows from the runs and probes that none holds with P21 in; four consecutive ten-minute runs, two at
 100 and two at 40, pass every clause.
+
+### As built
+
+Nothing was changed: no gridlock with room to clear held with P21 in. Six ten-minute runs with it
+had no stall, and probes on the torture track, its rig reset, crowding the bottom balloon loop and
+the serpentine with trains heading both ways at 40 and 100, stood no train more than 90 ticks, where
+`90e154e` held the crowd at the balloon's switch end for 290. P17's serpentine stand was P21's pair:
+the four-car train had the upper serpentine empty behind it, and the eight-car train's tail stood
+against the lone chest, which it can push. The balloon loop filled one way round, 20 cars on its 20
+cells as P16's draft stood, or 19, holds for good on both codes: every train is pressed at both ends
+and the only way out, north through the switch at `(-14,-2)`, lies under the four-car train's own
+body, a filled section, whose four-car train turns every 4 to 6 ticks for good. With 18 cars it
+clears.
 
 ## P23 — The stepper's hill lift never sets a car inside another — **done**
 
@@ -1413,6 +1454,36 @@ Run 2 (`run-torturetrack-20260926-174253.json`):
 | Bounce | PASS | 0 overlap, 0 clip, 0 overspeed, 0 sever within 40 ticks of a strike; 15,532 strikes |
 | Switch-safe | PASS | no switch thrown under a spanning train, no `DIVERTED` sever; 213 spanned changes held |
 | vacuity | PASS | 15,532 strikes between trains; driven trains ran 16,788–18,966 blocks; 35 carts |
+
+Reached again after P20 to P23, by the two runs at 100 that followed the self-check on the
+coordinator's server, both against `1c03b7b`, which is main with all four in; the two runs at 40
+after them passed every clause as well, the widest coupling 2.13 and 2.32, and a 6,000-tick trace of
+`3bjump` at 40 after them saw all four cars leave the lip on all 64 jumps and none inside another in
+the air.
+
+Run 1 (`run-torturetrack-20260927-150655.json`):
+
+| Clause | Verdict | Detail |
+|---|---|---|
+| Alive | PASS | ran to +12000 ticks; no crash report; no ERROR or stack trace from the mod |
+| Sever | PASS | 28 couplings held at every sample; no `event=sever` |
+| Coupling | PASS | 28 couplings within 3 blocks at every sample; widest 2.02 |
+| Stall | PASS | no driven train stood within 5 blocks for 600 ticks |
+| Bounce | PASS | 0 overlap, 0 clip, 0 overspeed, 0 sever within 40 ticks of a strike; 15,049 strikes |
+| Switch-safe | PASS | no switch thrown under a spanning train, no `DIVERTED` sever; 248 spanned changes held |
+| vacuity | PASS | 15,049 strikes between trains; driven trains ran 17,386–20,178 blocks; 35 carts |
+
+Run 2 (`run-torturetrack-20260927-151656.json`):
+
+| Clause | Verdict | Detail |
+|---|---|---|
+| Alive | PASS | ran to +12000 ticks; no crash report; no ERROR or stack trace from the mod |
+| Sever | PASS | 28 couplings held at every sample; no `event=sever` |
+| Coupling | PASS | 28 couplings within 3 blocks at every sample; widest 2.32 |
+| Stall | PASS | no driven train stood within 5 blocks for 600 ticks |
+| Bounce | PASS | 0 overlap, 0 clip, 0 overspeed, 0 sever within 40 ticks of a strike; 14,280 strikes |
+| Switch-safe | PASS | no switch thrown under a spanning train, no `DIVERTED` sever; 260 spanned changes held |
+| vacuity | PASS | 14,280 strikes between trains; driven trains ran 16,557–20,132 blocks; 35 carts |
 
 ---
 
