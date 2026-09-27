@@ -149,11 +149,12 @@ onto them is outside every guard a step on the rail has. They are planned as P15
 ## How these stages get tested
 
 On the mod's own dev server (`run/server.properties`: game port 25603, rcon 25579, password in the
-file), against the rig group `torturetrack` placed over the box `{x:-24,y:-53,z:-30,w:28,d:32}` —
-the box that covers the track once M1 lands. `TrainMeter` and the event lines write at DEBUG, which
-Loom's generated log4j routes to `run/logs/debug.log` only (root logger DEBUG, `net.minecraft`
-capped at INFO, rolled on startup and at 200 MB). The sampler `scripts/torture.py` (M5) drives the
-run and reads both the world over rcon and the log from a mark.
+file), against the rig group `torturetrack`, which `mtxrig:rig` places from the signs it finds
+within 16 blocks of `(-10,-54,-15)`, the middle of the track a block under its rails, and 8 above or
+below, which stops short of the sign at `(-9,-45,-7)` it has never placed. `TrainMeter` and the
+event lines write at DEBUG, which Loom's generated log4j routes to `run/logs/debug.log` only (root
+logger DEBUG, `net.minecraft` capped at INFO, rolled on startup and at 200 MB). The sampler
+`scripts/torture.py` (M5) drives the run and reads both the world over rcon and the log from a mark.
 
 A stage is finished when its "Done when" is observed on that server by the sampler or by the probe
 the stage names. The user's in-world confirmation is waived for every stage in this document; that
@@ -177,11 +178,11 @@ say — the abtestloop control passed every clause in September precisely becaus
 met.
 
 The protocol, which M5 automates: check the two rules over rcon, `max_minecart_speed` against
-`--speed` (100 unless given); set the box; reset and rig the group; record the log line count and
-the game time; sample every second until game time has advanced 12,000 ticks or rcon dies; then
-parse the log from the mark, print the verdict table, save the series, reset the group and restore
-the yard box `{x:-44,y:-53,z:-4,w:25,d:25}`. After a crash: `devserver.sh restart`, then kill
-`@e[tag=mtx]` before the reloaded carts re-accelerate.
+`--speed` (100 unless given); set the search radius; reset and rig the group round the track's
+middle; record the log line count and the game time; sample every second until game time has
+advanced 12,000 ticks or rcon dies; then parse the log from the mark, print the verdict table, save
+the series, reset the group and put the search radius back. After a crash: `devserver.sh restart`,
+then kill `@e[tag=mtx]` before the reloaded carts re-accelerate.
 
 Working in a worktree, as `/batch` does. `build.gradle`, `settings.gradle` and `gradlew` are
 symlinks into the `gradle/` submodule, so a fresh worktree builds nothing until
