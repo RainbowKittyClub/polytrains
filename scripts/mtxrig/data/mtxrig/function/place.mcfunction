@@ -1,5 +1,5 @@
 # A cart goes here only where there is track to stand on, a marker directly above it, and an
-# anchor this group's sign reached. Every other marker strip in the box is left alone.
+# anchor this group's sign reached. Every other marker strip nearby is left alone.
 execute unless entity @e[tag=mtx_anchor,distance=..0.4] run return 0
 
 # The rail's own shape decides which way the cart is laid, and it is decided before the summon

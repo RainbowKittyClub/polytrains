@@ -59,8 +59,12 @@ MOD_PACKAGE = "club.rainbowkitty.minecarttweaks"
 
 TORTURE_GROUP = "torturetrack"
 SELFCHECK_GROUP = "abtestloop-a"
-TORTURE_BOX = (-24, -53, -30, 28, 32)
-YARD_BOX = (-44, -53, -4, 25, 25)
+# Where the rig searches for a group's signs: the middle of the torture track and of the yard. The
+# track's is a block under its rails, so the search's 8 up stops short of the sign at (-9,-45,-7).
+TORTURE_AT = (-10, -54, -15)
+YARD_AT = (-32, -53, 8)
+DEFAULT_RADIUS = 16
+MAX_RADIUS = 24
 
 RUN_TICKS = 12_000
 SELFCHECK_TICKS = 1_800
@@ -640,10 +644,12 @@ def read_event(report, number, message):
 class Run:
     """Everything one sampling session collected, for judging and for the JSON."""
 
-    def __init__(self, mode, group, box, duration, speed=DEFAULT_SPEED):
+    def __init__(self, mode, group, at, duration, speed=DEFAULT_SPEED, radius=DEFAULT_RADIUS):
         self.mode = mode
         self.group = group
-        self.box = box
+        self.at = at
+        self.radius = radius
+        self.saved_radius = None
         self.duration = duration
         self.speed = speed
         self.start_tick = None
@@ -971,7 +977,7 @@ def roster_lines(sample):
 
 def print_verdict(run, verdict, result, selfcheck_problems=None):
     print()
-    print(f"torture.py {run.mode}: group {run.group}, box {fmt_box(run.box)}, "
+    print(f"torture.py {run.mode}: group {run.group}, round {fmt_at(run.at)} within {run.radius}, "
           f"max_minecart_speed {run.speed}, commit {run.meta.get('commit', '?')}")
     if run.start_tick is not None:
         print(f"  rig at tick {run.start_tick}; {len(run.samples)} samples to "
@@ -1027,8 +1033,8 @@ def print_verdict(run, verdict, result, selfcheck_problems=None):
             print(f"    ... {len(strikes) - 50} more in the JSON")
 
 
-def fmt_box(box):
-    return "{x:%d,y:%d,z:%d,w:%d,d:%d}" % box
+def fmt_at(at):
+    return "%d,%d,%d" % at
 
 
 def jsonable(value):
@@ -1048,7 +1054,8 @@ def write_json(run_dir, run, verdict, result, selfcheck_problems):
     path = out_dir / f"{run.mode}-{run.group}-{stamp}.json"
     first = run.samples[0] if run.samples else None
     document = {
-        "mode": run.mode, "group": run.group, "box": fmt_box(run.box), "speed": run.speed,
+        "mode": run.mode, "group": run.group, "at": fmt_at(run.at), "radius": run.radius,
+        "speed": run.speed,
         "meta": run.meta,
         "start_tick": run.start_tick, "last_tick": run.last_tick, "duration": run.duration,
         "rcon_error": run.rcon_error, "frozen": run.frozen, "interrupted": run.interrupted,
@@ -1127,14 +1134,21 @@ def count(rcon, selector):
     return int(match.group(1)) if match else 0
 
 
-def set_box(rcon, box):
-    rcon.cmd("function mtxrig:box " + fmt_box(box))
+def read_radius(rcon):
+    """The rig's search radius as the world holds it, or None if it holds none."""
+    match = re.search(r"contents: (\d+)", rcon.cmd("data get storage mtxrig:search r"))
+    return int(match.group(1)) if match else None
 
 
-def find_signs(rcon):
-    """Every [mtxrig] sign in the box, as (x, y, z, group)."""
+def set_radius(rcon, radius):
+    if radius is not None:
+        rcon.cmd(f"function mtxrig:radius {{r:{radius}}}")
+
+
+def find_signs(rcon, at):
+    """Every [mtxrig] sign the rig's search round at reaches, as (x, y, z, group)."""
     rcon.cmd("kill @e[tag=mtx_found]")
-    rcon.cmd("function mtxrig:find")
+    rcon.cmd("execute positioned %d %d %d run function mtxrig:find" % at)
     reply = rcon.cmd("execute as @e[tag=mtx_found] run data get entity @s Pos")
     signs = []
     for pos in re.findall(r"\[(%s)d, (%s)d, (%s)d\]" % (NUMBER, NUMBER, NUMBER), reply):
@@ -1152,19 +1166,20 @@ def coupling_warnings(rcon):
     return int(match.group(1)) if match else None
 
 
-def rig(rcon, group):
-    """Places the group; returns why it could not, or None."""
-    reply = rcon.cmd(f'function mtxrig:rig {{group:"{group}"}}')
+def rig(rcon, group, at):
+    """Places the group from its signs round at; returns why it could not, or None."""
+    reply = rcon.cmd("execute positioned %d %d %d run " % at
+                     + f'function mtxrig:rig {{group:"{group}"}}')
     if "Unknown" in reply or "Can't find" in reply:
         return f"mtxrig:rig failed ({reply.strip()}); sync the pack with scripts/rig-sync.sh"
     return None
 
 
-def clear_group(rcon, group):
+def clear_group(rcon, group, radius):
     rcon.cmd(f'function mtxrig:reset {{group:"{group}"}}')
-    set_box(rcon, YARD_BOX)
+    set_radius(rcon, radius)
     left = count(rcon, f"@e[tag=mtx_{group}]")
-    return f"reset {group} ({left} left) and restored the yard box {fmt_box(YARD_BOX)}"
+    return f"reset {group} ({left} left) and put the search radius back to {radius}"
 
 
 def sample_loop(rcon, run, on_sample=None):
@@ -1255,7 +1270,7 @@ class Injector:
 
 
 def prepare(rcon, run, run_dir):
-    """Checks the rules and the box, marks the log and rigs the group; returns a refusal or None,
+    """Checks the rules and the signs, marks the log and rigs the group; returns a refusal or None,
     and the log mark."""
     wanted = rules_for(run.speed)
     rules = read_rules(rcon, wanted)
@@ -1268,18 +1283,21 @@ def prepare(rcon, run, run_dir):
         return (f"refusing to selfcheck: {others} cart(s) of other rig groups stand in the world; "
                 f"clear them with: function mtxrig:reset_all"), None
 
-    set_box(rcon, run.box)
-    signs = [s for s in find_signs(rcon) if s[3] == run.group]
+    run.saved_radius = read_radius(rcon)
+    set_radius(rcon, run.radius)
+    signs = [s for s in find_signs(rcon, run.at) if s[3] == run.group]
     if not signs:
-        set_box(rcon, YARD_BOX)
-        return f"refusing to run: no [mtxrig] sign naming {run.group} in {fmt_box(run.box)}", None
+        set_radius(rcon, run.saved_radius)
+        return (f"refusing to run: no [mtxrig] sign naming {run.group} within {run.radius} of "
+                f"{fmt_at(run.at)}; give --at a place near its sign"), None
 
     crash_dir = run_dir / "crash-reports"
     run.meta = {"commit": run_commit(run_dir), "run_dir": str(run_dir), "rules": rules,
                 "players": rcon.cmd("list"), "other_rig_carts": others,
                 "signs": [list(s) for s in signs], "crash_dir": str(crash_dir),
                 "started": datetime.datetime.now().isoformat(timespec="seconds")}
-    print(f"torture.py {run.mode}: {run.group} over {fmt_box(run.box)} for {run.duration} ticks; "
+    print(f"torture.py {run.mode}: {run.group} round {fmt_at(run.at)} within {run.radius} for "
+          f"{run.duration} ticks; "
           f"{len(signs)} sign(s) name it"
           + (f"; {others} other rig cart(s) stand" if others else ""))
 
@@ -1288,9 +1306,9 @@ def prepare(rcon, run, run_dir):
     run.meta["crash_before"] = listing(crash_dir)
     run.stalls.probe = lambda pos: rail_at(rcon, pos)
 
-    failure = rig(rcon, run.group)
+    failure = rig(rcon, run.group, run.at)
     if failure:
-        set_box(rcon, YARD_BOX)
+        set_radius(rcon, run.saved_radius)
         return failure, None
     run.start_tick = gametime(rcon)
     run.start_wall = time.time()
@@ -1303,9 +1321,9 @@ def prepare(rcon, run, run_dir):
 def session(args, mode):
     run_dir = Path(args.run_dir)
     group = args.group or (SELFCHECK_GROUP if mode == "selfcheck" else TORTURE_GROUP)
-    box = tuple(args.box) if args.box else (YARD_BOX if mode == "selfcheck" else TORTURE_BOX)
+    at = tuple(args.at) if args.at else (YARD_AT if mode == "selfcheck" else TORTURE_AT)
     duration = args.ticks or (SELFCHECK_TICKS if mode == "selfcheck" else RUN_TICKS)
-    run = Run(mode, group, box, duration, args.speed)
+    run = Run(mode, group, at, duration, args.speed, args.radius)
 
     try:
         rcon = mtxrcon.connect(run_dir, timeout=RCON_TIMEOUT)
@@ -1360,14 +1378,15 @@ def session(args, mode):
             print(f"  rcon refused a fresh connection: {e}")
     if alive:
         try:
-            print("  " + clear_group(rcon, group))
+            print("  " + clear_group(rcon, group, run.saved_radius))
         except mtxrcon.RconDead as e:
             alive = False
             print(f"  rcon died during cleanup: {e}")
     if not alive:
-        print(f"  rcon is dead: skipped the reset of {group} and the yard box restore. After "
+        print(f"  rcon is dead: skipped the reset of {group} and the search radius restore. After "
               f"scripts/devserver.sh <mod> restart, run at once, before the reloaded carts "
-              f"re-accelerate: kill @e[tag=mtx], then function mtxrig:box {fmt_box(YARD_BOX)}")
+              f"re-accelerate: kill @e[tag=mtx], then function mtxrig:radius "
+              f"{{r:{run.saved_radius or DEFAULT_RADIUS}}}")
     rcon.close()
     if mode == "selfcheck":
         return 0 if not problems else 1
@@ -1377,7 +1396,7 @@ def session(args, mode):
 def roster(args):
     run_dir = Path(args.run_dir)
     group = args.group or TORTURE_GROUP
-    box = tuple(args.box) if args.box else TORTURE_BOX
+    at = tuple(args.at) if args.at else TORTURE_AT
     try:
         rcon = mtxrcon.connect(run_dir, timeout=RCON_TIMEOUT)
     except mtxrcon.RconDead as e:
@@ -1385,33 +1404,35 @@ def roster(args):
         return 2
     try:
         with rcon:
-            return place_and_print(rcon, group, box)
+            return place_and_print(rcon, group, at, args.radius)
     except mtxrcon.RconDead as e:
         print(f"torture.py: {e}; if the server is still up it may be left frozen (tick unfreeze), "
-              f"with {group} placed and the box moved", file=sys.stderr)
+              f"with {group} placed and the search radius changed", file=sys.stderr)
         return 2
 
 
-def place_and_print(rcon, group, box):
-    set_box(rcon, box)
+def place_and_print(rcon, group, at, radius):
+    saved = read_radius(rcon)
+    set_radius(rcon, radius)
     # Frozen so the dump reads the carts where the rig stood them: the placer respaces a train on
     # its first tick, which can move a car into the next cell.
     rcon.cmd("tick freeze")
     try:
-        failure = rig(rcon, group)
+        failure = rig(rcon, group, at)
         sample = take_sample(rcon, group, gametime(rcon))
         warnings = coupling_warnings(rcon)
     finally:
         rcon.cmd("tick unfreeze")
     if failure:
-        set_box(rcon, YARD_BOX)
+        set_radius(rcon, saved)
         print(failure, file=sys.stderr)
         return 2
     sizes = " ".join(str(n) for n in sorted(len(t.uuids) for t in sample.trains))
-    print(f"{group} over {fmt_box(box)}: {len(sample.carts)} carts in {len(sample.trains)} "
+    print(f"{group} round {fmt_at(at)} within {radius}: {len(sample.carts)} carts in "
+          f"{len(sample.trains)} "
           f"trains ({sizes}); coupling warnings {'?' if warnings is None else warnings}")
     print("\n".join(roster_lines(sample)))
-    print(clear_group(rcon, group))
+    print(clear_group(rcon, group, saved))
     return 0
 
 
@@ -1428,9 +1449,13 @@ def main():
                                                        "checkout's)")
     parser.add_argument("--group", default=None, help="rig group (default: torturetrack, or "
                                                       "abtestloop-a for --selfcheck)")
-    parser.add_argument("--box", default=None, type=lambda s: [int(v) for v in s.split(",")],
-                        help="scan box as --box=x,y,z,w,d, the = form since x is negative "
-                             "(default: the torture box, or the yard box for --selfcheck)")
+    parser.add_argument("--at", default=None, type=lambda s: [int(v) for v in s.split(",")],
+                        help="where the rig searches for the group's signs, as --at=x,y,z, the = "
+                             "form since x is negative (default: the torture track's middle, "
+                             "or the yard's for --selfcheck)")
+    parser.add_argument("--radius", default=DEFAULT_RADIUS, type=int,
+                        help="how far round --at the search reaches, 8 up and down besides "
+                             f"(default: {DEFAULT_RADIUS}, at most {MAX_RADIUS})")
     parser.add_argument("--ticks", default=None, type=int, help="game ticks to sample (default: "
                                                                 "12000, or 1800 for --selfcheck)")
     parser.add_argument("--speed", default=DEFAULT_SPEED, type=int,
@@ -1442,8 +1467,10 @@ def main():
                              ("roster", args.roster), ("parse-test", args.parse_test)) if on]
     if len(modes) != 1:
         parser.error("give exactly one of: run, --selfcheck, --roster, --parse-test")
-    if args.box is not None and len(args.box) != 5:
-        parser.error("--box takes x,y,z,w,d")
+    if args.at is not None and len(args.at) != 3:
+        parser.error("--at takes x,y,z")
+    if not 1 <= args.radius <= MAX_RADIUS:
+        parser.error(f"--radius takes 1 to {MAX_RADIUS}")
     if args.speed <= 0:
         parser.error("--speed takes a max_minecart_speed above 0")
     if modes[0] == "parse-test":
@@ -1508,7 +1535,7 @@ def synthetic_run():
     lagging past a link from 300 to 340 and exactly a link behind at 400; b never moves; c runs up
     to b's rear and stops two blocks short at 183; and d (no engine) stands still throughout."""
     a, b, c, d = (SYNTHETIC[k] for k in "abcd")
-    run = Run("run", "synthetic", TORTURE_BOX, 1500)
+    run = Run("run", "synthetic", TORTURE_AT, 1500)
     run.start_tick, run.start_wall = 0, 0.0
     for tick in range(0, 1501, SAMPLE_TICKS):
         x = tick * 0.5
@@ -1636,7 +1663,7 @@ def parse_test():
     check("vacuity travel", ran, {train_id(a): 750, train_id(b): 0, train_id(c): 38})
     check("overall", overall(run, verdict), "FAIL")
 
-    clean = Run("selfcheck", "synthetic", YARD_BOX, 1500)
+    clean = Run("selfcheck", "synthetic", YARD_AT, 1500)
     clean.start_tick, clean.start_wall = 0, 0.0
     clean.log = parse_log("")
     verdict = judge(clean)
@@ -1648,7 +1675,7 @@ def parse_test():
     check("clean no vacuity", "vacuity" in verdict, False)
 
     # A clip alone fails Bounce and nothing else, as an overlap does.
-    clipped = Run("selfcheck", "synthetic", YARD_BOX, 1500)
+    clipped = Run("selfcheck", "synthetic", YARD_AT, 1500)
     clipped.start_tick, clipped.start_wall = 0, 0.0
     clipped.log = parse_log("\n".join(
         line for line in SYNTHETIC_LOG.splitlines() if "event=clip" in line))
@@ -1657,7 +1684,7 @@ def parse_test():
                          verdict["Bounce"]["summary"]), (["Bounce"], "1 clip(s), deepest 0.044"))
 
     # A pair a link and a block apart for one sample fails Coupling and nothing else.
-    loose = Run("selfcheck", "synthetic", YARD_BOX, 40)
+    loose = Run("selfcheck", "synthetic", YARD_AT, 40)
     loose.start_tick, loose.start_wall = 0, 0.0
     for tick, lag in ((0, 1.5), (20, 4.0), (40, 1.5)):
         loose.add(Sample(tick, tick / 20, {

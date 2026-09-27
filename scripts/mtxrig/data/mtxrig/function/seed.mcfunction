@@ -1,5 +1,5 @@
-# A sign names the strip it belongs to. All but a handful of the box's cells have no sign over them
-# at either height one is read from, so that is the first thing asked and the only cost they pay.
+# A sign names the strip it belongs to. Run one and two blocks below each sign the search found, so
+# the sign is at one of the two heights read here.
 execute unless block ~ ~1 ~ #minecraft:all_signs unless block ~ ~2 ~ #minecraft:all_signs run return 0
 
 # On the strip itself: standing in the marker line in place of one of its blocks, or one higher
