@@ -23,7 +23,8 @@ P11, planned from the first with P9 and P10 in. P12 and P13, and the rest of P5,
 R1 from what it does not measure; they are independent of each other, and R1 runs again once they
 land. P14, planned from the runs with P13 in, builds on it. P15 to P17, planned from P14's runs, are
 independent of each other, and R1 runs again once they land. P18 and P19 come from the user's
-reports of `3bjump` after them, P19 building on P18.
+reports of `3bjump` after them, P19 building on P18. P20 to P23 take what P14, P15 and P19 left:
+P20, P21 and P23 are independent of each other, P22 builds on P21, and R1 runs again once they land.
 
 ---
 
@@ -1186,6 +1187,72 @@ jump had left one or two behind, and Coupling fell from 131 readings, widest 13.
 was exact, and a ten-minute torture run at 100 and one at 40 passed every clause. Not fixed: that
 leap, which sets a car leaving an end a full tick's run past it; and at 40, cars leaving a tick
 apart overlap in the air, fewer than before.
+
+## P20 — Cars of a train stay clear of one another in the air — **in progress**
+
+**Build.** With P19 in, the cars of `3bjump`'s train leave the lip one a tick, and at 40 they fly
+about 0.95 blocks apart, close enough that their boxes overlap. Air drag then closes them further:
+`comeOffTrack` scales an airborne car's movement by 0.95 after every move
+(AbstractMinecart.java:387), so a car that left a tick earlier has lost a tick's more speed than the
+car behind it. Cars of one train off their rails share no track, so `CartInteraction` answers IGNORE
+between them and nothing stops one passing into the next: 1,040 pair-ticks in ten minutes at 40 on
+P19's trace, none at 100. Keep the cars clear of one another through the flight, whether by when
+each leaves the lip, by holding a flying car back from the one ahead, or by making them solid to
+each other in the air, and keep P12's in-air rules, P18's landing and P19's run along the ribbon.
+
+**Done when.** Ten minutes on `3bjump` at 40 and at 100, traced tick by tick, show no two cars of
+the train inside each other deeper than 0.01 in the air, every car leaving the lip on every jump,
+and every landing led by the car that led up the ramp; Coupling on `3bjump` is reported; a
+ten-minute torture run at each speed passes every clause.
+
+## P21 — Two trains pressing at a U-turn are found pressing — **in progress**
+
+**Build.** P10 turns one train of a pressing pair and holds the other. The pair is found by
+`TrainCoupling.pressedAgainst` (TrainCoupling.java:1395), which takes a train whose end car stands
+against this one's where each drives into the other, and `drivesInto` (:1420) reads that as the
+engines' aim against the straight line between the two cars. At a one-row U-turn two leading cars
+meet side by side on the U's two legs, the line between them square to both aims, so neither drives
+into the other, no pair is found, and both trains turn together and run back into what lies behind
+them, as before P10. P15 found it in the serpentine (`x=-4..-1, z=-19..-14`) and the hairpin at
+`(-3,-27)`; since P16 made a U-turn's two legs solid between two trains' cars, it stood a run at 40
+at the bottom balloon loop, `(-7,-53,-1)`, and the serpentine, `(-1,-53,-16)` (P17). Judge whether a
+train drives into another along the rails between their two cars, not through space, and show it
+with a probe of two trains meeting at a one-row U-turn.
+
+**Done when.** The probe's pair parts, one train turning and the other following it away, where the
+code before turned both; P10's loop and line probes still circulate and clear; a ten-minute torture
+run at 100 and one at 40 pass every clause.
+
+## P22 — Trains blocked at both ends clear where there is room — **in progress**
+
+**Build.** P15 left gridlocks: trains each blocked at both ends by trains driving into them, which
+nothing local breaks. A draft of P16 locked three trains, 20 cars, in the bottom balloon loop, which
+holds about 13, and P17's run at 40 stood at the balloon loop and the serpentine, both with the
+U-turn pairs P21 takes. With P21 in, find whether any gridlock still holds, in torture runs and in
+probes that crowd the balloon loop and the serpentine with trains heading both ways. For any that
+holds, find which train has room to move and what stops it, and break it so a train with room behind
+it backs into that room. Trains filling a section between two dead ends have nowhere to go and are
+not this stage's.
+
+**Done when.** Each probe's gridlock clears on its own where the code before held it, or the stage
+shows from the runs and probes that none holds with P21 in; four consecutive ten-minute runs, two at
+100 and two at 40, pass every clause.
+
+## P23 — The stepper's hill lift never sets a car inside another — **in progress**
+
+**Build.** `NewMinecartBehavior.stepAlongTrack` lifts a car it finds below its slope's line straight
+up onto it with a bare `setPos` (NewMinecartBehavior.java:457), after the move `SlopeStep` wraps, so
+neither `SlopeStep`, `deepens` nor P17's guards see it. P14 found it lifting a lone cart 2e-5 into
+the floor of a leading car resting on its roof and made `deepens` count from `Shapes.EPSILON`, so
+the next move stopped there; the lift itself can still carry a car up into another's box by as much
+as it lifts. Find with a probe whether it does on main — a car held under another train's car on a
+slope, one shoved up a slope beneath a car standing above — and guard it as P17 guards the set-down:
+the lift goes only as far as the car does not pass into another train's car, and one held short is
+lifted again once clear.
+
+**Done when.** The probe's car ends against the other car rather than inside it, where the code
+before lifted it inside, or the stage shows by probe that the lift cannot set a car inside another
+on main and says what stops it; a ten-minute torture run at 100 and one at 40 pass every clause.
 
 # Part R — The bar
 
