@@ -25,7 +25,8 @@ land. P14, planned from the runs with P13 in, builds on it. P15 to P17, planned 
 independent of each other, and R1 runs again once they land. P18 and P19 come from the user's
 reports of `3bjump` after them, P19 building on P18. P20 to P23 take what P14, P15 and P19 left:
 P20, P21 and P23 are independent of each other, P22 builds on P21, and R1 runs again once they land.
-P24 comes from the user's report of cars snapping onto the track after a jump.
+P24 comes from the user's report of cars snapping onto the track after a jump, P25 from a review of
+P24.
 
 ---
 
@@ -1411,6 +1412,25 @@ train's car at its height, is eased into blocks, and skips activator rails its s
 takes them. Also left: a car flying closer to the one ahead than its seat stands is set back up to
 half a block the tick the train is seated, and vanilla's own catch of a car onto a rail up to 1.1
 blocks below it.
+
+## P25 — Cars still in the air after a jump fly until they land — **in progress**
+
+**Build.** P24 seats a car still up to 3 blocks in the air and eases it down onto its seat, counting
+it seated and on its rails meanwhile, for up to 20 ticks. A review of P24 traced each of its faults
+to that state (see its As built): the seat outruns a car landing onto a descent until the 20 ticks
+run out and it drops from its height; a car let go mid-landing drops at once when seated again;
+another train's car at its height passes through it, since a car on its rails meets no car off
+track; its eased step goes into blocks; and the activator rails its seat crosses go unfired. Keep a
+car still in the air flown, as P19 and P20 fly the cars off the lip, until vanilla's catch, which
+P17 guards, sets it on its rail, and seat only the leading car and the cars already down. The seated
+train runs on meanwhile, so a flying car trailing the one ahead by more than the slack is pulled on
+by its chain, and P20's hold stops it at its own train's car ahead whether that car is still flying
+or landed.
+
+**Done when.** `3bjump` traced tick by tick for 6,000 ticks at 40 and at 100 sees no landing more
+than half a block beyond the car's own fall, every car leave the lip, every landing led by the car
+that led up the ramp and the front at the eastern stop alternate, with Coupling reported; the
+self-check is exact and two ten-minute torture runs at 100 and two at 40 pass every clause.
 
 # Part R — The bar
 
