@@ -1361,7 +1361,7 @@ passed every clause, on the code landed as `d8ad2b2`. An earlier run at 100 fail
 `(-16,-53,-11)` junction: P13's release, which the lift never reaches. Not fixed: vanilla's mirrored
 set-down height on a slope.
 
-## P24 — A train's cars come down off a jump rather than being set down — **in progress**
+## P24 — A train's cars come down off a jump rather than being set down — **done**
 
 **Build.** When the leading car of a train flown off a jump comes back onto its track, the placer
 seats the whole train at once, cars still in the air among them. On `3bjump` at 40, three cars of
@@ -1378,6 +1378,30 @@ it along the track over a few ticks.
 than half a block beyond the car's own fall, every car leave the lip, every landing led by the car
 that led up the ramp and the front at the eastern stop alternate; the self-check is exact and a
 ten-minute torture run at each speed passes every clause.
+
+### As built
+
+The placer seats a train as soon as its leading car is back on its track, which it is while vanilla
+still holds that car up to 1.1 blocks above the rail, and seated the cars behind it wherever they
+were in the air. A car seated within 20 ticks of the placer last flying it, and still above its
+seat, now goes down at the pace it falls, which its own tick adds gravity to, and along to its seat
+closing at least half of how far it trails; its fall is carried in its movement to the next tick,
+and once it has reached its seat it is done landing, so a seat that drops away down a slope later is
+the track's. The train stays seated throughout: a first try that left the cars in the air loose
+until each came down handed the landed ones the train's drive and P13's hold for a car let go, and
+at 100 stretched the train to 7.81 blocks and ran its cars into one another; and a first cut of this
+one kept easing past the hump at 40, setting cars down 2 blocks where the hump fell away.
+
+Observed on a server of its own, `3bjump` traced tick by tick for 6,000 ticks at each speed: at 40
+no landing dropped more than 0.37 beyond its car's own fall, where 192 of 256 had dropped more than
+a block; at 100 none of 548 dropped beyond it, where 825 of 1,100 had; all four cars left the lip on
+all 64 and 137 jumps, every landing was led by the car that led up the ramp, the front at the
+eastern stop alternated 64 of 64 and 137 of 137, and Coupling on `3bjump` read none at 40, widest
+2.27, and 10 at 100, widest 3.90, where it had read 21. The self-check was exact and a ten-minute
+torture run at 100 and one at 40 passed every clause, on the change before its gravity was counted
+once, which the torture track, with no jump, never reaches. Not fixed: a car flying closer to the
+one ahead than its seat stands is set back up to half a block the tick the train is seated; and
+vanilla's own catch of a car onto a rail up to 1.1 blocks below it.
 
 # Part R — The bar
 
