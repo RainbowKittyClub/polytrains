@@ -68,6 +68,11 @@ public final class TrainPlacer {
     // Minimum cosine between a player's push and the rail for it to count as shoving the car.
     private static final double SHOVE_ARC = 0.5;
 
+    // How long after it last flew a car seated away from its seat still comes down onto it rather
+    // than being set there, and the least share of its way back along the track it closes a tick.
+    private static final int LANDING_TICKS = 20;
+    private static final double LANDING_CLOSE = 0.5;
+
     /**
      * Why a train could not be seated. {@link #RIBBON_SHORT} and {@link #CAR_OFF_RIBBON} name one
      * car's own track; {@link #LEADER_IN_AIR} a leading car flown off the end of its track, which
@@ -1318,12 +1323,21 @@ public final class TrainPlacer {
         // Fires activator rails and the like before the car's position changes underneath them.
         sweep(train, car, arc, runLimit);
 
+        Vec3 to = landing(car, seat.position(), speed);
+
         car.setOldPosAndRot();
         car.setOnRails(true);
         car.resetFallDistance();
 
         car.setDeltaMovement(forward.scale(speed));
-        car.setPos(seat.position().x, seat.position().y, seat.position().z);
+        car.setPos(to.x, to.y, to.z);
+
+        // Still coming down, it carries the pace it fell at into the next tick's step.
+        if (to.y > seat.position().y + EPSILON) {
+            Vec3 run = car.getDeltaMovement();
+
+            car.setDeltaMovement(run.x, to.y - previousPosition.y, run.z);
+        }
 
         // A seated car covers no ground of its own, so nothing else re-aims its engine along the
         // train's actual heading.
@@ -1353,6 +1367,32 @@ public final class TrainPlacer {
         // Vanilla hangs both off Entity.move, which a placed car never reaches.
         behavior.pushAndPickupEntities();
         car.applyEffectsFromBlocks(previousPosition, car.position());
+    }
+
+    // Where a car seated soon after it flew off a jump goes while it is still above its seat: down
+    // at the pace it falls, which its own tick still adds gravity to, and along to the seat closing
+    // at least half of how far it trails, rather than set onto the track from mid-air at once.
+    private static Vec3 landing(AbstractMinecart car, Vec3 seat, double speed) {
+        if (!(car instanceof AbstractMinecartExt ext) || ext.minecarttweaks$flownAt() == 0
+                || car.level().getGameTime() - ext.minecarttweaks$flownAt() > LANDING_TICKS) {
+            return seat;
+        }
+
+        Vec3 from = car.position();
+        double above = from.y - seat.y;
+
+        // Down once, it is done landing: a seat that falls away down a slope later is the track's.
+        if (above <= EPSILON) {
+            ext.minecarttweaks$setFlownAt(0L);
+            return seat;
+        }
+
+        double drop = Math.min(above, Math.max(-car.getDeltaMovement().y, car.getGravity()));
+        Vec3 along = seat.subtract(from).horizontal();
+        double reach = speed + LANDING_CLOSE * Math.max(along.length() - speed, 0.0);
+        Vec3 step = along.length() > reach ? along.normalize().scale(reach) : along;
+
+        return new Vec3(from.x + step.x, from.y - drop, from.z + step.z);
     }
 
     // Fires every activator rail a car crosses reaching its seat, then records where it ended up.
