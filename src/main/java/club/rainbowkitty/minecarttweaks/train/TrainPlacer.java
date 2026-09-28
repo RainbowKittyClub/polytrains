@@ -1381,13 +1381,14 @@ public final class TrainPlacer {
         Vec3 from = car.position();
         double above = from.y - seat.y;
 
-        // Down once, it is done landing: a seat that falls away down a slope later is the track's.
-        if (above <= EPSILON) {
+        double drop = Math.min(above, Math.max(-car.getDeltaMovement().y, car.getGravity()));
+
+        // Down this tick, it is done landing: a seat falling away down a slope next is the track's.
+        if (drop >= above - EPSILON) {
             ext.minecarttweaks$setFlownAt(0L);
             return seat;
         }
 
-        double drop = Math.min(above, Math.max(-car.getDeltaMovement().y, car.getGravity()));
         Vec3 along = seat.subtract(from).horizontal();
         double reach = speed + LANDING_CLOSE * Math.max(along.length() - speed, 0.0);
         Vec3 step = along.length() > reach ? along.normalize().scale(reach) : along;
