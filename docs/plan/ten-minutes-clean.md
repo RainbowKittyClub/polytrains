@@ -1367,9 +1367,9 @@ set-down height on a slope.
 seats the whole train at once, cars still in the air among them. On `3bjump` at 40, three cars of
 every jump dropped 1.7 to 2.4 blocks onto the rails in one tick while falling at about 0.25 a tick;
 at 100 every car dropped 2.8 blocks and was carried 3.7 to 4.4 blocks on, at the landing and again
-where the train comes down on the hump: 192 of 256 landings at 40 and 825 of 1,100 at 100 dropped
-more than a block beyond the car's own fall. Vanilla's own catch, which sets a car onto a rail up to
-1.1 blocks below it (`getCurrentBlockPosOrRailBelow` looks 0.1 below the car,
+where the train comes down on the hump: over 6,000 ticks, 192 of 256 landings at 40 and 411 of 548
+at 100 dropped more than a block beyond the car's own fall. Vanilla's own catch, which sets a car
+onto a rail up to 1.1 blocks below it (`getCurrentBlockPosOrRailBelow` looks 0.1 below the car,
 AbstractMinecart.java:312), adds about 0.4 beyond its fall at 40 and is left as vanilla's. Keep the
 train seated, and let each car that flew come down onto its seat at its own falling pace, closing on
 it along the track over a few ticks.
@@ -1386,22 +1386,31 @@ still holds that car up to 1.1 blocks above the rail, and seated the cars behind
 were in the air. A car seated within 20 ticks of the placer last flying it, and still above its
 seat, now goes down at the pace it falls, which its own tick adds gravity to, and along to its seat
 closing at least half of how far it trails; its fall is carried in its movement to the next tick,
-and once it has reached its seat it is done landing, so a seat that drops away down a slope later is
-the track's. The train stays seated throughout: a first try that left the cars in the air loose
-until each came down handed the landed ones the train's drive and P13's hold for a car let go, and
-at 100 stretched the train to 7.81 blocks and ran its cars into one another; and a first cut of this
-one kept easing past the hump at 40, setting cars down 2 blocks where the hump fell away.
+and on the tick it reaches its seat it is done landing (`3fe4b90`: a first cut ended a tick late, so
+a car set down just before a descent went on easing above the falling seat). The train stays seated
+throughout: a first try that left the cars in the air loose until each came down handed the landed
+ones the train's drive and P13's hold for a car let go, and at 100 stretched the train to 7.81
+blocks and ran its cars into one another; and an earlier cut kept easing past the hump at 40,
+setting cars down 2 blocks where the hump fell away.
 
-Observed on a server of its own, `3bjump` traced tick by tick for 6,000 ticks at each speed: at 40
-no landing dropped more than 0.37 beyond its car's own fall, where 192 of 256 had dropped more than
-a block; at 100 none of 548 dropped beyond it, where 825 of 1,100 had; all four cars left the lip on
-all 64 and 137 jumps, every landing was led by the car that led up the ramp, the front at the
-eastern stop alternated 64 of 64 and 137 of 137, and Coupling on `3bjump` read none at 40, widest
-2.27, and 10 at 100, widest 3.90, where it had read 21. The self-check was exact and a ten-minute
-torture run at 100 and one at 40 passed every clause, on the change before its gravity was counted
-once, which the torture track, with no jump, never reaches. Not fixed: a car flying closer to the
-one ahead than its seat stands is set back up to half a block the tick the train is seated; and
-vanilla's own catch of a car onto a rail up to 1.1 blocks below it.
+Observed on a server of its own, on the code landed as `3fe4b90`, `3bjump` traced tick by tick for
+6,000 ticks at each speed: at 40 no landing dropped more than 0.37 beyond its car's own fall, where
+192 of 256 had dropped more than a block; at 100 none of 548 dropped beyond it, where 411 of 548 had
+over the same length of P20's trace; all four cars left the lip on all 64 and 137 jumps, every
+landing was led by the car that led up the ramp, and the front at the eastern stop alternated 64 of
+64 and 137 of 137. Coupling on `3bjump` read none at 40, but widest 2.27 where P20's trace read
+1.98, and 10 at 100, widest 3.90, where the same length of P20's read 11, all on vanilla's leap off
+the lip. The self-check was exact, and a ten-minute torture run at 100 and one at 40 passed every
+clause, the widest coupling 2.04 and 1.70.
+
+Not fixed: a review found the state this leaves a car in, seated and on its rails while up to 3
+blocks in the air for up to 20 ticks, behind faults `3bjump` does not reach: landing onto a descent
+the seat outruns the car's fall and the car is set down from its height when the 20 ticks run out; a
+car let go mid-landing loses it and drops at once when seated again; it passes through another
+train's car at its height, is eased into blocks, and skips activator rails its seat crosses. P25
+takes them. Also left: a car flying closer to the one ahead than its seat stands is set back up to
+half a block the tick the train is seated, and vanilla's own catch of a car onto a rail up to 1.1
+blocks below it.
 
 # Part R — The bar
 
