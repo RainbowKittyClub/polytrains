@@ -68,10 +68,9 @@ public final class TrainPlacer {
     // Minimum cosine between a player's push and the rail for it to count as shoving the car.
     private static final double SHOVE_ARC = 0.5;
 
-    // How long after it last flew a car seated away from its seat still comes down onto it rather
-    // than being set there, and the least share of its way back along the track it closes a tick.
-    private static final int LANDING_TICKS = 20;
-    private static final double LANDING_CLOSE = 0.5;
+    // How far a car flying off a jump may trail the car ahead of it before its chain pulls it on:
+    // slack for the spread of a flight, short of the link's full length.
+    private static final double AIR_SLACK = 2.5;
 
     /**
      * Why a train could not be seated. {@link #RIBBON_SHORT} and {@link #CAR_OFF_RIBBON} name one
@@ -234,6 +233,9 @@ public final class TrainPlacer {
         int fromHead = leadIndex == 0 ? 1 : -1;
         int tailIndex = leadIndex == 0 ? cars.size() - 1 : 0;
         int nearGapIndex = leadIndex == 0 ? 0 : cars.size() - 2;
+        // Laid onto the track from mid-air, a car still flying off a jump would drop to it in one
+        // tick; it flies on instead, and vanilla's guarded catch sets it on its rail.
+        boolean[] flying = stillFlying(cars, leadIndex, fromHead);
 
         Double nextArc = ribbon.arcOf(cars.get(leadIndex + fromHead));
         double speed = leader.getDeltaMovement().horizontalDistance();
@@ -386,7 +388,7 @@ public final class TrainPlacer {
         }
 
         Seating seating = seatCars(ribbon, cars, headArc, offsets, order, leadIndex, drawnBack,
-                leadArc, travelSign);
+                leadArc, travelSign, flying);
 
         // A car whose run to its seat meets another train's cart stops where its box first touches
         // it, and the rest of the train stops with it rather than going on without it: held there,
@@ -415,7 +417,7 @@ public final class TrainPlacer {
                 offsets = arcs.offsets();
                 headArc = arcs.headArc();
                 seating = seatCars(ribbon, cars, headArc, offsets, order, leadIndex, drawnBack,
-                        leadArc, travelSign);
+                        leadArc, travelSign, flying);
                 contact = contactOf(train, cars, seating, leadIndex, runSign, leadRun);
             }
 
@@ -434,7 +436,7 @@ public final class TrainPlacer {
             drawnBack = true;
             speed = Math.min(speed, contact.recede());
             seating = seatCars(ribbon, cars, headArc, offsets, order, leadIndex, drawnBack,
-                    leadArc, travelSign);
+                    leadArc, travelSign, flying);
         }
 
         Seat[] seats = seating.seats();
@@ -459,7 +461,7 @@ public final class TrainPlacer {
             held = true;
             speed = 0.0;
             seating = seatCars(ribbon, cars, headArc, offsets, order, leadIndex, drawnBack,
-                    leadArc, travelSign);
+                    leadArc, travelSign, flying);
             seats = seating.seats();
             seatArcs = seating.seatArcs();
             refusal = seating.refusal();
@@ -484,6 +486,10 @@ public final class TrainPlacer {
                 continue;
             }
 
+            if (flying[i]) {
+                continue;
+            }
+
             if (seats[i] == null) {
                 // It still holds the movement it was last placed with, which a train stopped since
                 // no longer has: let go, it runs no faster than its train now does.
@@ -502,6 +508,7 @@ public final class TrainPlacer {
             }
         }
 
+        flyOn(cars, flying, leadIndex, fromHead);
         train.setGaps(gaps);
 
         if (closed) {
@@ -668,14 +675,55 @@ public final class TrainPlacer {
         }
     }
 
+    // Which cars behind the leading car the placer flew off a jump and neither rails nor ground
+    // has caught yet.
+    private static boolean[] stillFlying(List<AbstractMinecart> cars, int leadIndex, int fromHead) {
+        boolean[] flying = new boolean[cars.size()];
+
+        for (int i = leadIndex + fromHead; i >= 0 && i < cars.size(); i += fromHead) {
+            AbstractMinecart car = cars.get(i);
+
+            flying[i] = flown(car) && !car.isOnRails() && !car.onGround();
+        }
+
+        return flying;
+    }
+
+    // Flies on, front first, the cars still in the air behind a train come back onto its track,
+    // each after the car ahead has moved. The train runs on along the rails meanwhile, so a car
+    // trailing the one ahead by more than the slack is pulled on by its chain.
+    private static void flyOn(List<AbstractMinecart> cars, boolean[] flying, int leadIndex,
+            int fromHead) {
+        if (!(cars.get(leadIndex).level() instanceof ServerLevel level)) {
+            return;
+        }
+
+        for (int i = leadIndex + fromHead; i >= 0 && i < cars.size(); i += fromHead) {
+            if (!flying[i]) {
+                continue;
+            }
+
+            AbstractMinecart car = cars.get(i);
+            Vec3 toAhead = cars.get(i - fromHead).position()
+                    .subtract(car.position().add(car.getDeltaMovement()));
+
+            if (toAhead.length() > AIR_SLACK) {
+                car.setDeltaMovement(car.getDeltaMovement()
+                        .add(toAhead.normalize().scale(toAhead.length() - AIR_SLACK)));
+            }
+
+            fly(level, car);
+        }
+    }
+
     // Where each car goes with the head at a given arc, and the first reason one has no seat.
     private record Seating(Seat[] seats, double[] seatArcs, @Nullable Refusal refusal) {}
 
-    // Seats every car at its offset from headArc, the leading car only when drawn back, leaving
-    // null the seats the ribbon cannot reach or has no rail at.
+    // Seats every car at its offset from headArc, the leading car only when drawn back and none
+    // still flying, leaving null the seats the ribbon cannot reach or has no rail at.
     private static Seating seatCars(TrackRibbon ribbon, List<AbstractMinecart> cars,
             double headArc, double[] offsets, int order, int leadIndex, boolean drawnBack,
-            double leadArc, double travelSign) {
+            double leadArc, double travelSign, boolean[] flying) {
         Seat[] seats = new Seat[cars.size()];
         double[] seatArcs = new double[cars.size()];
         Refusal refusal = null;
@@ -683,7 +731,7 @@ public final class TrainPlacer {
         // The leading car is skipped unless drawn back: normally vanilla places it, but a train
         // backed against a wall needs it seated too, so it stops exactly at the wall.
         for (int i = 0; i < cars.size(); i++) {
-            if (i == leadIndex && !drawnBack) {
+            if (i == leadIndex && !drawnBack || flying[i]) {
                 continue;
             }
 
@@ -1323,21 +1371,12 @@ public final class TrainPlacer {
         // Fires activator rails and the like before the car's position changes underneath them.
         sweep(train, car, arc, runLimit);
 
-        Vec3 to = landing(car, seat.position(), speed);
-
         car.setOldPosAndRot();
         car.setOnRails(true);
         car.resetFallDistance();
 
         car.setDeltaMovement(forward.scale(speed));
-        car.setPos(to.x, to.y, to.z);
-
-        // Still coming down, it carries the pace it fell at into the next tick's step.
-        if (to.y > seat.position().y + EPSILON) {
-            Vec3 run = car.getDeltaMovement();
-
-            car.setDeltaMovement(run.x, to.y - previousPosition.y, run.z);
-        }
+        car.setPos(seat.position().x, seat.position().y, seat.position().z);
 
         // A seated car covers no ground of its own, so nothing else re-aims its engine along the
         // train's actual heading.
@@ -1367,33 +1406,6 @@ public final class TrainPlacer {
         // Vanilla hangs both off Entity.move, which a placed car never reaches.
         behavior.pushAndPickupEntities();
         car.applyEffectsFromBlocks(previousPosition, car.position());
-    }
-
-    // Where a car seated soon after it flew off a jump goes while it is still above its seat: down
-    // at the pace it falls, which its own tick still adds gravity to, and along to the seat closing
-    // at least half of how far it trails, rather than set onto the track from mid-air at once.
-    private static Vec3 landing(AbstractMinecart car, Vec3 seat, double speed) {
-        if (!(car instanceof AbstractMinecartExt ext) || ext.minecarttweaks$flownAt() == 0
-                || car.level().getGameTime() - ext.minecarttweaks$flownAt() > LANDING_TICKS) {
-            return seat;
-        }
-
-        Vec3 from = car.position();
-        double above = from.y - seat.y;
-
-        double drop = Math.min(above, Math.max(-car.getDeltaMovement().y, car.getGravity()));
-
-        // Down this tick, it is done landing: a seat falling away down a slope next is the track's.
-        if (drop >= above - EPSILON) {
-            ext.minecarttweaks$setFlownAt(0L);
-            return seat;
-        }
-
-        Vec3 along = seat.subtract(from).horizontal();
-        double reach = speed + LANDING_CLOSE * Math.max(along.length() - speed, 0.0);
-        Vec3 step = along.length() > reach ? along.normalize().scale(reach) : along;
-
-        return new Vec3(from.x + step.x, from.y - drop, from.z + step.z);
     }
 
     // Fires every activator rail a car crosses reaching its seat, then records where it ended up.

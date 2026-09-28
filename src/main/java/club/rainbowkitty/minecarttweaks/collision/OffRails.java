@@ -45,10 +45,10 @@ public final class OffRails {
 
     /**
      * {@code movement}, a move of {@code cart} flown off a jump behind its train's leading car,
-     * stopped where its box first meets a car of its own train also off its rails, an axis at a
-     * time in the order vanilla's move settles them. The cart keeps no speed closing on the car
-     * that stopped it, so it flies on at that car's pace rather than pressing into it every tick.
-     * Any other move, a derailment's among them, is left as it was.
+     * stopped where its box first meets a car of its own train, still flying or landed ahead of
+     * it, an axis at a time in the order vanilla's move settles them. The cart keeps no speed
+     * closing on the car that stopped it, so it flies on at that car's pace rather than pressing
+     * into it every tick. Any other move, a derailment's among them, is left as it was.
      */
     public static Vec3 behindOwnTrain(AbstractMinecart cart, Vec3 movement) {
         if (movement.lengthSqr() == 0.0 || !TrainPlacer.flown(cart)) {
@@ -57,7 +57,7 @@ public final class OffRails {
 
         AABB box = cart.getBoundingBox();
         List<AbstractMinecart> mates = carts(cart, box.expandTowards(movement),
-                near -> !near.isOnRails() && !ofAnotherTrain(cart, near));
+                near -> !ofAnotherTrain(cart, near));
 
         if (mates.isEmpty()) {
             return movement;
