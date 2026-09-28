@@ -25,6 +25,7 @@ land. P14, planned from the runs with P13 in, builds on it. P15 to P17, planned 
 independent of each other, and R1 runs again once they land. P18 and P19 come from the user's
 reports of `3bjump` after them, P19 building on P18. P20 to P23 take what P14, P15 and P19 left:
 P20, P21 and P23 are independent of each other, P22 builds on P21, and R1 runs again once they land.
+P24 comes from the user's report of cars snapping onto the track after a jump.
 
 ---
 
@@ -1280,6 +1281,16 @@ the four-car train's car on the other leg with its tail on the corner's chord, a
 and a nearly full loop circulates more slowly, 2.4 laps in 600 ticks where it ran 5.9, since a train
 that turns now leaves at once.
 
+Seen after, on the user's server still running `6d2e4a6`: `hillclimb`'s two trains stood locked at
+the dead end of the `z=16` line. The three-car train against the buffer turned every four or five
+ticks, and each turn nudged the five-car train a few hundredths of a block, past the stall check's
+0.005 creep, so its count never reached a turn; that train had turned away from it and stood led
+from its far end, and the placer held it as pressing, blocked at its tail, whichever way its engines
+aimed. Ten minutes from a fresh rig and an hour of game time sprinted, on `6d2e4a6` and on
+`f1c9760`, never stood a train 100 ticks; the way in, a turned train held at a cart on its tail, is
+what this stage's reading of a just-turned train's aim removes, and what held it lives only in
+memory, so a restart frees it.
+
 ## P22 — Trains blocked at both ends clear where there is room — **done**
 
 **Build.** P15 left gridlocks: trains each blocked at both ends by trains driving into them, which
@@ -1349,6 +1360,24 @@ passed every clause, on the code landed as `d8ad2b2`. An earlier run at 100 fail
 3.27 on flat track, on two cars let go for four ticks when a train refused `SEAT_FOULED` at the
 `(-16,-53,-11)` junction: P13's release, which the lift never reaches. Not fixed: vanilla's mirrored
 set-down height on a slope.
+
+## P24 — A train's cars come down off a jump rather than being set down — **in progress**
+
+**Build.** When the leading car of a train flown off a jump comes back onto its track, the placer
+seats the whole train at once, cars still in the air among them. On `3bjump` at 40, three cars of
+every jump dropped 1.7 to 2.4 blocks onto the rails in one tick while falling at about 0.25 a tick;
+at 100 every car dropped 2.8 blocks and was carried 3.7 to 4.4 blocks on, at the landing and again
+where the train comes down on the hump: 192 of 256 landings at 40 and 825 of 1,100 at 100 dropped
+more than a block beyond the car's own fall. Vanilla's own catch, which sets a car onto a rail up to
+1.1 blocks below it (`getCurrentBlockPosOrRailBelow` looks 0.1 below the car,
+AbstractMinecart.java:312), adds about 0.4 beyond its fall at 40 and is left as vanilla's. Keep the
+train seated, and let each car that flew come down onto its seat at its own falling pace, closing on
+it along the track over a few ticks.
+
+**Done when.** `3bjump` traced tick by tick for 6,000 ticks at 40 and at 100 sees no landing more
+than half a block beyond the car's own fall, every car leave the lip, every landing led by the car
+that led up the ramp and the front at the eastern stop alternate; the self-check is exact and a
+ten-minute torture run at each speed passes every clause.
 
 # Part R — The bar
 
