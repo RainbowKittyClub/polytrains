@@ -1413,7 +1413,7 @@ takes them. Also left: a car flying closer to the one ahead than its seat stands
 half a block the tick the train is seated, and vanilla's own catch of a car onto a rail up to 1.1
 blocks below it.
 
-## P25 — Cars still in the air after a jump fly until they land — **in progress**
+## P25 — Cars still in the air after a jump fly until they land — **done**
 
 **Build.** P24 seats a car still up to 3 blocks in the air and eases it down onto its seat, counting
 it seated and on its rails meanwhile, for up to 20 ticks. A review of P24 traced each of its faults
@@ -1431,6 +1431,35 @@ or landed.
 than half a block beyond the car's own fall, every car leave the lip, every landing led by the car
 that led up the ramp and the front at the eastern stop alternate, with Coupling reported; the
 self-check is exact and two ten-minute torture runs at 100 and two at 40 pass every clause.
+
+### As built
+
+Once a flown train's leading car is back on its track, a car the placer flew last tick and neither
+rails nor ground has caught is now given no seat: `seatCars` passes over it, so the seat checks
+(`fouled`, `contactOf`, the tether) never test it and the placement loop leaves it be. After the
+cars that are down have been placed, the placer flies it on, front first, through vanilla's move off
+the rails as P19 and P20 do, and vanilla's catch, guarded by P17, sets it on its rail; the next tick
+it is seated with the rest. P24's easing is gone and `place()` sets a car on its seat again. The
+train runs on along the rails meanwhile, pulled by its engines while the cars in the air lose speed
+to drag, so a flying car whose next position trails the car ahead by more than 2.5 blocks has that
+excess added to its movement, its chain pulling it on; and P20's hold now stops a flying car at its
+own train's car ahead whether that car is still flying or has landed. No car is counted on its rails
+while in the air, so the faults the review traced to that state have nothing to come from; they were
+removed by construction and not probed one by one, since `3bjump` has no descent after its landing,
+overpass, tunnel or activator rail.
+
+Observed on a server of its own, on `d52af2e` (landed as `17e178f`), `3bjump` traced tick by tick
+for 6,000 ticks at each speed: at 40 every landing was vanilla's own catch, at most 0.37 beyond its
+car's fall and none over half a block, where main had dropped 192 of 256 more than a block; at 100
+none of 479 dropped beyond its fall; all four cars left the lip on all 64 and 137 jumps, every
+landing was led by the car that led up the ramp, and the front at the eastern stop alternated 64 of
+64 and 137 of 137. Coupling on `3bjump` read none at 40, widest 2.51, the chain's slack, and 10 at
+100, widest 3.90, as P24's did. The self-check was exact. Of five ten-minute torture runs, the
+first, at 100, failed Coupling on one sample, 4.15 blocks, when a train refused `SEAT_FOULED` at the
+`(-16,-53,-11)` junction with two cars let go, P13's release, in a run with no flight in it; the
+four after it, at 100, 40, 40 and 100, passed every clause, the widest coupling 1.76, 1.79, 1.96 and
+2.69. Not fixed: that junction release, now seen stretching a coupling past a link in three sets of
+runs (P21, P23 and this); and vanilla's own catch of a car onto a rail up to 1.1 blocks below it.
 
 # Part R — The bar
 
