@@ -26,7 +26,7 @@ independent of each other, and R1 runs again once they land. P18 and P19 come fr
 reports of `3bjump` after them, P19 building on P18. P20 to P23 take what P14, P15 and P19 left:
 P20, P21 and P23 are independent of each other, P22 builds on P21, and R1 runs again once they land.
 P24 comes from the user's report of cars snapping onto the track after a jump, P25 from a review of
-P24.
+P24. P26 takes the torture failure seen most since R1 was last met.
 
 ---
 
@@ -1460,6 +1460,27 @@ first, at 100, failed Coupling on one sample, 4.15 blocks, when a train refused 
 four after it, at 100, 40, 40 and 100, passed every clause, the widest coupling 1.76, 1.79, 1.96 and
 2.69. Not fixed: that junction release, now seen stretching a coupling past a link in three sets of
 runs (P21, P23 and this); and vanilla's own catch of a car onto a rail up to 1.1 blocks below it.
+
+## P26 — Cars a train lets go at a junction stay within a link of it — **in progress**
+
+**Build.** Since R1 was last met, the one clause the torture track has failed is Coupling, three
+times, each time a train refusing `SEAT_FOULED` on the `z=-11` line, where it crosses the `x=-17`
+and `x=-14` lines at junctions and passes the diagonal that turns off at `(-16,-12)` and
+`(-17,-12)`, and the cars whose seats were fouled drawing more than a link from the car ahead. On
+the first cut of P21 a tail engine let go at `(-17,-11)` while another train crossed, 3.09 blocks.
+On P23's first run at 100, two cars of `91f0f5ff` were let go at `(-16,-53,-11)` while a car of
+`900bb6e9` lay across their seats and ran loose at 2.5 blocks a tick for four ticks, 3.27. On P25's
+first run at 100, `bebe0656`, struck from both sides at 2.5 by `89d1ab87` and `93173988`, refused
+there with two cars loose, 4.15. P13 lets a car go no faster than its train runs and tethers the
+train to it while it stays let go, but the placer draws the train back only when it also reads a
+contact (`tetherBack` runs only with both a foul and a contact), and these cars went past a link
+regardless. Reproduce it with a probe at a replica of that junction, find which of them moves the
+cars apart, the cars let go running on, the train running on from them, or the tether not engaging,
+and keep a car let go within a link of its train while its seat is fouled.
+
+**Done when.** The probe's let-go cars stay within 3 blocks of the car ahead where the code before
+took them past it; the self-check is exact; and six consecutive ten-minute torture runs at 100 and
+two at 40 pass every clause.
 
 # Part R — The bar
 
