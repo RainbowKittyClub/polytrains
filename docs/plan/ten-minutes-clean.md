@@ -26,7 +26,7 @@ independent of each other, and R1 runs again once they land. P18 and P19 come fr
 reports of `3bjump` after them, P19 building on P18. P20 to P23 take what P14, P15 and P19 left:
 P20, P21 and P23 are independent of each other, P22 builds on P21, and R1 runs again once they land.
 P24 comes from the user's report of cars snapping onto the track after a jump, P25 from a review of
-P24. P26 takes the torture failure seen most since R1 was last met.
+P24. P26, planned for the torture failure seen most since R1 was last met, was skipped.
 
 ---
 
@@ -1461,26 +1461,40 @@ four after it, at 100, 40, 40 and 100, passed every clause, the widest coupling 
 2.69. Not fixed: that junction release, now seen stretching a coupling past a link in three sets of
 runs (P21, P23 and this); and vanilla's own catch of a car onto a rail up to 1.1 blocks below it.
 
-## P26 — Cars a train lets go at a junction stay within a link of it — **in progress**
+## P26 — Cars a train lets go at a junction stay within a link of it — **skipped**
 
-**Build.** Since R1 was last met, the one clause the torture track has failed is Coupling, three
-times, each time a train refusing `SEAT_FOULED` on the `z=-11` line, where it crosses the `x=-17`
-and `x=-14` lines at junctions and passes the diagonal that turns off at `(-16,-12)` and
-`(-17,-12)`, and the cars whose seats were fouled drawing more than a link from the car ahead. On
-the first cut of P21 a tail engine let go at `(-17,-11)` while another train crossed, 3.09 blocks.
-On P23's first run at 100, two cars of `91f0f5ff` were let go at `(-16,-53,-11)` while a car of
-`900bb6e9` lay across their seats and ran loose at 2.5 blocks a tick for four ticks, 3.27. On P25's
-first run at 100, `bebe0656`, struck from both sides at 2.5 by `89d1ab87` and `93173988`, refused
-there with two cars loose, 4.15. P13 lets a car go no faster than its train runs and tethers the
-train to it while it stays let go, but the placer draws the train back only when it also reads a
-contact (`tetherBack` runs only with both a foul and a contact), and these cars went past a link
-regardless. Reproduce it with a probe at a replica of that junction, find which of them moves the
-cars apart, the cars let go running on, the train running on from them, or the tether not engaging,
-and keep a car let go within a link of its train while its seat is fouled.
+Since R1 was last met the torture track has failed only Coupling, three times, each time a train
+refusing `SEAT_FOULED` on the `z=-11` line by the `(-17,-11)` and `(-14,-11)` junctions with the
+cars whose seats were fouled let go and drawn more than a link from the car ahead: 3.09 on P21's
+first cut, 3.27 on P23's first run at 100, 4.15 on P25's. It shows in about one run in five to eight
+at 100, one sample at a time. Not built: every fix that reaches it holds a train still, and a held
+train fails worse than the reading it prevents.
 
-**Done when.** The probe's let-go cars stay within 3 blocks of the car ahead where the code before
-took them past it; the self-check is exact; and six consecutive ten-minute torture runs at 100 and
-two at 40 pass every clause.
+The mechanism is P13's tether. It draws a train back to a car it let go only while the train also
+reads a contact, and no further than the leading car ran that tick, so a train packing on a jam,
+standing, just turned, or whose draw-back seat a crossing car has taken runs its seats on past the
+car: in a traced run a let-go car's seat advanced 5.6 blocks in two ticks of packing. A Fable worker
+built four versions on `worktree-agent-a78b76ad9f815f72e` (kept, at `78a5224`): the chain ahead of a
+car short of its seat paying out, first to 2.9 blocks and then 2.5, the train held once that chain
+was taut, and the car driven along its track towards its seat. A replica of the junction jam read
+2.50 where main reads 3.58 to 4.00, and six consecutive runs at 100 passed on two of the versions.
+Each version brought a new failure: holding a train dead stood an eight-car train 5,560 ticks round
+the lone chest at the bottom of the `(-7,-54,-8)` dip, which only a car let go can shove; a let-go
+car kept the train's speed and its old heading after a stall turn and ran 7.7 blocks off at 40 (6.74
+in another run); pressed towards its seat it went past its train's ceiling, 1.29 against 1.00; a car
+past its seat kept a stale heading, 3.47; and the hold stood two eight-car trains 840 ticks in the
+bottom balloon loop, where a brush of a switch corner by a third train's car read as a foul, and one
+of them was laid on another pass of the loop after a turn, 6.12. A hold that waits on a foul cannot
+tell a brush at a switch from a cart in the way, and main's running on from a car it let go, a tick
+or two before reseating it, is what clears those jams.
+
+What would revive it: paying out the chain only where P13's tether already engages, with no hold
+beyond P13's, untried; and, on its own, the worker's `slowAlong`, which lets a car let go move only
+the way its seats advance rather than keep a stale heading, sound but tied to no failure seen on
+main. Either needs six consecutive runs at 100 and six at 40 against main, run side by side, since
+failures at 40 showed only there. Two faults the work turned up stand apart from it: a stall turn on
+a lapped ribbon in a loop can lay a train's body on the wrong pass, and a brush of a switch corner
+(P16's class) reads as a fouled seat.
 
 # Part R — The bar
 
