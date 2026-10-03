@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "key": {
+    "I": "minecraft:iron_nugget",
+    "S": "minecraft:stick",
+    "R": "minecraft:redstone"
+  },
+  "pattern": [
+    "III",
+    "SRS",
+    "ISI"
+  ],
+  "result": {
+    "count": 1,
+    "id": "serversidetrains:switch_rail"
+  }
+}

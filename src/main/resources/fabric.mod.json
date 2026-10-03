@@ -24,8 +24,8 @@
     "polymer-resource-pack": "*"
   },
   "environment": "server",
-  "accessWidener": "minecarttweaks.classtweaker",
+  "accessWidener": "serversidetrains.classtweaker",
   "mixins": [
-    "minecarttweaks.mixins.json"
+    "serversidetrains.mixins.json"
   ]
 }

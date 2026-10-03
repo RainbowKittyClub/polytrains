@@ -1,0 +1,9 @@
+classTweaker v2 official
+
+accessible method net/minecraft/world/entity/vehicle/minecart/AbstractMinecart getMaxSpeed (Lnet/minecraft/server/level/ServerLevel;)D
+
+inject-interface net/minecraft/world/item/MinecartItem club/rainbowkitty/serversidetrains/ext/MinecartItemExt
+
+accessible method net/minecraft/world/item/BucketItem playEmptySound (Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/level/LevelAccessor;Lnet/minecraft/core/BlockPos;)V
+
+transitive-inject-interface net/minecraft/world/entity/vehicle/minecart/AbstractMinecart club/rainbowkitty/serversidetrains/ext/AbstractMinecartExt

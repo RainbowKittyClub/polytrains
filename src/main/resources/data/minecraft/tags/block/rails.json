@@ -1,7 +1,7 @@
 {
 	"replace": false,
 	"values": [
-		"minecarttweaks:junction_rail",
-		"minecarttweaks:switch_rail"
+		"serversidetrains:junction_rail",
+		"serversidetrains:switch_rail"
 	]
 }
