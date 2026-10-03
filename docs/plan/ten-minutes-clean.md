@@ -170,7 +170,7 @@ The bar is six clauses and three vacuity checks, each machine-checked by M5:
 | Clause | Fails when | Read from |
 |---|---|---|
 | Alive | rcon stops answering before game time has advanced 12,000 ticks from the rig call; or `run/crash-reports/` gains a file; or the log gains an `ERROR` or a stack trace from the mod's package. | heartbeat, directory listing, log scan |
-| Sever | the set of link edges — unordered pairs of cart UUIDs from the `minecarttweaks:link` slots — at any sample differs from the set at the first sample; or an `event=sever` line appears. | per-second link dump; M4 |
+| Sever | the set of link edges — unordered pairs of cart UUIDs from the `serversidetrains:link` slots — at any sample differs from the set at the first sample; or an `event=sever` line appears. | per-second link dump; M4 |
 | Coupling | two coupled cars stand more than a link (`maxLinkDistance`, 3 blocks) apart at any sample, with no allowance. The worst pair is named. | per-second positions and link dump |
 | Stall | a train with at least one furnace car has every car within 5 blocks of where it stood 600 ticks earlier. Reported per train; a train queued behind a stalled one is reported too, and named as queued. | per-second positions |
 | Bounce | an `event=overlap` (cars of two trains within 0.5 blocks); or an `event=clip` (their boxes inside each other deeper than 0.01 at the end of a tick, P16); or an `event=overspeed` (horizontal speed above the cart's own ceiling by more than 1%); or a sever within 40 ticks of a strike. Momentum sharing at each strike is reported, not judged. | M4 |
@@ -198,7 +198,7 @@ datapack is likewise only in the main checkout's `run/world/datapacks/mtxrig/` u
 so M1 and M2 are one task: copy first, fix the copy under `scripts/mtxrig/`, sync it back with
 `rig-sync.sh`, and test on the main checkout. `scripts/torture.py` (M5) can be run from any
 checkout against the main one's server, since it only speaks rcon and reads
-`rkc/mods/minecart-tweaks/run/logs/debug.log` by path.
+`rkc/mods/serverside-trains/run/logs/debug.log` by path.
 
 P6 to P8 are the exception: they are physics and cannot be judged unrun, so each worktree runs a
 dev server of its own. It is a copy of the main checkout's `run/`, taken after `save-all flush`, on
@@ -226,7 +226,7 @@ link the new cart to `mtx_prev` within three blocks. Instead, run as the new car
 position and look at the four orthogonal cells one block away (`execute positioned ~1 ~ ~ if
 entity @e[tag=mtx_fresh,tag=!mtx_new,distance=..0.6,limit=1]` and the three others); link to each
 cart found that still has a free slot, into the new cart's free slot, testing freeness with
-`execute unless data entity @s "fabric:attachments"."minecarttweaks:link".slotA`. Reach two cells
+`execute unless data entity @s "fabric:attachments"."serversidetrains:link".slotA`. Reach two cells
 in a direction only when the cell between holds an in-line sign at marker level
 (`if block ~1 ~1 ~ #minecraft:all_signs`), so a sign standing in a strip is bridged and a parallel
 strip two blocks over is not. Drop `mtx_prev`. A third neighbour with no slot left gets a `tellraw`
@@ -290,7 +290,7 @@ everything placed there was removed again.
 
 **Build.** Move the meter off `holdTrain` (TrainCoupling.java:893) onto a level-wide sample every
 20 ticks from `ServerTickEvents.END_WORLD_TICK` (`fabric-lifecycle-events-v1`, already a dependency
-through `ServerLifecycleEvents` at MinecartTweaks.java:58). Walk every `AbstractMinecart` in the
+through `ServerLifecycleEvents` at ServersideTrains.java:58). Walk every `AbstractMinecart` in the
 level, group the linked ones by `Train.of` (Train.java:177) and write one line per train and one
 per loose cart. A train's id is the first eight hex digits of its lowest car UUID — the tie-break
 `Train.lowest` already computes (Train.java:909-917); expose it as `Train.id()`. A cart's id is the
@@ -317,7 +317,7 @@ lifecycle-events version this build uses. It reads trains through `Train.peek`, 
 The line goes past the Build's format: every line carries `tick=`, blocks are registry ids, and the
 old spacing and ribbon figures are tokens too (`mass`, `pairs`, `gap_worst`, `gap_mean`, `turn`,
 `nodes`, `span`, `checked`, `offset_worst`, `resets`, `revisits`). `fuel` reads through a new
-`minecarttweaks$fuel()` on `AbstractMinecartExt`.
+`serversidetrains$fuel()` on `AbstractMinecartExt`.
 
 The Done when miscounts the roster: its lone chest cart is a `meter cart=` line, so the M1 roster
 gives six `meter train=` lines and one `meter cart=` line a second. Observed: 3,600 `train=` lines
@@ -381,7 +381,7 @@ log from the mark for `meter` and `event` lines, evaluate the five clauses and t
 checks, print the verdict table, write the series and verdict as JSON under `run/torture/`, reset
 the group and restore the yard box. `--selfcheck` runs 90 s on `abtestloop-a` (stable, no crash),
 removes one coupling over rcon at 30 s (`data remove entity <uuid> "fabric:attachments".
-"minecarttweaks:link".slotA` on both ends) and sets one engine's `RealFuel` to 0 at 45 s so that
+"serversidetrains:link".slotA` on both ends) and sets one engine's `RealFuel` to 0 at 45 s so that
 train coasts to rest, and must report exactly one sever and one stall.
 
 **Done when.** `python3 scripts/torture.py --selfcheck` reports the one injected sever and the one

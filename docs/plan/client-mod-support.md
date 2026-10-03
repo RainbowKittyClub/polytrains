@@ -58,7 +58,7 @@ mod has no networking code today and does not need any.
 **The resource pack stays required, unlike in `sensible-storage`.** That mod dropped
 `PolymerResourcePackUtils.markAsRequired()` when it went client-optional, which was right for it:
 a mod client there gets real chests and never needs the pack. It is wrong here. The junction
-rail's model and texture reach *every* client only through the pack (`MinecartTweaks.java:58-59`),
+rail's model and texture reach *every* client only through the pack (`ServersideTrains.java:58-59`),
 and giving mod clients real rail block states is a different and much larger feature than chains.
 Leave both calls alone.
 
@@ -78,10 +78,10 @@ runtime or not at all.
 ## S1 — Client entrypoint and handshake — **planned**
 
 **Build.** Flip `fabric.mod.json`'s `"environment"` from `"server"` to `"*"` and add a `client`
-entrypoint, `club.rainbowkitty.minecarttweaks.client.MinecartTweaksClient`, alongside the existing
+entrypoint, `club.rainbowkitty.serversidetrains.client.ServersideTrainsClient`, alongside the existing
 `main`. Add `net` to `kalic0re_shared_packages` in `gradle.properties` and stand up a
-`PolymerClientHandshake` on `MinecartTweaks.MOD_ID`, created as a `public static final` on
-`MinecartTweaks` and `register()`ed from `onInitialize` — which runs on both sides, so the same
+`PolymerClientHandshake` on `ServersideTrains.MOD_ID`, created as a `public static final` on
+`ServersideTrains` and `register()`ed from `onInitialize` — which runs on both sides, so the same
 call advertises the capability from the client and arms the flag on the server.
 
 **Done when.** A dev client running this jar joins the dev server and a temporary log line at join
@@ -102,7 +102,7 @@ not add `client` — this mod's client rendering is its own, and `common/client`
 ints (absent slot as a sentinel, not a boxed optional — it is written every time a link changes
 and read every frame). Built with `AttachmentRegistry.builder()`, `syncWith(...)` on a
 hand-written `StreamCodec`, and a predicate of `(target, player) ->
-MinecartTweaks.HANDSHAKE.has(player.connection)`. Not persistent: entity ids do not survive a
+ServersideTrains.HANDSHAKE.has(player.connection)`. Not persistent: entity ids do not survive a
 restart, and `LINK` already carries what does. Write it from wherever `Linkable.link`/`unlink`
 land, so the two can never disagree.
 

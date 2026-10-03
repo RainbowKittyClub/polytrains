@@ -183,7 +183,7 @@ problem, because the leading car is still the one recording; it has merely been 
 
 ## How these stages get tested
 
-In-world on the minecart-tweaks dev server (`scripts/devserver.sh rkc/mods/minecart-tweaks`), with
+In-world on the serverside-trains dev server (`scripts/devserver.sh rkc/mods/serverside-trains`), with
 `run/logs/debug.log` as the evidence record — **not** `latest.log`, which carries none of the train
 logging. The useful filter is:
 
