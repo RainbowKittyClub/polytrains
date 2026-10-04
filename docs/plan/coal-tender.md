@@ -184,15 +184,16 @@ the game poses cargo in. Its placement is then read out of the `.blend` and draw
 element of `TenderLoadDisplay`, an item display carrying the model through `ITEM_MODEL` on a
 vanilla shovel for clients without the pack. An item display turns every model half a turn about
 its own Y before drawing it, harmless to the coal and not to a shovel, so the element's right
-rotation undoes it.
+rotation undoes it. Decided by the user with the placement: the `.blend` holds two poses,
+`shovel.full` against a full load and `shovel.empty` lying on the floor; the full pose sinks a
+pixel for every pixel the coal goes down until the blade's tip meets the floor, and an empty tender
+shows the empty pose.
 
 **Done when (observed in game, vanilla client).** The shovel sits in the tender where it sits in
 the `.blend`, and stays there as the cart moves, turns and climbs.
 
 ## Open decisions
 
-- **Does the shovel ride the coal?** Placed against a full load, it could sink with the coal as the
-  tender empties or stay where it was put. Settled by the user with its placement.
 
 - **Icon art.** Hand-drawn, or composited by a script from vanilla's minecart icon and a coal
   overlay, as sensible-storage does for its carts. Settled at S5.
