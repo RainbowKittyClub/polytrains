@@ -144,7 +144,7 @@ tick. A cold engine with a tender of coal sat still with the coal untouched; a t
 a chest cart in its place, and a tender with `trains_enabled` off each let the engine run its own
 40 ticks dry and fed nothing.
 
-## S4 — The coal load on screen — **planned**
+## S4 — The coal load on screen — **in progress**
 
 **Build.** A `CargoDisplayHolder` subclass with one item display of `minecraft:coal_block`, attached
 through `CartCargoSupport` with vanilla's slot blanked to air. A full load runs from the floor to

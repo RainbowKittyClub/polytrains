@@ -39,6 +39,15 @@ public class CoalTenderMinecart extends AbstractMinecartContainer implements Car
     /** Slots a tender holds: a hopper's worth. */
     public static final int SLOTS = 5;
 
+    /**
+     * How high a full load stands, in pixels: from the cart's floor to one pixel under its rim,
+     * which are 3 and 11 pixels above the cart's position.
+     */
+    public static final int LOAD_PIXELS = 7;
+
+    // Coal and charcoal a full tender holds: five stacks of 64.
+    private static final int CAPACITY = SLOTS * 64;
+
     // Saved-data key for the burn left in the coal the tender has opened. Capitalised to match the
     // vanilla keys it sits beside.
     private static final String BURN_LEFT_TAG = "BurnLeft";
@@ -109,6 +118,25 @@ public class CoalTenderMinecart extends AbstractMinecartContainer implements Car
         return given;
     }
 
+    /**
+     * How high the load stands, in whole pixels from 0, empty, to {@link #LOAD_PIXELS}, full: the
+     * coal and charcoal held, and the one being burned, over what five slots hold, rounded up so
+     * that any coal at all shows.
+     */
+    public int loadPixels() {
+        int pieces = burnLeft > 0 ? 1 : 0;
+
+        for (int slot = 0; slot < SLOTS; slot++) {
+            ItemStack stack = getItem(slot);
+
+            if (holds(stack)) {
+                pieces += stack.getCount();
+            }
+        }
+
+        return Math.min(LOAD_PIXELS, (pieces * LOAD_PIXELS + CAPACITY - 1) / CAPACITY);
+    }
+
     // Opens the first coal or charcoal in slot order, or answers false when there is none left.
     private boolean openNext() {
         for (int slot = 0; slot < SLOTS; slot++) {
@@ -165,10 +193,11 @@ public class CoalTenderMinecart extends AbstractMinecartContainer implements Car
         return Blocks.COAL_BLOCK.defaultBlockState();
     }
 
-    // Null for now, so vanilla draws the coal block in the cart at its own size.
+    // Never null: vanilla's cargo slot can only draw a block at a uniform 0.75, and the load is
+    // stretched to the cart's inside and rises with what the tender holds.
     @Override
     public @Nullable CargoDisplayHolder createCargoDisplay() {
-        return null;
+        return new TenderLoadDisplay(this);
     }
 
     @Override
