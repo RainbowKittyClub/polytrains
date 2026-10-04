@@ -44,6 +44,13 @@ public final class ModGameRules {
     public static final GameRule<Boolean> FURNACES_CAN_USE_ALL_FUELS =
             registerBoolean("furnaces_can_use_all_fuels", true);
 
+    /**
+     * Whether a lit furnace cart tops itself up from a chest or hopper cart coupled straight to it,
+     * taking anything it would accept by hand. A rule because the fuel it takes may be cargo.
+     */
+    public static final GameRule<Boolean> FURNACES_REFUEL_FROM_STORAGE_CARTS =
+            registerBoolean("furnaces_refuel_from_storage_carts", true);
+
     /** Off by default: a moving cart holding its own chunks loaded is the costliest thing here. */
     public static final GameRule<Boolean> FURNACE_MINECARTS_LOAD_CHUNKS =
             registerBoolean("furnace_minecarts_load_chunks", false);
