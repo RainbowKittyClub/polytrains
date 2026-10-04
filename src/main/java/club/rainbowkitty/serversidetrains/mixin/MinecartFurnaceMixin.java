@@ -26,6 +26,7 @@ import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.serversidetrains.ServersideTrains;
+import club.rainbowkitty.serversidetrains.display.BrakeLeverDisplay;
 import club.rainbowkitty.serversidetrains.ext.AbstractMinecartExt;
 import club.rainbowkitty.serversidetrains.init.FurnaceTicketTypes;
 import club.rainbowkitty.serversidetrains.rail.RailForces;
@@ -91,9 +92,15 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     // The heading the cart drives itself along, which this mod keeps normalised.
     @Shadow public Vec3 push;
 
-    // Whether the cart sits on an unpowered powered rail, refreshed at the top of each tick.
+    // Whether the cart's train is held by a brake, a rail's or a lever's, refreshed at the top of
+    // each tick.
     @Unique
     private boolean serversidetrains$parked;
+
+    // The brake lever drawn on top, built on the cart's first tick on a server and gone with the
+    // cart: it is only ever ticked through the cart's tracker, which goes when the cart does.
+    @Unique
+    private @Nullable BrakeLeverDisplay serversidetrains$lever;
 
     // The rail the engine was last aimed on, or stands parked on, so a reversal in place can be
     // told from one the track itself makes. Deliberately not saved: a cart reloads holding the
@@ -347,6 +354,10 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         }
 
         var rules = serverLevel.getGameRules();
+
+        if (serversidetrains$lever == null) {
+            serversidetrains$lever = BrakeLeverDisplay.attach(this);
+        }
 
         // Read before super.tick() moves the cart, so the movement path sees this tick's rail —
         // and asked of the whole train: an engine run past the rail while a car behind it is

@@ -50,10 +50,16 @@ public final class RailBrake {
     private RailBrake() {}
 
     /**
-     * Whether {@code cart} is standing on a rail that should stop it. One car's own answer; for
-     * whether a train is being held, see {@link TrainCoupling#held}.
+     * Whether {@code cart} is braking: standing on a rail that should stop it, or a furnace cart
+     * with its brake lever thrown, which brakes as one car on such a rail does. One car's own
+     * answer, and a train's brake is the share of its cars giving it; for whether a train is being
+     * held, see {@link TrainCoupling#held}.
      */
     public static boolean brakes(AbstractMinecart cart) {
+        if (EntityAttachments.leverSet(cart)) {
+            return true;
+        }
+
         BlockState rail = cart.level().getBlockState(cart.getCurrentBlockPosOrRailBelow());
 
         // A powered rail brakes while it has no signal, and accelerates once it has one.

@@ -2,6 +2,7 @@ package club.rainbowkitty.serversidetrains.init;
 
 import java.util.UUID;
 
+import com.mojang.serialization.Codec;
 import net.fabricmc.fabric.api.attachment.v1.AttachmentRegistry;
 import net.fabricmc.fabric.api.attachment.v1.AttachmentTarget;
 import net.fabricmc.fabric.api.attachment.v1.AttachmentType;
@@ -51,6 +52,13 @@ public final class EntityAttachments {
      */
     public static final AttachmentType<WrenchMode> WRENCH_MODE = AttachmentRegistry
             .createPersistent(ServersideTrains.id("wrench_mode"), WrenchMode.CODEC);
+
+    /**
+     * Set on a furnace cart whose brake lever is thrown, and absent otherwise. Persistent, since a
+     * train left braked is to be found braked.
+     */
+    public static final AttachmentType<Boolean> BRAKE_LEVER = AttachmentRegistry
+            .createPersistent(ServersideTrains.id("brake_lever"), Codec.BOOL);
 
     // Static-only; blocks instantiation.
     private EntityAttachments() {}
@@ -109,5 +117,15 @@ public final class EntityAttachments {
     /** Records the heading a brake is holding the cart on, or null to forget it. */
     public static void setHeldHeading(AbstractMinecart minecart, @Nullable Direction heading) {
         ((AttachmentTarget) minecart).setAttached(HELD_HEADING, heading);
+    }
+
+    /** Whether the cart's brake lever is thrown; only a furnace cart ever has one thrown. */
+    public static boolean leverSet(AbstractMinecart minecart) {
+        return ((AttachmentTarget) minecart).getAttachedOrElse(BRAKE_LEVER, false);
+    }
+
+    /** Throws the cart's brake lever, or releases it. */
+    public static void setLever(AbstractMinecart minecart, boolean set) {
+        ((AttachmentTarget) minecart).setAttached(BRAKE_LEVER, set ? Boolean.TRUE : null);
     }
 }

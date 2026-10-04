@@ -21,6 +21,13 @@ Link carts together with iron chains to form a train. All carts move together,
 but longer trains are harder to move. Use furnace minecarts to power them.
 The more furnace carts are in a train, the faster it accelerates.
 
+### Brake Lever
+Every furnace minecart has a brake lever on top. Right-click it to throw it, and every furnace cart in
+the train throws its lever with it: the engines stop pushing, and each one brakes as hard as one cart
+standing on an unpowered powered rail would. The more engines a train has, the sooner it stops. Right-click
+again to release them, and the train sets off the way it was going. Punch, shift-click or use the wrench
+on the lever and you're aiming at the cart instead.
+
 ### Collision
 Trains break apart when they collide if they're going fast enough.
 Mobs and players can get run over now too!

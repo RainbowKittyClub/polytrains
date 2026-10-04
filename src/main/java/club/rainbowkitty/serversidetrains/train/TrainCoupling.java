@@ -676,7 +676,8 @@ public final class TrainCoupling {
 
     /**
      * What {@code cart}'s train should leave a braking rail doing, or null where no car of it is on
-     * one. The same fault as the boost and the same repair, but for the hold.
+     * one. The same fault as the boost and the same repair, but for the hold. An engine with its
+     * brake lever thrown counts as a car on such a rail, wherever it is ({@link RailBrake#brakes}).
      *
      * <p>How much braking the share buys is {@link RailForces#halted}'s to say, because this is the
      * one force the two models cannot state in the same units — vanilla's is a fraction of the
@@ -714,8 +715,9 @@ public final class TrainCoupling {
     }
 
     /**
-     * Whether any of {@code cars} is standing on a brake. {@link #held}, for a train already in
-     * hand: Train asks it of its own cars before it can name the car {@code held} reaches it by.
+     * Whether any of {@code cars} is braking, on a brake rail or by its lever. {@link #held}, for a
+     * train already in hand: Train asks it of its own cars before it can name the car {@code held}
+     * reaches it by.
      */
     public static boolean braking(List<AbstractMinecart> cars) {
         for (AbstractMinecart car : cars) {

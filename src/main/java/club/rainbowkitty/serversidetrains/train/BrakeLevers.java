@@ -1,0 +1,59 @@
+package club.rainbowkitty.serversidetrains.train;
+
+import java.util.List;
+
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.entity.vehicle.minecart.MinecartFurnace;
+
+import club.rainbowkitty.serversidetrains.init.EntityAttachments;
+import club.rainbowkitty.serversidetrains.rule.ModGameRules;
+
+/**
+ * The brake lever on top of every furnace cart, thrown and released for all the engines of a train
+ * at once.
+ *
+ * <p>A thrown lever brakes its own engine as one car standing on an unpowered powered rail does,
+ * and like such a rail holds the train, which parks every engine of it: see
+ * {@link club.rainbowkitty.serversidetrains.rail.RailBrake#brakes}. So a train brakes by a rail's
+ * worth for each engine it has, and coasts to a stop on that rather than on its engines' drive.
+ */
+public final class BrakeLevers {
+
+    // Vanilla's lever click, at the volume and the two pitches LeverBlock plays it at.
+    private static final float CLICK_VOLUME = 0.3f;
+    private static final float THROWN_PITCH = 0.6f;
+    private static final float RELEASED_PITCH = 0.5f;
+
+    // How far above the cart's position the click is played: the lever's own height.
+    private static final double CLICK_HEIGHT = 1.1;
+
+    // Static-only; blocks instantiation.
+    private BrakeLevers() {}
+
+    /**
+     * Throws {@code engine}'s lever if it is released, or releases it if it is thrown, and sets
+     * every engine of its train the same way — so a train whose engines disagreed, two trains with
+     * levers set differently having been coupled, agrees again from the lever clicked.
+     *
+     * @return whether the levers are now thrown
+     */
+    public static boolean toggle(AbstractMinecart engine) {
+        boolean thrown = !EntityAttachments.leverSet(engine);
+        List<AbstractMinecart> cars = engine.hasLink() && ModGameRules.trainsEnabled(engine.level())
+                ? Train.of(engine).cars()
+                : List.of(engine);
+
+        for (AbstractMinecart car : cars) {
+            if (car instanceof MinecartFurnace) {
+                EntityAttachments.setLever(car, thrown);
+            }
+        }
+
+        engine.level().playSound(null, engine.getX(), engine.getY() + CLICK_HEIGHT, engine.getZ(),
+                SoundEvents.LEVER_CLICK, SoundSource.NEUTRAL, CLICK_VOLUME,
+                thrown ? THROWN_PITCH : RELEASED_PITCH);
+        return thrown;
+    }
+}
