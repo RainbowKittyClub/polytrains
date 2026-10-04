@@ -13,6 +13,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.ItemUtils;
 
+import club.rainbowkitty.serversidetrains.mixin.MinecartFurnaceAccessor;
 import club.rainbowkitty.serversidetrains.rule.ModGameRules;
 
 /** What a furnace cart will burn once it is no longer held to coal and charcoal. */
@@ -21,10 +22,6 @@ public final class FurnaceFuel {
     // Vanilla gives coal 1600 ticks in a furnace and 3600 in a cart, so every burn duration is
     // scaled by the ratio rather than a cart-specific table being invented.
     private static final double CART_SCALE = 2.25;
-
-    // What vanilla's own addFuel gives a cart for one item of furnace_minecart_fuel
-    // (MinecartFurnace.FUEL_TICKS_PER_ITEM, which is private), whichever rule is on.
-    private static final int TAGGED_FUEL_TICKS = 3600;
 
     // Static-only; blocks instantiation.
     private FurnaceFuel() {}
@@ -40,13 +37,17 @@ public final class FurnaceFuel {
      * anything a furnace burns — the same two paths a player's hand goes down.
      */
     public static int cartBurnDuration(ServerLevel level, ItemStack stack) {
+        return cartBurnDuration(level, stack,
+                level.getGameRules().get(ModGameRules.FURNACES_CAN_USE_ALL_FUELS));
+    }
+
+    // The same, with furnaces_can_use_all_fuels already read, for a caller asking of many stacks.
+    private static int cartBurnDuration(ServerLevel level, ItemStack stack, boolean allFuels) {
         if (stack.is(ItemTags.FURNACE_MINECART_FUEL)) {
-            return TAGGED_FUEL_TICKS;
+            return MinecartFurnaceAccessor.serversidetrains$fuelTicksPerItem();
         }
 
-        return level.getGameRules().get(ModGameRules.FURNACES_CAN_USE_ALL_FUELS)
-                ? burnDuration(level, stack)
-                : 0;
+        return allFuels ? burnDuration(level, stack) : 0;
     }
 
     /**
@@ -56,9 +57,11 @@ public final class FurnaceFuel {
      * is left in the slot it came from, as a furnace leaves one.
      */
     public static int drawFromCoupled(ServerLevel level, AbstractMinecart engine, int room) {
-        if (room <= 0 || !engine.hasLink()) {
+        if (room <= 0) {
             return 0;
         }
+
+        boolean allFuels = level.getGameRules().get(ModGameRules.FURNACES_CAN_USE_ALL_FUELS);
 
         for (AbstractMinecart neighbour : engine.getNeighbours()) {
             if (!(neighbour instanceof Container storage)) {
@@ -67,7 +70,7 @@ public final class FurnaceFuel {
 
             for (int slot = 0; slot < storage.getContainerSize(); slot++) {
                 ItemStack stack = storage.getItem(slot);
-                int burnTicks = stack.isEmpty() ? 0 : cartBurnDuration(level, stack);
+                int burnTicks = stack.isEmpty() ? 0 : cartBurnDuration(level, stack, allFuels);
 
                 if (burnTicks > 0 && burnTicks <= room) {
                     takeOne(storage, slot);

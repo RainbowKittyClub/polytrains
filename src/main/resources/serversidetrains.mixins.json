@@ -10,6 +10,7 @@
     "EntityMixin",
     "MinecartFurnaceMixin",
     "MinecartBehaviorAccessor",
+    "MinecartFurnaceAccessor",
     "MinecartItemMixin",
     "NewMinecartBehaviorMixin",
     "RailStateMixin",

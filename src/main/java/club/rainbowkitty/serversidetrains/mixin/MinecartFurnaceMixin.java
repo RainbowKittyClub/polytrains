@@ -13,7 +13,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.EntityType;
@@ -485,7 +484,9 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         TrainCoupling.turnRound(this, reversedHeading);
     }
 
-    // Replaces vanilla's hardcoded burn-time ceiling with the rule's.
+    // Replaces vanilla's hardcoded burn-time ceiling with the rule's. A hand never reaches addFuel
+    // now — feedByHand takes every fuel first — so this and the hook below are for anything else
+    // that calls it, which then fuels a cart the way a hand does.
     @ModifyConstant(method = "addFuel", constant = @Constant(intValue = 32000))
     private int serversidetrains$maxBurnTime(int vanillaMax) {
         return level() instanceof ServerLevel serverLevel
@@ -551,21 +552,10 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
                 : null;
     }
 
-    // Standing still, a cart has no heading of its own and vanilla's away-from-the-player one is
-    // near enough arbitrary. A train long enough to resist a shove cannot be aimed by walking into
-    // it either, so where the player is looking is the only aim left.
-    @Inject(
-            method = "interact",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/world/item/ItemStack;consume("
-                            + "ILnet/minecraft/world/entity/LivingEntity;)V"))
-    private void serversidetrains$aimVanillaFuel(Player player, InteractionHand hand, Vec3 location,
-            CallbackInfoReturnable<InteractionResult> cir) {
-        serversidetrains$aimAlongLook(player);
-    }
-
-    // Aims a standing cart where the player is looking.
+    // Aims a standing cart where the player is looking. Standing still, a cart has no heading of
+    // its own and vanilla's away-from-the-player one is near enough arbitrary; a train long
+    // enough to resist a shove cannot be aimed by walking into it either, so the look is all
+    // the aim there is.
     @Unique
     private void serversidetrains$aimAlongLook(Player player) {
         Vec3 lookDirection = player.getLookAngle().horizontal();
@@ -576,23 +566,28 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         }
     }
 
-    // Handled here rather than in addFuel because a bucket has to be emptied back into the hand
-    // that offered it, and addFuel does not know whose hand that was.
+    // Every fuel a hand offers is taken here, coal and charcoal included, so the hand and anything
+    // else that feeds a cart read the one figure, FurnaceFuel.cartBurnDuration. Ahead of vanilla's
+    // addFuel, too, because a bucket has to be emptied back into the hand that offered it and
+    // addFuel does not know whose hand that was. A full cart takes nothing, as vanilla's doesn't.
     @Inject(method = "interact", at = @At("HEAD"), cancellable = true)
-    private void serversidetrains$addOtherFuels(Player player, InteractionHand hand, Vec3 location,
+    private void serversidetrains$feedByHand(Player player, InteractionHand hand, Vec3 location,
             CallbackInfoReturnable<InteractionResult> cir) {
         var heldItem = player.getItemInHand(hand);
 
-        if (!(level() instanceof ServerLevel serverLevel)
-                || heldItem.is(ItemTags.FURNACE_MINECART_FUEL)
-                || !serverLevel.getGameRules().get(ModGameRules.FURNACES_CAN_USE_ALL_FUELS)) {
+        if (!(level() instanceof ServerLevel serverLevel)) {
             return;
         }
 
-        int maxBurnTime = serverLevel.getGameRules().get(ModGameRules.FURNACE_MAX_BURN_TIME);
-        int burnTime = FurnaceFuel.burnDuration(serverLevel, heldItem);
+        int burnTime = FurnaceFuel.cartBurnDuration(serverLevel, heldItem);
 
-        if (burnTime <= 0 || fuel + burnTime > maxBurnTime) {
+        if (burnTime <= 0) {
+            return;
+        }
+
+        cir.setReturnValue(InteractionResult.SUCCESS);
+
+        if (fuel + burnTime > serverLevel.getGameRules().get(ModGameRules.FURNACE_MAX_BURN_TIME)) {
             return;
         }
 
@@ -600,8 +595,6 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         serversidetrains$setImpulse(position().subtract(player.position()));
         serversidetrains$aimAlongLook(player);
         FurnaceFuel.take(serverLevel, this, player, hand, heldItem);
-
-        cir.setReturnValue(InteractionResult.SUCCESS);
     }
 
     // Vanilla narrows Fuel to a short, which furnace_max_burn_time overshoots, so the real value
