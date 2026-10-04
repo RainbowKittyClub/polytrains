@@ -120,11 +120,12 @@ public class CoalTenderMinecart extends AbstractMinecartContainer implements Car
 
     /**
      * How high the load stands, in whole pixels from 0, empty, to {@link #LOAD_PIXELS}, full: the
-     * coal and charcoal held, and the one being burned, over what five slots hold, rounded up so
-     * that any coal at all shows.
+     * coal and charcoal in the slots over what five slots hold, rounded up so that any coal at all
+     * shows. The coal already opened and burning is not counted, so the load answers the slots the
+     * moment they change, emptied tender and all, rather than once that coal has burned out.
      */
     public int loadPixels() {
-        int pieces = burnLeft > 0 ? 1 : 0;
+        int pieces = 0;
 
         for (int slot = 0; slot < SLOTS; slot++) {
             ItemStack stack = getItem(slot);

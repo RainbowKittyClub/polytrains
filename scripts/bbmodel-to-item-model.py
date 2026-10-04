@@ -80,8 +80,10 @@ def solve_uv(name, points, uvs, f, t, size):
                     ok = False
         if ok:
             scale = 16 / size[0], 16 / size[1]
-            return [u[0][0] * scale[0], u[1][1] * scale[1],
-                    u[0][2] * scale[0], u[1][3] * scale[1]], shift * 90
+            # Adding 0.0 turns a -0.0 into 0.0, which reads the same to the game but not in a diff.
+            return [round(c, 6) + 0.0 for c in (u[0][0] * scale[0], u[1][1] * scale[1],
+                                                 u[0][2] * scale[0], u[1][3] * scale[1])], \
+                shift * 90
     raise ValueError(f'{name} face UVs fit no rotation of a Java face')
 
 
