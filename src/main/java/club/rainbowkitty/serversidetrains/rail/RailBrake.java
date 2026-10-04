@@ -102,22 +102,24 @@ public final class RailBrake {
         }
     }
 
-    // Records the direction a cart is still rolling in as the brake brings it to a stop, so there
-    // is something to leave on once the signal comes back.
+    // Records the direction a cart rolled onto the brake in, so there is something to leave on once
+    // the signal comes back. Kept from then on, until the cart leaves powered rail or is launched:
+    // once it stands, the only movement left to read is whatever nudges it — a player leaning on
+    // a car, which a train hands to whichever car it is led from — and a heading taken from that
+    // sends it off the way it was pushed instead of the way it came.
     private static void remember(AbstractMinecart cart) {
+        if (EntityAttachments.getHeldHeading(cart) != null) {
+            return;
+        }
+
         Vec3 movement = cart.getDeltaMovement().horizontal();
 
         if (movement.lengthSqr() <= MOVING_EPSILON) {
             return;
         }
 
-        Direction heading = Direction.getApproximateNearest(movement.x(), 0.0, movement.z());
-
-        // Written only on a change: this runs every tick of a cart's approach, and an attachment
-        // rewritten each time would mark the entity dirty for nothing.
-        if (EntityAttachments.getHeldHeading(cart) != heading) {
-            EntityAttachments.setHeldHeading(cart, heading);
-        }
+        EntityAttachments.setHeldHeading(cart,
+                Direction.getApproximateNearest(movement.x(), 0.0, movement.z()));
     }
 
     // Sends a waiting cart off the way it came in. A cart still rolling never stopped to need this,
