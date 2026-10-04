@@ -164,7 +164,7 @@ the rim with no flicker against the walls, it stays put in the cart on straight 
 slope at speed, and it drops a pixel at a time as the tender empties, gone when it is. A client
 running this mod sees the same — it is sent the same path.
 
-## S5 — Icon and documentation — **planned**
+## S5 — Icon and documentation — **in progress**
 
 **Build.** A 16 × 16 inventory icon (a minecart with coal), its `item/generated` model and `items/`
 definition in this mod's resource pack, and the item's model id. README: a "Coal tender" section,

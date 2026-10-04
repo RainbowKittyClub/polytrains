@@ -34,9 +34,12 @@ public final class CoalTenders {
             ServersideTrains.MOD_ID, NAME,
             CargoMinecarts.containerCartBuilder(CoalTenderMinecart::new), EntityTypes.MINECART);
 
-    /** The tender item, which places a tender on a rail and is shown as a minecart. */
-    public static final Item ITEM = new PolymerMinecartItem(TYPE, Items.MINECART, null,
-            new Item.Properties().stacksTo(1).setId(ITEM_KEY));
+    /**
+     * The tender item, which places a tender on a rail. A client is sent a minecart drawn with the
+     * tender's own icon from this mod's resource pack, and without the pack sees a plain minecart.
+     */
+    public static final Item ITEM = new PolymerMinecartItem(TYPE, Items.MINECART,
+            ServersideTrains.id(NAME), new Item.Properties().stacksTo(1).setId(ITEM_KEY));
 
     // Static-only; blocks instantiation.
     private CoalTenders() {}

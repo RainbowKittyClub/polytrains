@@ -8,6 +8,13 @@ Inspired by Cammie's Minecart Tweaks: A server-side Fabric mod that makes rails 
 The furnace cart now accepts any fuel that would work in a normal furnace, including lava!
 You can keep dumping fuel into it (to the lava-bucket maximum) to make it run longer.
 
+### Coal Tender
+A minecart and a block of coal make a coal tender: a cart that holds five slots of coal and charcoal,
+and nothing else. Couple one straight to a furnace cart and, once you've lit the engine by hand, the
+tender keeps it burning at exactly the rate it uses fuel — no topping up, no burn-time cap. The coal
+you can see in the tender goes down as it empties. Hoppers can fill it, so a hopper over the track at
+a station makes a coaling stop.
+
 ### Trains
 Link carts together with iron chains to form a train. All carts move together,
 but longer trains are harder to move. Use furnace minecarts to power them.
