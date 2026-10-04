@@ -173,7 +173,26 @@ and the rules table without the row S1 removes.
 **Done when.** A vanilla client holding the server's resource pack sees the icon in hand and in the
 inventory; the README describes the tender.
 
+## S6 — The shovel in the load — **in progress**
+
+**Build.** The user's shovel (`art/coal_tender_shovel.bbmodel`, a Blockbench model of three box
+meshes) as a Java item model by `scripts/bbmodel-to-item-model.py`, which refuses anything that is
+not an axis-aligned box and checks the result against the meshes corner for corner; the same
+script bakes a `.glb` from the Java model. The user places it against the client's minecart and a
+full load in `media/blender_exports/coal_tender/coal_tender_shovel.blend`, whose frame is the one
+the game poses cargo in. Its placement is then read out of the `.blend` and drawn as a second
+element of `TenderLoadDisplay`, an item display carrying the model through `ITEM_MODEL` on a
+vanilla shovel for clients without the pack. An item display turns every model half a turn about
+its own Y before drawing it, harmless to the coal and not to a shovel, so the element's right
+rotation undoes it.
+
+**Done when (observed in game, vanilla client).** The shovel sits in the tender where it sits in
+the `.blend`, and stays there as the cart moves, turns and climbs.
+
 ## Open decisions
+
+- **Does the shovel ride the coal?** Placed against a full load, it could sink with the coal as the
+  tender empties or stay where it was put. Settled by the user with its placement.
 
 - **Icon art.** Hand-drawn, or composited by a script from vanilla's minecart icon and a coal
   overlay, as sensible-storage does for its carts. Settled at S5.
