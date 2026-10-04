@@ -13,6 +13,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.serversidetrains.ext.AbstractMinecartExt;
+import club.rainbowkitty.serversidetrains.rail.RailBrake;
 import club.rainbowkitty.serversidetrains.rail.RailForces;
 import club.rainbowkitty.serversidetrains.rail.TrackRibbon;
 
@@ -952,6 +953,15 @@ public final class Train {
         // ribbon it starts lets the next reading correct the end. It does not answer for which way
         // the cars face, so the placer declines to turn a train it cannot read a heading from.
         if (speed < EPSILON) {
+            return heldEnd != null ? heldEnd : head;
+        }
+
+        // Nor does movement a brake is about to cancel. Under a brake anywhere along it, a train
+        // moving slower than the dead-stop floor is stopped outright later this tick, but a shove
+        // landed between ticks is read here first — a player leaning on a held car for three ticks
+        // would hand the lead to the far end of a train that never moved. Anything faster does
+        // move it, so a real reversal still names its new end.
+        if (speed < RailBrake.HALT_FLOOR && TrainCoupling.braking(cars)) {
             return heldEnd != null ? heldEnd : head;
         }
 
