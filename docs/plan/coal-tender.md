@@ -194,13 +194,11 @@ the `.blend`, and stays there as the cart moves, turns and climbs.
 
 ## Open decisions
 
-
-- **Icon art.** Hand-drawn, or composited by a script from vanilla's minecart icon and a coal
-  overlay, as sensible-storage does for its carts. Settled at S5.
-
-Decided by the user on 2026-10-04, and written into the stages: a tender only keeps a lit engine
-lit and never lights a cold one (S3); there is no rule (S1); the tender holds 5 slots behind a
-hopper menu (S2); and the load rises with the contents (S4).
+None open. Decided by the user on 2026-10-04, and written into the stages: a tender only keeps a
+lit engine lit and never lights a cold one (S3); there is no rule (S1); the tender holds 5 slots
+behind a hopper menu (S2); the load rises with the contents (S4); the icon is the user's own
+drawing, over the scripted composite S5 first committed; and the shovel sinks with the coal until
+its tip meets the floor, lying there when the tender is empty (S6).
 
 ## Reference: minecart interior
 
