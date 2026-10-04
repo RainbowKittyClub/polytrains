@@ -40,7 +40,6 @@ Everything is done with `minecarttweaks.` gamerules:
 | `carts_resume_from_brakes [true]` | Whether a cart stopped by an unpowered powered rail leaves again when the signal returns. |
 | `realistic_physics [false]` | Whether carts use this mod's own force model instead of vanilla's. Off by default, so an existing world is unchanged. Trains are not gated by it — vanilla has no trains to mirror. |
 | `furnaces_can_use_all_fuels [true]` | Whether furnace carts accept all furnace fuels. |
-| `furnaces_refuel_from_storage_carts [true]` | Whether a lit furnace cart takes fuel from a chest or hopper cart coupled to it. |
 | `furnace_max_burn_time [72000]` | Furnace burn time ceiling, in ticks. |
 | `furnace_minecarts_load_chunks [false]` | Whether moving furnace carts act as chunkloaders. |
 

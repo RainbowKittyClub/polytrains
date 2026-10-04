@@ -64,12 +64,6 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     // One tick of fuel is spent per this many ticks while parked.
     @Unique
     private static final int PARKED_FUEL_INTERVAL = 10;
-
-    // Ticks between looks into a coupled storage cart for fuel. A coal burns for 3600, so a second
-    // between looks costs nothing, and scanning a chest every tick for every engine would.
-    @Unique
-    private static final int TENDER_INTERVAL = 20;
-
     // Ticks of no progress under power before the engine turns the cart round. Long enough that a
     // cart just fuelled from rest is not mistaken for one wedged against a buffer — it is moving
     // by its second tick under either model — and short enough to read as a reversal rather than
@@ -377,15 +371,6 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         // the tick it is about to spend is the only way to slow that without wrapping the loop.
         if (fuel > 0 && tickCount % PARKED_FUEL_INTERVAL != 0 && serversidetrains$parked) {
             fuel++;
-        }
-
-        // A storage cart coupled to the engine keeps it lit, but does not light it: vanilla clears
-        // the impulse with the last of the fuel, so a cold engine has no heading to leave on, and a
-        // parked train should not set off because someone filled the chest next to it.
-        if (fuel > 0 && tickCount % TENDER_INTERVAL == 0
-                && rules.get(ModGameRules.FURNACES_REFUEL_FROM_STORAGE_CARTS)) {
-            fuel += FurnaceFuel.drawFromCoupled(serverLevel, this,
-                    rules.get(ModGameRules.FURNACE_MAX_BURN_TIME) - fuel);
         }
     }
 

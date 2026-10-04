@@ -30,8 +30,6 @@
   "gamerule.sstrains.max_train_length.description": "Most minecarts one train may hold",
   "gamerule.sstrains.furnaces_can_use_all_fuels": "Furnaces Can Use All Fuels",
   "gamerule.sstrains.furnaces_can_use_all_fuels.description": "Furnace minecarts burn any furnace fuel, not just coal",
-  "gamerule.sstrains.furnaces_refuel_from_storage_carts": "Furnaces Refuel From Storage Carts",
-  "gamerule.sstrains.furnaces_refuel_from_storage_carts.description": "A lit furnace minecart takes fuel from a chest or hopper minecart coupled to it",
   "gamerule.sstrains.furnace_minecarts_load_chunks": "Furnace Minecarts Load Chunks",
   "gamerule.sstrains.furnace_minecarts_load_chunks.description": "Moving furnace minecarts keep their own chunks loaded",
   "gamerule.sstrains.carts_resume_from_brakes": "Carts Resume From Brakes",

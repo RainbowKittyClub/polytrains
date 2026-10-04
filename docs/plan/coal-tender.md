@@ -58,7 +58,7 @@ are observed by script. Anything drawn on screen (S4, S5) needs a client and is 
 the user: nothing here can see a client. A stage is not finished until its "Done when" is observed,
 so a failure at stage N implicates stage N and not the ones before it.
 
-## S1 — Remove the generic container pull — **planned**
+## S1 — Remove the generic container pull — **done**
 
 **Build.** Take out what `079657a` added for feeding: `FurnaceFuel.drawFromCoupled` and `takeOne`,
 the `TENDER_INTERVAL` hook in `MinecartFurnaceMixin`'s tick, the rule
@@ -70,6 +70,16 @@ saves rules (live runs `30909e5`; the main dev server runs the main checkout).
 **Done when.** On the private server a lit engine coupled to a chest cart of coal burns its own fuel
 down one a tick and the chest keeps its coal; `gamerule sstrains:furnaces_refuel_from_storage_carts`
 is an unknown rule; the mixin check is clean.
+
+### As built
+
+As planned. `cartBurnDuration`'s private overload, which existed only so the scan could read
+`furnaces_can_use_all_fuels` once, went with the scan. README, lang and `ModGameRules` are byte-for-
+byte what they were at `30909e5`. Observed: a lit engine beside a chest cart of three coal, and
+beside a hopper cart of two charcoal, went from 1000 to 992 fuel over four seconds parked (its own
+idle burn) with the coal untouched; a moving train with two coal in the cart behind ran dry after
+two seconds; the rule answers "Incorrect argument". The one world that ever held the rule, the
+private test copy, logs it as a stale saved key until it is dropped.
 
 ## S2 — The tender cart and its item — **planned**
 
