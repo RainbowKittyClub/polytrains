@@ -95,8 +95,9 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     @Unique
     private boolean serversidetrains$parked;
 
-    // The rail the engine was last aimed on, so a reversal in place can be told from one the track
-    // itself makes. Deliberately not saved: a cart reloads holding the heading vanilla wrote.
+    // The rail the engine was last aimed on, or stands parked on, so a reversal in place can be
+    // told from one the track itself makes. Deliberately not saved: a cart reloads holding the
+    // heading vanilla wrote, and a parked one has it stamped again on its first tick back.
     @Unique
     private @Nullable BlockPos serversidetrains$headingRail;
 
@@ -352,6 +353,14 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         // still held drives against a brake that zeroes the train every tick, re-adding one tick
         // of impulse each time, a crawl that never stops and never gets anywhere.
         serversidetrains$parked = TrainCoupling.held(this);
+
+        // The engine stops being aimed once parked, but a train braking from speed rolls on a
+        // block or more first, so the rail it was last aimed on is behind it by the time it stands.
+        // Held to the rail it stands on instead: the first movement the engine reads on release is
+        // whatever the slope pulls, and a train that climbed into the brake would turn round on it.
+        if (serversidetrains$parked) {
+            serversidetrains$headingRail = getCurrentBlockPosOrRailBelow();
+        }
 
         serversidetrains$countStall();
 
