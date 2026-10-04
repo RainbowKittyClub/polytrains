@@ -50,9 +50,9 @@ public class TenderLoadDisplay extends CargoDisplayHolder {
     private static final Quaternionf SHOVEL_FULL_TURN =
             new Quaternionf(-0.392578632f, 0.499553680f, 0.315643430f, 0.704767644f);
     private static final Vector3f SHOVEL_EMPTY_AT =
-            new Vector3f(-0.011349969f, 0.216197550f, -0.005910277f);
+            new Vector3f(-0.011349969f, 0.218750000f, -0.005910277f);
     private static final Quaternionf SHOVEL_EMPTY_TURN =
-            new Quaternionf(-0.011332114f, 0.501387775f, -0.008864793f, 0.865103066f);
+            new Quaternionf(0.0f, 0.501377761f, 0.0f, 0.865228474f);
 
     // How far the shovel can sink with the coal before the blade's tip meets the floor, in pixels:
     // its lowest point in the full pose stands this high above the floor's top.
