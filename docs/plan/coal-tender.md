@@ -73,15 +73,18 @@ is an unknown rule; the mixin check is clean.
 
 ## S2 — The tender cart and its item — **planned**
 
-**Build.** Add `vehicle` to `kalic0re_shared_packages`. A `CoalTenderMinecart`, registered through
+**Build.** Add `vehicle` to `kalic0re_shared_packages`. A `CoalTenderMinecart extends
+AbstractMinecartContainer implements CartCargo`, registered through
 `CargoMinecarts.register(MOD_ID, "coal_tender", …, EntityTypes.MINECART)` with the container-cart
-builder settings (`CargoMinecarts.java:143-150`). Built either on kalic0re's `CargoMinecartChest`
-with its cargo fixed to `minecraft:coal_block`, or on vanilla `MinecartChest` with the pieces it
-needs wired by hand — resolve which by building: `CargoMinecartChest` carries a per-cart cargo
-component and `Cargo` NBT that a tender has no use for. 27 slots on vanilla's `GENERIC_9x3`, taking
-only `furnace_minecart_fuel`: `canPlaceItem` for hoppers (`HopperBlockEntity.java:300-311`), and a
-`createMenu` whose slots refuse anything else in `mayPlace`, since `ChestMenu` builds plain `Slot`s
-(`ChestMenu.java:64`). The item is a `PolymerMinecartItem` falling back to `Items.MINECART` for
+builder settings (`CargoMinecarts.java:143-150`), its load drawn through `CartCargoSupport`. Not on
+kalic0re's `CargoMinecartChest`: that is a 27-slot chest whose purpose is a per-cart cargo component
+and `Cargo` NBT, and a tender has a fixed load and five slots. From it the tender takes the
+main-hand-only `interact` (`CargoMinecartChest.java:86-91`), which answers the plain click a cart
+with riders sends twice; this mod's own `MinecartHelper.useMinecart` dedupes only the shift-click
+gestures it consumes, so the two do not overlap. Five slots on vanilla's `HOPPER` menu, taking only
+`furnace_minecart_fuel`: `canPlaceItem` for hoppers (`HopperBlockEntity.java:300-311`), and a copy
+of `HopperMenu` whose slots refuse anything else in `mayPlace`, since `HopperMenu` builds plain
+`Slot`s. The item is a `PolymerMinecartItem` falling back to `Items.MINECART` for
 vanilla clients. Recipe (shapeless: minecart and coal block) as hand-written JSON, since this mod
 has no datagen; lang keys for the item and the entity; a creative-tab entry; the dispenser behaviour
 (`CargoMinecarts.registerDispenseBehaviour`, without which dispensers will not place it); breaking
@@ -103,7 +106,9 @@ the shortfall from a tender coupled to it — out of `burnLeft`, opening the nex
 never needs room for a whole item, so the draw follows consumption whatever `furnace_max_burn_time`
 is, and a parked engine, burning a tenth, draws a tenth. Coupled means what it means everywhere else
 here: a direct neighbour, loaded, with `trainsEnabled` — the review of `079657a` found that path
-skipping the last check. A cold engine is not lit (see Open decisions).
+skipping the last check. A cold engine is never lit: vanilla clears its impulse with the last fuel,
+so it has no direction to leave in, and a parked train must not set off because its tender was
+filled.
 
 **Done when.** On the private server: a lit engine with 40 ticks of fuel and a tender of N coal runs
 on for N × 3600 ticks, give or take a tick, its fuel never reaching zero; the tender spends one coal
@@ -114,17 +119,22 @@ it is still fed; a cold engine stays cold; a tender one car away, a chest cart, 
 ## S4 — The coal load on screen — **planned**
 
 **Build.** A `CargoDisplayHolder` subclass with one item display of `minecraft:coal_block`, attached
-through `CartCargoSupport` with vanilla's slot blanked to air. The load runs from the floor to 1 px
-under the rim, 3 → 10 px above the cart's position: centre 0.40625, scale about (1.0, 0.4375, 0.75)
-along the cart's length, height and width, each trimmed a hair so no face lands on a wall
-(sensible-storage trimmed its shulker box from 0.75 to 0.745 for exactly that). An item display of a
+through `CartCargoSupport` with vanilla's slot blanked to air. A full load runs from the floor to
+1 px under the rim, 3 → 10 px above the cart's position: centre 0.40625, scale about
+(1.0, 0.4375, 0.75) along the cart's length, height and width, each trimmed a hair so no face lands
+on a wall (sensible-storage trimmed its shulker box from 0.75 to 0.745 for exactly that). The load
+rises with the contents in whole pixels: its height is the fill — coal and charcoal held, plus the
+one being burned, over the 320 five slots hold — of 7 px, rounded up, so any coal shows at least a
+pixel and an empty tender shows none. The holder reads the fill each tick and asks for a re-pose
+(`markPoseDirty`) only when the height changes. An item display of a
 `cube_all` block renders centred at 1:1, so no corner correction is needed, unlike a block display.
 Posed in the constructor; interpolation 0, as on sensible-storage's chest base, which slid inside
 the cart when eased.
 
-**Done when (observed in game, vanilla client).** The cart shows coal level to one pixel below the
-rim with no flicker against the walls, and it stays put in the cart on straight track, a curve and a
-slope at speed. A client running this mod sees the same — it is sent the same path.
+**Done when (observed in game, vanilla client).** A full tender shows coal level to one pixel below
+the rim with no flicker against the walls, it stays put in the cart on straight track, a curve and a
+slope at speed, and it drops a pixel at a time as the tender empties, gone when it is. A client
+running this mod sees the same — it is sent the same path.
 
 ## S5 — Icon and documentation — **planned**
 
@@ -137,19 +147,12 @@ inventory; the README describes the tender.
 
 ## Open decisions
 
-- **Does a tender light a cold engine?** Planned no: vanilla clears the engine's impulse with the
-  last of its fuel, so a cold engine has no direction to leave in, and a parked train should not set
-  off because its tender was filled. Settled by the user before S3.
-- **Does the tender need a rule?** Planned none: it burns only coal and charcoal from a cart built
-  for it, so there is no cargo to eat. Settled by the user before S1 finishes.
-- **Capacity and menu.** Planned a 27-slot chest menu. Alternatives: hopper-sized 5 slots, or no
-  menu (right-click puts held coal in, sneak-right-click takes it out). Settled by the user before
-  S2.
-- **Is the load always full?** Planned yes — it is what a tender looks like — rather than hidden
-  when empty or rising with the contents, which would need a re-pose on every inventory change.
-  Settled by the user before S4.
 - **Icon art.** Hand-drawn, or composited by a script from vanilla's minecart icon and a coal
   overlay, as sensible-storage does for its carts. Settled at S5.
+
+Decided by the user on 2026-10-04, and written into the stages: a tender only keeps a lit engine
+lit and never lights a cold one (S3); there is no rule (S1); the tender holds 5 slots behind a
+hopper menu (S2); and the load rises with the contents (S4).
 
 ## Reference: minecart interior
 
