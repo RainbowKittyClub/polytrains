@@ -18,29 +18,39 @@ public interface Linkable {
      * whose cart no longer exists resolves to nothing, so this can be shorter than the number of
      * slots in use — ask {@link #hasFreeSlot} rather than this when deciding whether a link fits.
      */
-    public List<AbstractMinecart> getNeighbours();
+    public default List<AbstractMinecart> getNeighbours() {
+        throw unmixed();
+    }
 
     /**
      * Returns whether either slot is in use, counting slots rather than resolved carts. Answers
      * without resolving a cart or building a list, so it is the guard to put in front of a walk
      * over the train.
      */
-    public boolean hasLink();
+    public default boolean hasLink() {
+        throw unmixed();
+    }
 
     /** Returns whether this cart has a slot free, counting slots rather than resolved carts. */
-    public boolean hasFreeSlot();
+    public default boolean hasFreeSlot() {
+        throw unmixed();
+    }
 
     /**
      * Places {@code neighbour} in the first free slot, doing nothing if both are full or it is
      * already held. Use {@link #link} to keep both sides in step.
      */
-    public void addNeighbour(AbstractMinecart neighbour);
+    public default void addNeighbour(AbstractMinecart neighbour) {
+        throw unmixed();
+    }
 
     /**
      * Clears whichever slot holds {@code neighbour}. Use {@link #unlink} to keep both sides in
      * step.
      */
-    public void removeNeighbour(AbstractMinecart neighbour);
+    public default void removeNeighbour(AbstractMinecart neighbour) {
+        throw unmixed();
+    }
 
     /**
      * Whether {@code a} holds a link slot naming {@code b}, asked of the slots rather than of the
@@ -74,5 +84,13 @@ public interface Linkable {
     public static void unlink(AbstractMinecart a, AbstractMinecart b) {
         a.removeNeighbour(b);
         b.removeNeighbour(a);
+    }
+
+    // Every method here without a body of its own is supplied by AbstractMinecartMixin, which is
+    // merged into AbstractMinecart itself. The throwing defaults exist only so that a cart class
+    // this mod defines compiles: it inherits AbstractMinecart's merged method, which always wins
+    // over an interface default, so reaching one of these means the mixin did not apply.
+    private static UnsupportedOperationException unmixed() {
+        return new UnsupportedOperationException("AbstractMinecartMixin did not apply");
     }
 }

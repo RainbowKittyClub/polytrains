@@ -24,6 +24,7 @@ import club.rainbowkitty.serversidetrains.item.WrenchItems;
 import club.rainbowkitty.serversidetrains.link.LinkTargeting;
 import club.rainbowkitty.serversidetrains.rule.ModGameRules;
 import club.rainbowkitty.serversidetrains.rule.PhysicsGameRules;
+import club.rainbowkitty.serversidetrains.tender.CoalTenders;
 import club.rainbowkitty.serversidetrains.train.TrainMeter;
 import club.rainbowkitty.serversidetrains.util.MinecartHelper;
 
@@ -50,6 +51,7 @@ public class ServersideTrains implements ModInitializer {
     public void onInitialize() {
         RailBlocks.init();
         WrenchItems.init();
+        CoalTenders.init();
         ModGameRules.init();
         PhysicsGameRules.init();
         EntityAttachments.init();
@@ -82,6 +84,8 @@ public class ServersideTrains implements ModInitializer {
                 .register(RailBlocks::addCreativeTabEntries);
         CreativeModeTabEvents.modifyOutputEvent(TOOLS_AND_UTILITIES_TAB)
                 .register(WrenchItems::addCreativeTabEntries);
+        CreativeModeTabEvents.modifyOutputEvent(TOOLS_AND_UTILITIES_TAB)
+                .register(CoalTenders::addCreativeTabEntries);
 
         UseEntityCallback.EVENT.register((player, level, hand, entity, hitResult) ->
                 entity instanceof AbstractMinecart minecart

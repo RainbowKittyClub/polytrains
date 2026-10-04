@@ -71,64 +71,102 @@ public interface AbstractMinecartExt extends Linkable {
      * somebody else's instance. Asked of any other car it answers with that car's own figure; asked
      * of the car driving a train, with the train's, which is the one that car is clamped to.
      */
-    public double serversidetrains$ownMaxSpeed(ServerLevel level);
+    public default double serversidetrains$ownMaxSpeed(ServerLevel level) {
+        throw unmixed();
+    }
 
     /**
      * The stretch of track this cart stands on, read once a tick and held. Collision asks this of
      * every candidate pair, so it must not walk the rails again on each call.
      */
-    public RailContext serversidetrains$railContext();
+    public default RailContext serversidetrains$railContext() {
+        throw unmixed();
+    }
 
     /**
      * The track this cart can be over before its next move ends: see {@link RailContext#covering}.
      * Held until the cart moves, its movement changes or the tick does, since collision asks it of
      * every candidate pair.
      */
-    public RailPath.Reach serversidetrains$coveredTrack();
+    public default RailPath.Reach serversidetrains$coveredTrack() {
+        throw unmixed();
+    }
 
     /** The train this cart was last placed in, whether or not it is still good to use. */
-    public @Nullable Train serversidetrains$train();
+    public default @Nullable Train serversidetrains$train() {
+        throw unmixed();
+    }
 
     /** Hands this cart the train it belongs to, sparing its siblings walking their own. */
-    public void serversidetrains$setTrain(Train train);
+    public default void serversidetrains$setTrain(Train train) {
+        throw unmixed();
+    }
 
     /** The game time the placer last seated this cart on its train's track, or zero for never. */
-    public long serversidetrains$seatedAt();
+    public default long serversidetrains$seatedAt() {
+        throw unmixed();
+    }
 
     /** Records that the placer seated this cart at {@code gameTime}. */
-    public void serversidetrains$setSeatedAt(long gameTime);
+    public default void serversidetrains$setSeatedAt(long gameTime) {
+        throw unmixed();
+    }
 
     /** The game time the placer last flew this cart on through the air, or zero for never. */
-    public long serversidetrains$flownAt();
+    public default long serversidetrains$flownAt() {
+        throw unmixed();
+    }
 
     /** Records that the placer flew this cart at {@code gameTime}. */
-    public void serversidetrains$setFlownAt(long gameTime);
+    public default void serversidetrains$setFlownAt(long gameTime) {
+        throw unmixed();
+    }
 
     /**
      * The arc along its train's ribbon this cart was last seated at, or null if that arc was
      * recorded against a different numbering than {@code arcEpoch} — a reset since renumbered it,
      * and an arc from the old frame describes nothing in the new one.
      */
-    public @Nullable Double serversidetrains$seatArc(int arcEpoch);
+    public default @Nullable Double serversidetrains$seatArc(int arcEpoch) {
+        throw unmixed();
+    }
 
     /**
      * Records the arc this cart has just been seated at, against the arc numbering it was measured
      * in, so that what put the cart there and what later asks where it sits cannot disagree.
      */
-    public void serversidetrains$setSeatArc(double arc, int arcEpoch);
+    public default void serversidetrains$setSeatArc(double arc, int arcEpoch) {
+        throw unmixed();
+    }
 
     /**
      * Which way this cart's nose points, as a heading in the world, or null if it has never been
      * recorded.
      */
-    public @Nullable Vec3 serversidetrains$noseVector();
+    public default @Nullable Vec3 serversidetrains$noseVector() {
+        throw unmixed();
+    }
 
     /** Records which way this cart's nose points. */
-    public void serversidetrains$setNoseVector(Vec3 heading);
+    public default void serversidetrains$setNoseVector(Vec3 heading) {
+        throw unmixed();
+    }
 
     /** The game time this cart's tracker withholds position updates until, or zero for none. */
-    public long serversidetrains$resyncAt();
+    public default long serversidetrains$resyncAt() {
+        throw unmixed();
+    }
 
     /** Withholds this cart's position updates until {@code gameTime}, or zero to stop. */
-    public void serversidetrains$setResyncAt(long gameTime);
+    public default void serversidetrains$setResyncAt(long gameTime) {
+        throw unmixed();
+    }
+
+    // Every method here without a body of its own is supplied by AbstractMinecartMixin, which is
+    // merged into AbstractMinecart itself. The throwing defaults exist only so that a cart class
+    // this mod defines compiles: it inherits AbstractMinecart's merged method, which always wins
+    // over an interface default, so reaching one of these means the mixin did not apply.
+    private static UnsupportedOperationException unmixed() {
+        return new UnsupportedOperationException("AbstractMinecartMixin did not apply");
+    }
 }

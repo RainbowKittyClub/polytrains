@@ -81,7 +81,7 @@ idle burn) with the coal untouched; a moving train with two coal in the cart beh
 two seconds; the rule answers "Incorrect argument". The one world that ever held the rule, the
 private test copy, logs it as a stale saved key until it is dropped.
 
-## S2 — The tender cart and its item — **planned**
+## S2 — The tender cart and its item — **in progress**
 
 **Build.** Add `vehicle` to `kalic0re_shared_packages`. A `CoalTenderMinecart extends
 AbstractMinecartContainer implements CartCargo`, registered through

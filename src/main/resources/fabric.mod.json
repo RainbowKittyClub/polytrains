@@ -21,7 +21,8 @@
     "fabric-api": "*",
     "polymer-core": "*",
     "polymer-blocks": "*",
-    "polymer-resource-pack": "*"
+    "polymer-resource-pack": "*",
+    "polymer-virtual-entity": "*"
   },
   "environment": "server",
   "accessWidener": "serversidetrains.classtweaker",
