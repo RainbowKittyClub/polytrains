@@ -31,6 +31,7 @@ import club.rainbowkitty.serversidetrains.init.FurnaceTicketTypes;
 import club.rainbowkitty.serversidetrains.rail.RailForces;
 import club.rainbowkitty.serversidetrains.rail.RailPath;
 import club.rainbowkitty.serversidetrains.rule.ModGameRules;
+import club.rainbowkitty.serversidetrains.tender.CoalTenderMinecart;
 import club.rainbowkitty.serversidetrains.train.Train;
 import club.rainbowkitty.serversidetrains.train.TrainCoupling;
 import club.rainbowkitty.serversidetrains.train.TrainMeter;
@@ -64,6 +65,11 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     // One tick of fuel is spent per this many ticks while parked.
     @Unique
     private static final int PARKED_FUEL_INTERVAL = 10;
+
+    // Ticks of fuel a coupled coal tender keeps the engine at: enough that vanilla's own tick of
+    // burn never reaches zero between top-ups, little enough that the coal stays in the tender.
+    @Unique
+    private static final int TENDER_FLOOR = 20;
     // Ticks of no progress under power before the engine turns the cart round. Long enough that a
     // cart just fuelled from rest is not mistaken for one wedged against a buffer — it is moving
     // by its second tick under either model — and short enough to read as a reversal rather than
@@ -371,6 +377,16 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         // the tick it is about to spend is the only way to slow that without wrapping the loop.
         if (fuel > 0 && tickCount % PARKED_FUEL_INTERVAL != 0 && serversidetrains$parked) {
             fuel++;
+        }
+
+        // A coal tender coupled to the engine tops it back up to a second's burn here, ahead of
+        // the tick vanilla spends below, so the engine burns the tender's coal exactly as fast as
+        // it burns at all — a tenth of that while parked — and never needs room for a whole coal,
+        // whatever furnace_max_burn_time is. Only a lit engine: vanilla clears the impulse with the
+        // last of the fuel, so a cold one has no heading to leave on, and a parked train must not
+        // set off because someone filled its tender.
+        if (fuel > 0 && fuel < TENDER_FLOOR) {
+            fuel += CoalTenderMinecart.feed(this, TENDER_FLOOR - fuel);
         }
     }
 

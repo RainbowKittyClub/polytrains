@@ -22,6 +22,14 @@ public final class FurnaceFuel {
     // Static-only; blocks instantiation.
     private FurnaceFuel() {}
 
+    /**
+     * How many ticks one coal or charcoal burns for in a cart: vanilla's own figure for an item of
+     * {@code furnace_minecart_fuel}, read from vanilla rather than copied.
+     */
+    public static int ticksPerCoal() {
+        return MinecartFurnaceAccessor.serversidetrains$fuelTicksPerItem();
+    }
+
     /** How many ticks {@code stack} burns for in a cart, or zero if nothing will burn it. */
     public static int burnDuration(ServerLevel level, ItemStack stack) {
         return (int) (level.fuelValues().burnDuration(stack) * CART_SCALE);
@@ -34,7 +42,7 @@ public final class FurnaceFuel {
      */
     public static int cartBurnDuration(ServerLevel level, ItemStack stack) {
         if (stack.is(ItemTags.FURNACE_MINECART_FUEL)) {
-            return MinecartFurnaceAccessor.serversidetrains$fuelTicksPerItem();
+            return ticksPerCoal();
         }
 
         return level.getGameRules().get(ModGameRules.FURNACES_CAN_USE_ALL_FUELS)

@@ -8,6 +8,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecartContainer;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.Item;
@@ -15,11 +16,15 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.kalic0re.common.vehicle.CargoDisplayHolder;
 import club.rainbowkitty.kalic0re.common.vehicle.CartCargo;
 import club.rainbowkitty.kalic0re.common.vehicle.CartCargoSupport;
+import club.rainbowkitty.serversidetrains.rule.ModGameRules;
+import club.rainbowkitty.serversidetrains.util.FurnaceFuel;
 
 /**
  * A coal tender: a minecart that carries coal and charcoal for the furnace cart coupled to it.
@@ -34,7 +39,16 @@ public class CoalTenderMinecart extends AbstractMinecartContainer implements Car
     /** Slots a tender holds: a hopper's worth. */
     public static final int SLOTS = 5;
 
+    // Saved-data key for the burn left in the coal the tender has opened. Capitalised to match the
+    // vanilla keys it sits beside.
+    private static final String BURN_LEFT_TAG = "BurnLeft";
+
     private final CartCargoSupport support;
+
+    // Ticks of burn left in the coal this tender has opened and not yet handed over. An engine is
+    // fed by the tick rather than by the item, so a coal is opened whole and spent a tick at a
+    // time.
+    private int burnLeft;
 
     /**
      * @param type the tender's entity type
@@ -48,6 +62,64 @@ public class CoalTenderMinecart extends AbstractMinecartContainer implements Car
     /** Whether a tender takes {@code stack}: coal and charcoal, all a cart burns unaided. */
     public static boolean holds(ItemStack stack) {
         return stack.is(ItemTags.FURNACE_MINECART_FUEL);
+    }
+
+    /**
+     * Hands {@code engine} up to {@code wanted} ticks of burn from the tenders coupled straight to
+     * it, and returns how many it got: fewer only when they have run dry.
+     *
+     * <p>Coupled means what it means for every other train behaviour here — a link, trains
+     * enabled, and the tender loaded — so a link left behind when trains are switched off, or one
+     * to a tender in an unloaded chunk, feeds nothing.
+     */
+    public static int feed(AbstractMinecart engine, int wanted) {
+        if (wanted <= 0 || !engine.hasLink() || !ModGameRules.trainsEnabled(engine.level())) {
+            return 0;
+        }
+
+        int given = 0;
+
+        for (AbstractMinecart neighbour : engine.getNeighbours()) {
+            if (neighbour instanceof CoalTenderMinecart tender) {
+                given += tender.draw(wanted - given);
+
+                if (given >= wanted) {
+                    break;
+                }
+            }
+        }
+
+        return given;
+    }
+
+    /**
+     * Gives up to {@code wanted} ticks of burn, opening coal or charcoal one at a time as the last
+     * runs out, and returns how many it gave.
+     */
+    public int draw(int wanted) {
+        int given = 0;
+
+        while (given < wanted && (burnLeft > 0 || openNext())) {
+            int taken = Math.min(burnLeft, wanted - given);
+
+            burnLeft -= taken;
+            given += taken;
+        }
+
+        return given;
+    }
+
+    // Opens the first coal or charcoal in slot order, or answers false when there is none left.
+    private boolean openNext() {
+        for (int slot = 0; slot < SLOTS; slot++) {
+            if (holds(getItem(slot))) {
+                removeItem(slot, 1);
+                burnLeft += FurnaceFuel.ticksPerCoal();
+                return true;
+            }
+        }
+
+        return false;
     }
 
     @Override
@@ -109,5 +181,21 @@ public class CoalTenderMinecart extends AbstractMinecartContainer implements Car
     public void remove(RemovalReason reason) {
         support.destroy();
         super.remove(reason);
+    }
+
+    // No key at all is no coal open, which is also what a tender reads back from an older save.
+    @Override
+    protected void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+
+        if (burnLeft > 0) {
+            output.putInt(BURN_LEFT_TAG, burnLeft);
+        }
+    }
+
+    @Override
+    protected void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        burnLeft = Math.max(0, input.getIntOr(BURN_LEFT_TAG, 0));
     }
 }

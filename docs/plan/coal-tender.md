@@ -106,7 +106,7 @@ charcoal and refuses anything else, by hand and from a hopper above; a vanilla c
 minecart; broken, it drops the tender item and spills its contents; after a restart it comes back
 coupled and with its contents.
 
-## S3 — Feeding at the burn rate — **planned**
+## S3 — Feeding at the burn rate — **done**
 
 **Build.** The tender keeps `burnLeft`, the ticks left in the coal it has opened (NBT, never
 synched). `MinecartFurnaceMixin`'s tick hook runs before vanilla's `fuel--`
@@ -125,6 +125,24 @@ on for N × 3600 ticks, give or take a tick, its fuel never reaching zero; the t
 per 3600 ticks driving and per about 36 000 parked; with `furnace_max_burn_time` at 1000 and at 3600
 it is still fed; a cold engine stays cold; a tender one car away, a chest cart, and any tender with
 `trains_enabled` off feed nothing.
+
+### As built
+
+As planned: `CoalTenderMinecart.feed` walks the engine's coupled, loaded tenders and `draw` hands
+over burn a tick at a time out of `BurnLeft`, opening coal or charcoal for
+`FurnaceFuel.ticksPerCoal()` — a new one-line home for the accessor — as it runs out. The engine's
+hook sits after the parked idle refund, so a parked engine is topped up only for the tick it really
+spends.
+
+The run of N × 3600 ticks was measured as a rate rather than waited out: the sum of the engine's
+fuel, the tender's `BurnLeft` and 3600 per unopened coal is what is left to burn, and it fell by
+exactly 50 over 50 ticks driving (51 over 51 in another run), and by 215 over 2154 sprinted ticks
+parked on a brake, 0.100 a tick. The engine's fuel held at 19 once the tender took over — the floor
+less the tick vanilla had just burned — and never went lower; the coal was opened the tick the
+floor was reached. With `furnace_max_burn_time` at 1000 and at 3600 the figures were the same to the
+tick. A cold engine with a tender of coal sat still with the coal untouched; a tender one car away,
+a chest cart in its place, and a tender with `trains_enabled` off each let the engine run its own
+40 ticks dry and fed nothing.
 
 ## S4 — The coal load on screen — **planned**
 
