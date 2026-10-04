@@ -30,13 +30,14 @@ import club.rainbowkitty.serversidetrains.init.EntityAttachments;
 import club.rainbowkitty.serversidetrains.link.LinkAction;
 import club.rainbowkitty.serversidetrains.link.LinkTargeting;
 import club.rainbowkitty.serversidetrains.link.WrenchMode;
+import club.rainbowkitty.serversidetrains.util.ModText;
 
 /** A tool that throws a right-clicked switched rail to its other branch while it is idle. */
 public class WrenchItem extends Item implements PolymerItem {
 
     // Shown when the switch will not throw because a cart is standing on it.
     private static final Component OCCUPIED_MESSAGE =
-            Component.translatable(ServersideTrains.MOD_ID + ".switch.occupied")
+            ModText.translatable(ServersideTrains.MOD_ID + ".switch.occupied")
                     .withStyle(ChatFormatting.RED);
 
     /** Constructs a wrench with the given item properties. */

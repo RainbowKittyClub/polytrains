@@ -961,7 +961,7 @@ public final class Train {
         // landed between ticks is read here first — a player leaning on a held car for three ticks
         // would hand the lead to the far end of a train that never moved. Anything faster does
         // move it, so a real reversal still names its new end.
-        if (speed < RailBrake.HALT_FLOOR && TrainCoupling.braking(cars)) {
+        if (RailBrake.stopsDead(head.getDeltaMovement()) && TrainCoupling.braking(cars)) {
             return heldEnd != null ? heldEnd : head;
         }
 

@@ -20,7 +20,7 @@ public enum WrenchMode implements StringRepresentable {
     private final String serializedName;
 
     // Binds the serialized name to the constant.
-    WrenchMode(String serializedName) {
+    private WrenchMode(String serializedName) {
         this.serializedName = serializedName;
     }
 

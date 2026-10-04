@@ -2,7 +2,7 @@ package club.rainbowkitty.serversidetrains.tender;
 
 import org.jspecify.annotations.Nullable;
 
-import net.minecraft.tags.ItemTags;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.EntityType;
@@ -11,6 +11,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecartContainer;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.HopperMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -25,6 +26,7 @@ import club.rainbowkitty.kalic0re.common.vehicle.CartCargo;
 import club.rainbowkitty.kalic0re.common.vehicle.CartCargoSupport;
 import club.rainbowkitty.serversidetrains.rule.ModGameRules;
 import club.rainbowkitty.serversidetrains.util.FurnaceFuel;
+import club.rainbowkitty.serversidetrains.util.ModText;
 
 /**
  * A coal tender: a minecart that carries coal and charcoal for the furnace cart coupled to it.
@@ -37,13 +39,7 @@ import club.rainbowkitty.serversidetrains.util.FurnaceFuel;
 public class CoalTenderMinecart extends AbstractMinecartContainer implements CartCargo {
 
     /** Slots a tender holds: a hopper's worth. */
-    public static final int SLOTS = 5;
-
-    /**
-     * How high a full load stands, in pixels: from the cart's floor to one pixel under its rim,
-     * which are 3 and 11 pixels above the cart's position.
-     */
-    public static final int LOAD_PIXELS = 7;
+    public static final int SLOTS = HopperMenu.CONTAINER_SIZE;
 
     // Coal and charcoal a full tender holds: five stacks of 64.
     private static final int CAPACITY = SLOTS * 64;
@@ -70,7 +66,7 @@ public class CoalTenderMinecart extends AbstractMinecartContainer implements Car
 
     /** Whether a tender takes {@code stack}: coal and charcoal, all a cart burns unaided. */
     public static boolean holds(ItemStack stack) {
-        return stack.is(ItemTags.FURNACE_MINECART_FUEL);
+        return FurnaceFuel.burnsUnaided(stack);
     }
 
     /**
@@ -119,10 +115,11 @@ public class CoalTenderMinecart extends AbstractMinecartContainer implements Car
     }
 
     /**
-     * How high the load stands, in whole pixels from 0, empty, to {@link #LOAD_PIXELS}, full: the
-     * coal and charcoal in the slots over what five slots hold, rounded up so that any coal at all
-     * shows. The coal already opened and burning is not counted, so the load answers the slots the
-     * moment they change, emptied tender and all, rather than once that coal has burned out.
+     * How high the load stands, in whole pixels from 0, empty, to
+     * {@link TenderLoadDisplay#LOAD_PIXELS}, full: the coal and charcoal in the slots over what
+     * five slots hold, rounded up so that any coal at all shows. The coal already opened and
+     * burning is not counted, so the load answers the slots the moment they change, emptied tender
+     * and all, rather than once that coal has burned out.
      */
     public int loadPixels() {
         int pieces = 0;
@@ -135,7 +132,8 @@ public class CoalTenderMinecart extends AbstractMinecartContainer implements Car
             }
         }
 
-        return Math.min(LOAD_PIXELS, (pieces * LOAD_PIXELS + CAPACITY - 1) / CAPACITY);
+        return Math.min(TenderLoadDisplay.LOAD_PIXELS,
+                (pieces * TenderLoadDisplay.LOAD_PIXELS + CAPACITY - 1) / CAPACITY);
     }
 
     // Opens the first coal or charcoal in slot order, or answers false when there is none left.
@@ -177,6 +175,12 @@ public class CoalTenderMinecart extends AbstractMinecartContainer implements Car
         return hand == InteractionHand.MAIN_HAND
                 ? super.interact(player, hand, location)
                 : InteractionResult.PASS;
+    }
+
+    // The name a menu is titled with, so it falls back to English the way the item's name does.
+    @Override
+    protected Component getTypeName() {
+        return ModText.translatable(getType().getDescriptionId());
     }
 
     @Override

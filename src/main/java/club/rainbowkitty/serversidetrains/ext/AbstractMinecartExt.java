@@ -72,7 +72,7 @@ public interface AbstractMinecartExt extends Linkable {
      * of the car driving a train, with the train's, which is the one that car is clamped to.
      */
     public default double serversidetrains$ownMaxSpeed(ServerLevel level) {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /**
@@ -80,7 +80,7 @@ public interface AbstractMinecartExt extends Linkable {
      * every candidate pair, so it must not walk the rails again on each call.
      */
     public default RailContext serversidetrains$railContext() {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /**
@@ -89,37 +89,37 @@ public interface AbstractMinecartExt extends Linkable {
      * every candidate pair.
      */
     public default RailPath.Reach serversidetrains$coveredTrack() {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /** The train this cart was last placed in, whether or not it is still good to use. */
     public default @Nullable Train serversidetrains$train() {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /** Hands this cart the train it belongs to, sparing its siblings walking their own. */
     public default void serversidetrains$setTrain(Train train) {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /** The game time the placer last seated this cart on its train's track, or zero for never. */
     public default long serversidetrains$seatedAt() {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /** Records that the placer seated this cart at {@code gameTime}. */
     public default void serversidetrains$setSeatedAt(long gameTime) {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /** The game time the placer last flew this cart on through the air, or zero for never. */
     public default long serversidetrains$flownAt() {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /** Records that the placer flew this cart at {@code gameTime}. */
     public default void serversidetrains$setFlownAt(long gameTime) {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /**
@@ -128,7 +128,7 @@ public interface AbstractMinecartExt extends Linkable {
      * and an arc from the old frame describes nothing in the new one.
      */
     public default @Nullable Double serversidetrains$seatArc(int arcEpoch) {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /**
@@ -136,7 +136,7 @@ public interface AbstractMinecartExt extends Linkable {
      * in, so that what put the cart there and what later asks where it sits cannot disagree.
      */
     public default void serversidetrains$setSeatArc(double arc, int arcEpoch) {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /**
@@ -144,29 +144,21 @@ public interface AbstractMinecartExt extends Linkable {
      * recorded.
      */
     public default @Nullable Vec3 serversidetrains$noseVector() {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /** Records which way this cart's nose points. */
     public default void serversidetrains$setNoseVector(Vec3 heading) {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /** The game time this cart's tracker withholds position updates until, or zero for none. */
     public default long serversidetrains$resyncAt() {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /** Withholds this cart's position updates until {@code gameTime}, or zero to stop. */
     public default void serversidetrains$setResyncAt(long gameTime) {
-        throw unmixed();
-    }
-
-    // Every method here without a body of its own is supplied by AbstractMinecartMixin, which is
-    // merged into AbstractMinecart itself. The throwing defaults exist only so that a cart class
-    // this mod defines compiles: it inherits AbstractMinecart's merged method, which always wins
-    // over an interface default, so reaching one of these means the mixin did not apply.
-    private static UnsupportedOperationException unmixed() {
-        return new UnsupportedOperationException("AbstractMinecartMixin did not apply");
+        throw Unmixed.error();
     }
 }

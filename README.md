@@ -11,8 +11,9 @@ You can keep dumping fuel into it (to the lava-bucket maximum) to make it run lo
 ### Coal Tender Minecart
 A minecart and a block of coal make a coal tender minecart: a cart that holds five slots of coal and
 charcoal, and nothing else. Couple one straight to a furnace cart and, once you've lit the engine by hand, the
-tender keeps it burning at exactly the rate it uses fuel — no topping up, no burn-time cap. The coal
-you can see in the tender goes down as it empties. Hoppers can fill it, so a hopper over the track at
+tender keeps it burning at exactly the rate it uses fuel — no topping up, no burn-time cap. The engine
+is kept as full as one coal would leave it (or at the burn-time cap, if that is less), so it runs on
+for a while after the tender runs dry. The coal you can see in the tender goes down as it empties. Hoppers can fill it, so a hopper over the track at
 a station makes a coaling stop.
 
 ### Trains

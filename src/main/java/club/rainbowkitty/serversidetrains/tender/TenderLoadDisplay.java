@@ -1,6 +1,5 @@
 package club.rainbowkitty.serversidetrains.tender;
 
-import com.mojang.math.Axis;
 import eu.pb4.polymer.virtualentity.api.elements.ItemDisplayElement;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -8,6 +7,7 @@ import org.joml.Vector3f;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
+import club.rainbowkitty.kalic0re.common.display.ItemDisplayPose;
 import club.rainbowkitty.kalic0re.common.display.ItemDisplays;
 import club.rainbowkitty.kalic0re.common.vehicle.CargoDisplayHolder;
 import club.rainbowkitty.serversidetrains.ServersideTrains;
@@ -27,7 +27,11 @@ public class TenderLoadDisplay extends CargoDisplayHolder {
     // across it, with the floor's top 3 above the cart's position and the rim 11 above it.
     private static final float INSIDE_LENGTH = 16.0f;
     private static final float INSIDE_WIDTH = 12.0f;
-    private static final float FLOOR_TOP = 3.0f;
+    private static final int FLOOR_TOP = 3;
+    private static final int RIM_TOP = 11;
+
+    /** How high a full load stands, in pixels: from the cart's floor to one pixel under its rim. */
+    public static final int LOAD_PIXELS = RIM_TOP - 1 - FLOOR_TOP;
 
     // A sliver taken off the length and width, under a tenth of a pixel, so no face of the load
     // lands on a wall and flickers against it — what sensible-storage trimmed its cart's shulker
@@ -60,7 +64,7 @@ public class TenderLoadDisplay extends CargoDisplayHolder {
 
     // Every item display is drawn half a turn about its own y before its transform applies. A
     // cube with one face all round cannot show it, a shovel can, so its model is turned back first.
-    private static final Quaternionf UNDO_RENDERER_TURN = Axis.YP.rotationDegrees(180.0f);
+    private static final Quaternionf UNDO_RENDERER_TURN = ItemDisplayPose.orientation(0.0f);
 
     private final CoalTenderMinecart tender;
     private final ItemDisplayElement load;
@@ -149,7 +153,7 @@ public class TenderLoadDisplay extends CargoDisplayHolder {
         Quaternionf turn;
 
         if (shownPixels > 0) {
-            float sunk = Math.min(CoalTenderMinecart.LOAD_PIXELS - shownPixels, SHOVEL_SINK_LIMIT);
+            float sunk = Math.min(LOAD_PIXELS - shownPixels, SHOVEL_SINK_LIMIT);
 
             at = new Vector3f(SHOVEL_FULL_AT).sub(0.0f, sunk * PIXEL, 0.0f);
             turn = SHOVEL_FULL_TURN;

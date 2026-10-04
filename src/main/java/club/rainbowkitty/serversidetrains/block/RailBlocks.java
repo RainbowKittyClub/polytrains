@@ -62,7 +62,9 @@ public final class RailBlocks {
     private static BlockItem railItem(String name, Block block) {
         return new PolymerBlockItem(
                 block,
-                new Item.Properties().useBlockDescriptionPrefix().setId(itemKey(name)),
+                new Item.Properties()
+                        .useBlockDescriptionPrefix()
+                        .setId(ServersideTrains.itemKey(name)),
                 Items.RAIL,
                 true);
     }
@@ -70,16 +72,11 @@ public final class RailBlocks {
     // Registers a block and its item together, so the two can never be given differing names.
     private static void register(String name, Block block, BlockItem item) {
         Registry.register(BuiltInRegistries.BLOCK, blockKey(name), block);
-        Registry.register(BuiltInRegistries.ITEM, itemKey(name), item);
+        Registry.register(BuiltInRegistries.ITEM, ServersideTrains.itemKey(name), item);
     }
 
     // This mod's key for a block of that name.
     private static ResourceKey<Block> blockKey(String name) {
         return ResourceKey.create(Registries.BLOCK, ServersideTrains.id(name));
-    }
-
-    // This mod's key for an item of that name.
-    private static ResourceKey<Item> itemKey(String name) {
-        return ResourceKey.create(Registries.ITEM, ServersideTrains.id(name));
     }
 }

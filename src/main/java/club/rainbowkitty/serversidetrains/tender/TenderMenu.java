@@ -83,7 +83,7 @@ public class TenderMenu extends AbstractContainerMenu {
     // A slot that takes only what its container would.
     private static final class FuelSlot extends Slot {
 
-        FuelSlot(Container container, int slot, int x, int y) {
+        private FuelSlot(Container container, int slot, int x, int y) {
             super(container, slot, x, y);
         }
 

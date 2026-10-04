@@ -19,7 +19,7 @@ public interface Linkable {
      * slots in use — ask {@link #hasFreeSlot} rather than this when deciding whether a link fits.
      */
     public default List<AbstractMinecart> getNeighbours() {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /**
@@ -28,12 +28,12 @@ public interface Linkable {
      * over the train.
      */
     public default boolean hasLink() {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /** Returns whether this cart has a slot free, counting slots rather than resolved carts. */
     public default boolean hasFreeSlot() {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /**
@@ -41,7 +41,7 @@ public interface Linkable {
      * already held. Use {@link #link} to keep both sides in step.
      */
     public default void addNeighbour(AbstractMinecart neighbour) {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /**
@@ -49,7 +49,7 @@ public interface Linkable {
      * step.
      */
     public default void removeNeighbour(AbstractMinecart neighbour) {
-        throw unmixed();
+        throw Unmixed.error();
     }
 
     /**
@@ -84,13 +84,5 @@ public interface Linkable {
     public static void unlink(AbstractMinecart a, AbstractMinecart b) {
         a.removeNeighbour(b);
         b.removeNeighbour(a);
-    }
-
-    // Every method here without a body of its own is supplied by AbstractMinecartMixin, which is
-    // merged into AbstractMinecart itself. The throwing defaults exist only so that a cart class
-    // this mod defines compiles: it inherits AbstractMinecart's merged method, which always wins
-    // over an interface default, so reaching one of these means the mixin did not apply.
-    private static UnsupportedOperationException unmixed() {
-        return new UnsupportedOperationException("AbstractMinecartMixin did not apply");
     }
 }

@@ -8,16 +8,13 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemUtils;
+import net.minecraft.world.item.Items;
 
 import club.rainbowkitty.serversidetrains.mixin.MinecartFurnaceAccessor;
 import club.rainbowkitty.serversidetrains.rule.ModGameRules;
 
 /** What a furnace cart will burn once it is no longer held to coal and charcoal. */
 public final class FurnaceFuel {
-
-    // Vanilla gives coal 1600 ticks in a furnace and 3600 in a cart, so every burn duration is
-    // scaled by the ratio rather than a cart-specific table being invented.
-    private static final double CART_SCALE = 2.25;
 
     // Static-only; blocks instantiation.
     private FurnaceFuel() {}
@@ -30,9 +27,9 @@ public final class FurnaceFuel {
         return MinecartFurnaceAccessor.serversidetrains$fuelTicksPerItem();
     }
 
-    /** How many ticks {@code stack} burns for in a cart, or zero if nothing will burn it. */
-    public static int burnDuration(ServerLevel level, ItemStack stack) {
-        return (int) (level.fuelValues().burnDuration(stack) * CART_SCALE);
+    /** Whether {@code stack} is something a cart burns unaided: coal and charcoal. */
+    public static boolean burnsUnaided(ItemStack stack) {
+        return stack.is(ItemTags.FURNACE_MINECART_FUEL);
     }
 
     /**
@@ -41,7 +38,7 @@ public final class FurnaceFuel {
      * anything a furnace burns — the same two paths a player's hand goes down.
      */
     public static int cartBurnDuration(ServerLevel level, ItemStack stack) {
-        if (stack.is(ItemTags.FURNACE_MINECART_FUEL)) {
+        if (burnsUnaided(stack)) {
             return ticksPerCoal();
         }
 
@@ -64,5 +61,18 @@ public final class FurnaceFuel {
         bucket.playEmptySound(player, level, cart.blockPosition());
         player.setItemInHand(hand, ItemUtils.createFilledResult(
                 stack, player, BucketItem.getEmptySuccessItem(stack, player)));
+    }
+
+    // How many ticks stack burns for in a cart, or zero if nothing will burn it: its furnace burn
+    // time scaled as vanilla scales coal's between a furnace and a cart (1600 to 3600), rather than
+    // a cart-specific table being invented. Both figures are read, so a mod changing either moves
+    // every other fuel with it.
+    private static int burnDuration(ServerLevel level, ItemStack stack) {
+        int coalInFurnace = level.fuelValues().burnDuration(new ItemStack(Items.COAL));
+
+        return coalInFurnace <= 0
+                ? 0
+                : (int) ((long) level.fuelValues().burnDuration(stack) * ticksPerCoal()
+                        / coalInFurnace);
     }
 }

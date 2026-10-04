@@ -21,6 +21,7 @@ import club.rainbowkitty.serversidetrains.rule.ModGameRules;
 import club.rainbowkitty.serversidetrains.train.Train;
 import club.rainbowkitty.serversidetrains.train.TrainCoupling;
 import club.rainbowkitty.serversidetrains.util.MinecartHelper;
+import club.rainbowkitty.serversidetrains.util.ModText;
 
 /** Why linking, or unlinking, two carts is not allowed. Each constant names its own message. */
 public enum LinkRefusal {
@@ -40,7 +41,7 @@ public enum LinkRefusal {
 
     /** The message shown to the player, in red. */
     public Component message() {
-        return Component.translatable(
+        return ModText.translatable(
                         ServersideTrains.MOD_ID + ".link." + name().toLowerCase(Locale.ROOT))
                 .withStyle(ChatFormatting.RED);
     }

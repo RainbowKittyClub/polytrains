@@ -16,6 +16,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.item.Item;
 
 import club.rainbowkitty.serversidetrains.block.RailBlocks;
 import club.rainbowkitty.serversidetrains.init.EntityAttachments;
@@ -27,6 +28,7 @@ import club.rainbowkitty.serversidetrains.rule.PhysicsGameRules;
 import club.rainbowkitty.serversidetrains.tender.CoalTenders;
 import club.rainbowkitty.serversidetrains.train.TrainMeter;
 import club.rainbowkitty.serversidetrains.util.MinecartHelper;
+import club.rainbowkitty.serversidetrains.util.ModText;
 
 /** Mod entrypoint — wires events and registers content. */
 public class ServersideTrains implements ModInitializer {
@@ -52,6 +54,7 @@ public class ServersideTrains implements ModInitializer {
         RailBlocks.init();
         WrenchItems.init();
         CoalTenders.init();
+        ModText.nameItems();
         ModGameRules.init();
         PhysicsGameRules.init();
         EntityAttachments.init();
@@ -96,6 +99,11 @@ public class ServersideTrains implements ModInitializer {
     /** Constructs a namespaced {@link Identifier} under this mod's namespace. */
     public static Identifier id(String name) {
         return Identifier.fromNamespaceAndPath(MOD_ID, name);
+    }
+
+    /** The registry key of this mod's item called {@code name}. */
+    public static ResourceKey<Item> itemKey(String name) {
+        return ResourceKey.create(Registries.ITEM, id(name));
     }
 
     /** Constructs a game rule's {@link Identifier}, under {@link #RULES_NAMESPACE}. */

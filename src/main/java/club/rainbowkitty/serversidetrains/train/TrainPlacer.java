@@ -88,7 +88,7 @@ public final class TrainPlacer {
 
         private final boolean whole;
 
-        Bail(boolean whole) {
+        private Bail(boolean whole) {
             this.whole = whole;
         }
 

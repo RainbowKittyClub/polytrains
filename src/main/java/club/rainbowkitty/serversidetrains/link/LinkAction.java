@@ -21,6 +21,7 @@ import club.rainbowkitty.serversidetrains.ext.Linkable;
 import club.rainbowkitty.serversidetrains.init.EntityAttachments;
 import club.rainbowkitty.serversidetrains.item.WrenchItems;
 import club.rainbowkitty.serversidetrains.train.TrainCoupling;
+import club.rainbowkitty.serversidetrains.util.ModText;
 
 /** Carries out a link or unlink the wrench has been clicked into, and tells the player about it. */
 public final class LinkAction {
@@ -38,13 +39,13 @@ public final class LinkAction {
 
         private final ChatFormatting colour;
 
-        Notice(ChatFormatting colour) {
+        private Notice(ChatFormatting colour) {
             this.colour = colour;
         }
 
         /** The message shown to the player, in this outcome's own colour. */
         public Component message() {
-            return Component.translatable(
+            return ModText.translatable(
                             ServersideTrains.MOD_ID + ".link." + name().toLowerCase(Locale.ROOT))
                     .withStyle(this.colour);
         }

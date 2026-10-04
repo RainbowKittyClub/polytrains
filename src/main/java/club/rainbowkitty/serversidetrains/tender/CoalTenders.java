@@ -4,7 +4,6 @@ import net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTabOutput;
 
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntityTypes;
@@ -22,8 +21,7 @@ public final class CoalTenders {
     private static final String NAME = "coal_tender";
 
     // Registry key the tender item is registered and given its settings under.
-    private static final ResourceKey<Item> ITEM_KEY =
-            ResourceKey.create(Registries.ITEM, ServersideTrains.id(NAME));
+    private static final ResourceKey<Item> ITEM_KEY = ServersideTrains.itemKey(NAME);
 
     /**
      * The tender's entity type, which every client is told is a plain minecart. Not a chest or

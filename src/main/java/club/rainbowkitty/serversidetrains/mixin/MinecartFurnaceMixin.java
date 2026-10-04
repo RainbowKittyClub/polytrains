@@ -66,10 +66,6 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     @Unique
     private static final int PARKED_FUEL_INTERVAL = 10;
 
-    // Ticks of fuel a coupled coal tender keeps the engine at: enough that vanilla's own tick of
-    // burn never reaches zero between top-ups, little enough that the coal stays in the tender.
-    @Unique
-    private static final int TENDER_FLOOR = 20;
     // Ticks of no progress under power before the engine turns the cart round. Long enough that a
     // cart just fuelled from rest is not mistaken for one wedged against a buffer — it is moving
     // by its second tick under either model — and short enough to read as a reversal rather than
@@ -379,14 +375,17 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
             fuel++;
         }
 
-        // A coal tender coupled to the engine tops it back up to a second's burn here, ahead of
-        // the tick vanilla spends below, so the engine burns the tender's coal exactly as fast as
-        // it burns at all — a tenth of that while parked — and never needs room for a whole coal,
-        // whatever furnace_max_burn_time is. Only a lit engine: vanilla clears the impulse with the
-        // last of the fuel, so a cold one has no heading to leave on, and a parked train must not
-        // set off because someone filled its tender.
-        if (fuel > 0 && fuel < TENDER_FLOOR) {
-            fuel += CoalTenderMinecart.feed(this, TENDER_FLOOR - fuel);
+        // A coal tender coupled to the engine tops it back up every tick, ahead of the tick vanilla
+        // spends below, to a coal's burn or furnace_max_burn_time if that is less: the engine
+        // stands as full as one coal would leave it, and draws the tender's coal exactly as fast
+        // as it burns at all — a tenth of that while parked. Only a lit engine: vanilla clears the
+        // impulse with the last of the fuel, so a cold one has no heading to leave on, and a parked
+        // train must not set off because someone filled its tender.
+        int tenderFill = Math.min(
+                FurnaceFuel.ticksPerCoal(), rules.get(ModGameRules.FURNACE_MAX_BURN_TIME));
+
+        if (fuel > 0 && fuel < tenderFill) {
+            fuel += CoalTenderMinecart.feed(this, tenderFill - fuel);
         }
     }
 

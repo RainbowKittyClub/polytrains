@@ -16,6 +16,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 
 import club.rainbowkitty.serversidetrains.collision.CollisionDamageTypes;
+import club.rainbowkitty.serversidetrains.util.ModText;
 
 /** Death message for a cart kill: split on whether it was a train and whether it had a rider. */
 @Mixin(DamageSource.class)
@@ -46,8 +47,8 @@ public abstract class DamageSourceMixin {
         Entity rider = getEntity();
 
         cir.setReturnValue(rider != null
-                ? Component.translatable(
+                ? ModText.translatable(
                         key + ".player", victim.getDisplayName(), rider.getDisplayName())
-                : Component.translatable(key, victim.getDisplayName()));
+                : ModText.translatable(key, victim.getDisplayName()));
     }
 }

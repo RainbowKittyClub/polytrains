@@ -8,6 +8,6 @@ public interface MinecartItemExt {
 
     /** Returns the entity type this item places when used on a rail. */
     public default EntityType<? extends AbstractMinecart> serversidetrains$type() {
-        throw new AssertionError("MinecartItemMixin supplies the body of this accessor");
+        throw Unmixed.error();
     }
 }

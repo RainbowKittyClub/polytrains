@@ -701,7 +701,7 @@ public final class TrainCoupling {
             return null;
         }
 
-        return movement.length() < RailBrake.HALT_FLOOR
+        return RailBrake.stopsDead(movement)
                 ? Vec3.ZERO
                 : RailForces.forLevel(cart.level()).halted(movement, share);
     }
@@ -711,6 +711,20 @@ public final class TrainCoupling {
         return cart.hasLink() && ModGameRules.trainsEnabled(cart.level())
                 ? braking(Train.of(cart).cars())
                 : RailBrake.brakes(cart);
+    }
+
+    /**
+     * Whether any of {@code cars} is standing on a brake. {@link #held}, for a train already in
+     * hand: Train asks it of its own cars before it can name the car {@code held} reaches it by.
+     */
+    public static boolean braking(List<AbstractMinecart> cars) {
+        for (AbstractMinecart car : cars) {
+            if (RailBrake.brakes(car)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -804,18 +818,6 @@ public final class TrainCoupling {
         }
 
         return total <= 0.0 ? 0.0 : matched / total;
-    }
-
-    // Whether any of these cars is standing on a brake. Package-private for Train, which asks it of
-    // its own cars before it can name the car this class would otherwise reach a train through.
-    static boolean braking(List<AbstractMinecart> cars) {
-        for (AbstractMinecart car : cars) {
-            if (RailBrake.brakes(car)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

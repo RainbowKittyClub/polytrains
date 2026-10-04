@@ -144,6 +144,18 @@ tick. A cold engine with a tender of coal sat still with the coal untouched; a t
 a chest cart in its place, and a tender with `trains_enabled` off each let the engine run its own
 40 ticks dry and fed nothing.
 
+**Revised after the second review (decided by the user).** The floor of 20 ticks left an engine
+whose tender was emptied or uncoupled with a second of burn, where a hand-fed one holds a coal's
+worth. The engine is now topped off every tick to `FurnaceFuel.ticksPerCoal()` or
+`furnace_max_burn_time`, whichever is less, so it stands as full as one coal would leave it and runs
+on that long after the tender runs dry; the rate the tender's coal is drawn at is unchanged, and an
+engine already above that fill draws nothing until it falls to it. On the private server: the
+engine's fuel held at 3599 — the fill less the tick vanilla had just burned — with the remaining
+burn falling exactly 50 over 50 ticks, and with three coal the next was opened the tick `BurnLeft`
+ran out; at `furnace_max_burn_time` 1000 it held at 999; an engine at 5000 left the tender's coal
+untouched; parked, 215 over 2155 sprinted ticks, 0.100 a tick; a cold engine, a tender one car away,
+a chest cart and `trains_enabled` off fed nothing, as before.
+
 ## S4 — The coal load on screen — **in progress**
 
 **Build.** A `CargoDisplayHolder` subclass with one item display of `minecraft:coal_block`, attached
@@ -198,7 +210,9 @@ None open. Decided by the user on 2026-10-04, and written into the stages: a ten
 lit engine lit and never lights a cold one (S3); there is no rule (S1); the tender holds 5 slots
 behind a hopper menu (S2); the load rises with the contents (S4); the icon is the user's own
 drawing, over the scripted composite S5 first committed; and the shovel sinks with the coal until
-its tip meets the floor, lying there when the tender is empty (S6).
+its tip meets the floor, lying there when the tender is empty (S6). Later the same day, after the
+second review: the engine a tender feeds stands at a coal's burn or `furnace_max_burn_time`,
+whichever is less, topped off every tick, rather than at S3's floor of 20 ticks (S3, As built).
 
 ## Reference: minecart interior
 

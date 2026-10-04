@@ -4,7 +4,6 @@ import net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTabOutput;
 
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -16,8 +15,7 @@ import club.rainbowkitty.serversidetrains.ServersideTrains;
 public final class WrenchItems {
 
     // Registry key the wrench is registered and given its settings under.
-    private static final ResourceKey<Item> WRENCH_KEY =
-            ResourceKey.create(Registries.ITEM, ServersideTrains.id("wrench"));
+    private static final ResourceKey<Item> WRENCH_KEY = ServersideTrains.itemKey("wrench");
 
     /** The wrench item. */
     public static final Item WRENCH =

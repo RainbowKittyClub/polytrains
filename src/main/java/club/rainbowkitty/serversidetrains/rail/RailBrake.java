@@ -7,6 +7,7 @@ import net.minecraft.world.entity.vehicle.minecart.MinecartFurnace;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.PoweredRailBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.serversidetrains.init.EntityAttachments;
@@ -40,10 +41,10 @@ public final class RailBrake {
     public static final double HALT_KEEP = 0.5;
 
     // Below this speed a braking cart is stopped dead.
-    public static final double HALT_FLOOR = 0.03;
+    private static final double HALT_FLOOR = 0.03;
 
     // Below this a cart is not travelling any way worth remembering.
-    private static final double MOVING_EPSILON = 1.0E-6;
+    private static final double MOVING_EPSILON = 1.0E-3;
 
     // Static-only; blocks instantiation.
     private RailBrake() {}
@@ -57,6 +58,14 @@ public final class RailBrake {
 
         // A powered rail brakes while it has no signal, and accelerates once it has one.
         return rail.is(Blocks.POWERED_RAIL) && !rail.getValue(PoweredRailBlock.POWERED);
+    }
+
+    /**
+     * Whether a brake stops {@code movement} dead rather than halving it, measured as vanilla's
+     * brake measures it: in three dimensions, so on a grade not by the horizontal part alone.
+     */
+    public static boolean stopsDead(Vec3 movement) {
+        return movement.length() < HALT_FLOOR;
     }
 
     /** Whether {@code cart} is standing on a rail that should drive it. */
@@ -98,28 +107,41 @@ public final class RailBrake {
         if (rail.getValue(PoweredRailBlock.POWERED)) {
             release(cart);
         } else {
-            remember(cart);
+            remember(cart, rail);
         }
     }
 
-    // Records the direction a cart rolled onto the brake in, so there is something to leave on once
-    // the signal comes back. Kept from then on, until the cart leaves powered rail or is launched:
-    // once it stands, the only movement left to read is whatever nudges it — a player leaning on
-    // a car, which a train hands to whichever car it is led from — and a heading taken from that
-    // sends it off the way it was pushed instead of the way it came.
-    private static void remember(AbstractMinecart cart) {
-        if (EntityAttachments.getHeldHeading(cart) != null) {
+    // Records the direction a cart is travelling over the brake, so there is something to leave on
+    // once the signal comes back. Kept up to date while the cart moves at a speed the brake has
+    // yet to stop dead, since that is travel: a cart that ran on past the brake and came back over
+    // it, off a buffer or another cart, leaves the way it last went rather than the way it first
+    // came. Slower than that the heading stands, so the scraps of movement a stopping cart has
+    // left do not turn it round. A push along the rail hard enough to pass that floor is travel
+    // too: a player walking into a waiting cart moves it the way they walk, and it leaves so.
+    //
+    // Read along the rail only, the one way a cart on it can go; a push across it, as a player
+    // stepping out beside the cart gives, is no heading at all.
+    private static void remember(AbstractMinecart cart, BlockState rail) {
+        Direction.Axis axis = axisOf(rail.getValue(PoweredRailBlock.SHAPE));
+        double along = cart.getDeltaMovement().get(axis);
+        double floor = EntityAttachments.getHeldHeading(cart) == null
+                ? MOVING_EPSILON
+                : HALT_FLOOR;
+
+        if (Math.abs(along) < floor) {
             return;
         }
 
-        Vec3 movement = cart.getDeltaMovement().horizontal();
+        EntityAttachments.setHeldHeading(cart, Direction.fromAxisAndDirection(axis,
+                along > 0.0 ? Direction.AxisDirection.POSITIVE : Direction.AxisDirection.NEGATIVE));
+    }
 
-        if (movement.lengthSqr() <= MOVING_EPSILON) {
-            return;
-        }
-
-        EntityAttachments.setHeldHeading(cart,
-                Direction.getApproximateNearest(movement.x(), 0.0, movement.z()));
+    // The horizontal axis a straight rail runs along, slopes included; a powered rail has no other.
+    private static Direction.Axis axisOf(RailShape shape) {
+        return switch (shape) {
+            case NORTH_SOUTH, ASCENDING_NORTH, ASCENDING_SOUTH -> Direction.Axis.Z;
+            default -> Direction.Axis.X;
+        };
     }
 
     // Sends a waiting cart off the way it came in. A cart still rolling never stopped to need this,
