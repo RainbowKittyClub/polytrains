@@ -9,8 +9,8 @@ import net.minecraft.world.item.Items;
 
 import club.rainbowkitty.kalic0re.common.display.ItemDisplayPose;
 import club.rainbowkitty.kalic0re.common.display.ItemDisplays;
+import club.rainbowkitty.kalic0re.common.vehicle.CargoDisplayHolder;
 import club.rainbowkitty.serversidetrains.ServersideTrains;
-import club.rainbowkitty.serversidetrains.display.CartDisplayHolder;
 
 /**
  * The coal riding in a {@link CoalTenderMinecart}, and the shovel in it: one block of coal
@@ -21,7 +21,7 @@ import club.rainbowkitty.serversidetrains.display.CartDisplayHolder;
  * 0.75, and the inside of a cart is 16 pixels long, 12 wide and 8 deep, so a load that fills it is
  * a stretched block, which only a display element can be.
  */
-public class TenderLoadDisplay extends CartDisplayHolder {
+public class TenderLoadDisplay extends CargoDisplayHolder {
 
     // The inside of a cart, in pixels, from MinecartModel's walls and floor: 16 along the cart, 12
     // across it, with the floor's top 3 above the cart's position and the rim 11 above it.

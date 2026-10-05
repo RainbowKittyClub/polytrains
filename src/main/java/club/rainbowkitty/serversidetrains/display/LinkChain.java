@@ -7,6 +7,8 @@ import org.jspecify.annotations.Nullable;
 import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 
+import club.rainbowkitty.kalic0re.common.vehicle.CargoDisplayHolder;
+
 /**
  * The chain a linked cart shows back to the cart it follows, drawn as one block display so that a
  * vanilla client needs nothing installed. Owns the display's virtual-entity identity and lifecycle;
@@ -68,7 +70,7 @@ public final class LinkChain extends ElementHolder {
     // nothing, and a stationary one resolves to the same transform and sends no packet.
     @Override
     protected void onTick() {
-        CartDisplayHolder.keepRidersCurrent(this);
+        CargoDisplayHolder.keepRidersCurrent(this);
         visual.tick();
     }
 }
