@@ -41,19 +41,43 @@ public final class BrakeLevers {
      */
     public static boolean toggle(AbstractMinecart engine) {
         boolean thrown = !EntityAttachments.leverSet(engine);
-        List<AbstractMinecart> cars = engine.hasLink() && ModGameRules.trainsEnabled(engine.level())
-                ? Train.of(engine).cars()
-                : List.of(engine);
 
+        setAll(trainOf(engine), thrown);
+        engine.level().playSound(null, engine.getX(), engine.getY() + CLICK_HEIGHT, engine.getZ(),
+                SoundEvents.LEVER_CLICK, SoundSource.NEUTRAL, CLICK_VOLUME,
+                thrown ? THROWN_PITCH : RELEASED_PITCH);
+        return thrown;
+    }
+
+    /**
+     * Throws the lever of every engine in {@code cart}'s train if any one of them is thrown. For a
+     * coupling that has just joined two trains, or brought an engine into one: an engine added to
+     * a parked train is parked with it. A coupling never releases a brake — that takes a click.
+     */
+    public static void matchCoupled(AbstractMinecart cart) {
+        List<AbstractMinecart> cars = trainOf(cart);
+
+        for (AbstractMinecart car : cars) {
+            if (EntityAttachments.leverSet(car)) {
+                setAll(cars, true);
+                return;
+            }
+        }
+    }
+
+    // The cars a lever answers for: the whole train, or the cart alone when it is not in one.
+    private static List<AbstractMinecart> trainOf(AbstractMinecart cart) {
+        return cart.hasLink() && ModGameRules.trainsEnabled(cart.level())
+                ? Train.of(cart).cars()
+                : List.of(cart);
+    }
+
+    // Sets every furnace cart among cars the same way.
+    private static void setAll(List<AbstractMinecart> cars, boolean thrown) {
         for (AbstractMinecart car : cars) {
             if (car instanceof MinecartFurnace) {
                 EntityAttachments.setLever(car, thrown);
             }
         }
-
-        engine.level().playSound(null, engine.getX(), engine.getY() + CLICK_HEIGHT, engine.getZ(),
-                SoundEvents.LEVER_CLICK, SoundSource.NEUTRAL, CLICK_VOLUME,
-                thrown ? THROWN_PITCH : RELEASED_PITCH);
-        return thrown;
     }
 }

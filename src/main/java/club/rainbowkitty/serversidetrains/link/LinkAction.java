@@ -20,6 +20,7 @@ import club.rainbowkitty.serversidetrains.ServersideTrains;
 import club.rainbowkitty.serversidetrains.ext.Linkable;
 import club.rainbowkitty.serversidetrains.init.EntityAttachments;
 import club.rainbowkitty.serversidetrains.item.WrenchItems;
+import club.rainbowkitty.serversidetrains.train.BrakeLevers;
 import club.rainbowkitty.serversidetrains.train.TrainCoupling;
 import club.rainbowkitty.serversidetrains.util.ModText;
 
@@ -172,6 +173,7 @@ public final class LinkAction {
         // Until now the two carts were tracked separately, so they are almost certainly being
         // replayed on different ticks.
         TrainCoupling.resyncTrain(target);
+        BrakeLevers.matchCoupled(target);
 
         LinkTargeting.notice(player, Notice.LINKED.message());
         target.playSound(SoundEvents.CHAIN_PLACE);

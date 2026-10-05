@@ -63,6 +63,22 @@ brake: a lone furnace cart ×0.478 (a full halving), stopped in 4 ticks; four ca
 train stood still for 2 s with its levers thrown, and drove off east, its arrival direction, once
 they were released.
 
+**Revised after the user's first in-game run.** A furnace cart coupled to a parked train kept its
+own released lever: `BrakeLevers.matchCoupled` now throws every engine's lever when any in the
+newly joined train is thrown, from both places a coupling is made (`LinkAction.linkPair` and the
+in-place upgrade in `MinecartHelper`) — a coupling never releases a brake. Not testable over rcon,
+since only a player's click couples carts.
+
+The same run left the user's train stuck against a buffer: three engines, the cold one at the free
+end. Not the lever's doing, and older than it: a furnace cart at a train's head spends the train's
+drive along its own impulse, and a cold one has neither fuel nor impulse, so heading away from the
+buffer the train had no drive at all, stalled, turned into the buffer, stalled and turned back for
+good. A furnace cart's own slowdown hook now passes through `TrainCoupling.hauled` as every other
+leading car does, which a lit engine, driving, leaves alone. Rebuilt on the private server — five
+cars packed 0.98 apart, lit engine against the buffer, cold engine at the free end — it sat flipping
+its engines on the old code and left the buffer within half a second on the new; the lever trial
+and six of the brake matrix's cases gave the same figures as before.
+
 ## S2 — The lever on screen, and its click — **in progress**
 
 **Build.** `display/BrakeLeverDisplay`, a kalic0re `CargoDisplayHolder` attached to every furnace

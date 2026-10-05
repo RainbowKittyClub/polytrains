@@ -276,11 +276,17 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     // plus the impulse under power — so the generic hook gets a figure a tick of friction has
     // already left. The physical model works from the movement the cart arrived with, so it would
     // read a furnace cart as barely different from vanilla there; here the argument is still real.
+    //
+    // Reached only when the head hook left this cart to vanilla, and the train's drive rides along
+    // as it does on any other leading car (TrainCoupling.hauled): a cold engine at the head of a
+    // train has neither fuel nor an impulse of its own to spend it along, so without this the lit
+    // engines behind it drive nothing, the train stalls, and turning round leaves the cold one
+    // still at its head. A lit engine is driving, which hauled leaves alone.
     @Inject(method = "applyNaturalSlowdown", at = @At("RETURN"), cancellable = true)
     private void serversidetrains$furnaceFriction(
             Vec3 deltaMovement, CallbackInfoReturnable<Vec3> cir) {
-        cir.setReturnValue(
-                RailForces.forLevel(level()).retarded(this, deltaMovement, cir.getReturnValue()));
+        cir.setReturnValue(TrainCoupling.hauled(this,
+                RailForces.forLevel(level()).retarded(this, deltaMovement, cir.getReturnValue())));
     }
 
     // Whether this car moves while its train is held without leading it, which a seated car never

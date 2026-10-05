@@ -29,6 +29,7 @@ import club.rainbowkitty.serversidetrains.link.LinkRefusal;
 import club.rainbowkitty.serversidetrains.link.LinkTargeting;
 import club.rainbowkitty.serversidetrains.rail.RailPath;
 import club.rainbowkitty.serversidetrains.rule.ModGameRules;
+import club.rainbowkitty.serversidetrains.train.BrakeLevers;
 
 /** Dispatches a minecart's right-click, upgrades it by crafting, and works out its orientation. */
 public final class MinecartHelper {
@@ -165,6 +166,9 @@ public final class MinecartHelper {
 
         if (replacement instanceof AbstractMinecart relinkable) {
             orphaned.forEach(neighbour -> Linkable.link(relinkable, neighbour));
+
+            // A cart upgraded into an engine joins its train's brake as a coupled one would.
+            BrakeLevers.matchCoupled(relinkable);
         } else {
             // A result that is no cart at all hands the chains back instead of rewiring the train
             // around itself.
