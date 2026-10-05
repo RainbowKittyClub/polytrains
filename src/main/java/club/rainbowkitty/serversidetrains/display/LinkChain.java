@@ -68,6 +68,7 @@ public final class LinkChain extends ElementHolder {
     // nothing, and a stationary one resolves to the same transform and sends no packet.
     @Override
     protected void onTick() {
+        CartDisplayHolder.keepRidersCurrent(this);
         visual.tick();
     }
 }

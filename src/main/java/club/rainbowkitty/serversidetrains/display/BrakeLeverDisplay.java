@@ -26,7 +26,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.phys.Vec3;
 
-import club.rainbowkitty.kalic0re.common.vehicle.CargoDisplayHolder;
 import club.rainbowkitty.serversidetrains.init.EntityAttachments;
 import club.rainbowkitty.serversidetrains.item.WrenchItems;
 import club.rainbowkitty.serversidetrains.train.BrakeLevers;
@@ -43,7 +42,7 @@ import club.rainbowkitty.serversidetrains.train.BrakeLevers;
  * stays over the cart's middle while the lever tips with the furnace — about half a block apart at
  * a full rail's grade.
  */
-public class BrakeLeverDisplay extends CargoDisplayHolder {
+public class BrakeLeverDisplay extends CartDisplayHolder {
 
     // The top of the furnace a furnace cart carries, above the cart's position: the renderer draws
     // it at three quarters scale from 0.28125, for a display offset of 6 pixels
@@ -117,14 +116,6 @@ public class BrakeLeverDisplay extends CargoDisplayHolder {
             shownThrown = thrown;
             lever.setBlockState(leverState(thrown));
         }
-
-        // A rider is spawned where it was last sent, and one that ignores position updates is never
-        // sent anywhere after its first spawn: so a client that starts watching the cart far from
-        // where it began would be sent its riders in chunks it has not loaded, which it never
-        // ticks into their seats. Kept to where the cart is now.
-        lever.updateLastSyncedPos();
-        riser.updateLastSyncedPos();
-        slime.updateLastSyncedPos();
 
         super.onTick();
     }
