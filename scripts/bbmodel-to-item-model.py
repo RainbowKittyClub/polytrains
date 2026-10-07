@@ -5,7 +5,7 @@
 
 A Java model is built only of boxes, so this takes a Blockbench "free" model whose every mesh is an
 axis-aligned box — eight vertices, six rectangular faces, no rotation — and refuses anything else
-rather than approximating it. It writes, under src/main/resources/assets/serversidetrains/:
+rather than approximating it. It writes, under src/main/resources/assets/polytrains/:
 
 - models/item/<name>.json, the boxes as elements, Blockbench's origin placed at the model's centre
   (8, 8, 8), which is the point an item display draws a model from;
@@ -27,8 +27,8 @@ sys.path.insert(0, str(Path.home() / 'projects/minecraft-dev/scripts'))
 import mc_models_to_gltf as gltf  # noqa: E402
 
 ASSETS = (Path(__file__).resolve().parent.parent
-          / 'src/main/resources/assets/serversidetrains')
-NAMESPACE = 'serversidetrains'
+          / 'src/main/resources/assets/polytrains')
+NAMESPACE = 'polytrains'
 
 # Where Blockbench's origin goes in the Java model, in model pixels: the model's centre.
 CENTRE = (8.0, 8.0, 8.0)

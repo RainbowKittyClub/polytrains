@@ -25,8 +25,8 @@
     "polymer-virtual-entity": "*"
   },
   "environment": "server",
-  "accessWidener": "serversidetrains.classtweaker",
+  "accessWidener": "polytrains.classtweaker",
   "mixins": [
-    "serversidetrains.mixins.json"
+    "polytrains.mixins.json"
   ]
 }

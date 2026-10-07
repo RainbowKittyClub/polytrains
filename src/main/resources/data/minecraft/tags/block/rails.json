@@ -1,7 +1,7 @@
 {
 	"replace": false,
 	"values": [
-		"serversidetrains:junction_rail",
-		"serversidetrains:switch_rail"
+		"polytrains:junction_rail",
+		"polytrains:switch_rail"
 	]
 }

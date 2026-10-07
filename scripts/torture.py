@@ -55,7 +55,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mtxrcon  # noqa: E402
 
-MOD_PACKAGE = "club.rainbowkitty.serversidetrains"
+MOD_PACKAGE = "club.rainbowkitty.polytrains"
 
 TORTURE_GROUP = "torturetrack"
 SELFCHECK_GROUP = "abtestloop-a"
@@ -101,7 +101,7 @@ LINK_DISTANCE = 3.0
 # The clauses a run must pass, in the order the verdict table lists them.
 CLAUSES = ("Alive", "Sever", "Coupling", "Stall", "Bounce", "Switch-safe")
 
-LINK_PATH = '"fabric:attachments"."serversidetrains:link"'
+LINK_PATH = '"fabric:attachments"."polytrains:link"'
 
 UNCOUPLED = ("the rig left %d neighbouring pair(s) uncoupled (#unlinked), so the first sample's "
              "trains are not the consists the strips describe")
@@ -144,7 +144,7 @@ INT_ARRAY = r"\[I; (-?\d+), (-?\d+), (-?\d+), (-?\d+)\]"
 RE_UUID = re.compile(r"\bUUID: " + INT_ARRAY)
 RE_POS = re.compile(r"\bPos: \[(%s)d, (%s)d, (%s)d\]" % (NUMBER, NUMBER, NUMBER))
 RE_MOTION = re.compile(r"\bMotion: \[(%s)d, (%s)d, (%s)d\]" % (NUMBER, NUMBER, NUMBER))
-RE_LINK = re.compile(r'"serversidetrains:link": \{([^{}]*)\}')
+RE_LINK = re.compile(r'"polytrains:link": \{([^{}]*)\}')
 RE_SLOT = re.compile(r"(slot[AB]): " + INT_ARRAY)
 RE_FUEL = re.compile(r"\bRealFuel: (-?\d+)")
 RE_PUSH_X = re.compile(r"\bPushX: (%s)d" % NUMBER)
@@ -296,7 +296,7 @@ def passed(reply):
     return reply.startswith("Test passed")
 
 
-RAIL_BLOCKS = ("serversidetrains:switch_rail", "serversidetrains:junction_rail",
+RAIL_BLOCKS = ("polytrains:switch_rail", "polytrains:junction_rail",
                "minecraft:activator_rail", "minecraft:powered_rail", "minecraft:detector_rail",
                "minecraft:rail")
 RAIL_SHAPES = ("north_south", "east_west", "ascending_east", "ascending_west", "ascending_north",
@@ -470,7 +470,7 @@ def travel(samples, uuids):
 LOG_LINE = re.compile(r"^\[(\d\d:\d\d:\d\d)\] \[([^\]]*)/([A-Z]+)\] \(([^)]*)\) (.*)$")
 TOKEN = re.compile(r"^([a-z][a-z_]*)=(\S*)$")
 FRAME = re.compile(r"^\s+at |^Caused by: ")
-MOD_FRAME = re.compile(r"club\.rainbowkitty\.serversidetrains|serversidetrains\$")
+MOD_FRAME = re.compile(r"club\.rainbowkitty\.polytrains|polytrains\$")
 
 EVENT_KEYS = {
     "sever": ("tick", "train", "at", "reason", "into"),
@@ -1106,7 +1106,7 @@ def run_commit(run_dir):
 
 def rules_for(speed):
     """The game rules a run at max_minecart_speed=speed is measured under, as rcon prints them."""
-    return {"minecraft:max_minecart_speed": str(speed), "sstrains:realistic_physics": "false"}
+    return {"minecraft:max_minecart_speed": str(speed), "polytrains:realistic_physics": "false"}
 
 
 def read_rules(rcon, wanted):
@@ -1240,8 +1240,8 @@ class Injector:
                                            f"{len(engines)} engine(s)"})
             return
         self.engine = engines[0]
-        rcon.cmd(f"data merge entity {self.engine} {{serversidetrains:{{RealFuel:0}}}}")
-        after = rcon.cmd(f"data get entity {self.engine} serversidetrains.RealFuel")
+        rcon.cmd(f"data merge entity {self.engine} {{polytrains:{{RealFuel:0}}}}")
+        after = rcon.cmd(f"data get entity {self.engine} polytrains.RealFuel")
         run.injections.append({"what": "fuel", "tick": sample.tick, "uuid": self.engine,
                                "text": f"RealFuel 0 on engine {short(self.engine)} "
                                        f"(reads back {after.rsplit(':', 1)[-1].strip()})"})
@@ -1485,29 +1485,29 @@ def main():
 
 SYNTHETIC_LOG = """\
 [12:00:00] [Server thread/INFO] (net.minecraft.server.MinecraftServer) [Rcon: Running function mtxrig:rig]
-[12:00:01] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.train.TrainMeter) meter tick=1000 train=0a1b2c3d cars=8 kinds=FCHCCHCF lead=0a1b2c3d pos=-1.50,-53.00,-20.50 speed=0.40 maxspeed=0.45 fuel=71000 rail=minecraft:activator_rail(on) seated=8 refusal=none packing=false mass=8.00 pairs=7/7 gap_worst=0.02 gap_mean=0.01 turn=0.00 nodes=12 span=10.50 checked=7 offset_worst=0.01 resets=0 revisits=0
-[12:00:01] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.train.TrainMeter) meter tick=1000 train=99990000 cars=4 kinds=CCFF lead=none pos=-5.50,-53.00,-6.50 speed=0.00 maxspeed=n/a fuel=none rail=minecraft:rail seated=0 refusal=ORDER_UNREADABLE packing=false mass=4.00 pairs=0/3 gap_worst=n/a gap_mean=n/a turn=n/a nodes=0 span=n/a checked=0 offset_worst=n/a resets=1 revisits=0
-[12:00:01] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.train.TrainMeter) meter tick=1000 cart=f0e1d2c3 kind=C pos=-14.50,-53.00,-14.50 speed=0.00 maxspeed=0.00 rail=minecraft:rail
-[12:00:02] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.collision.CartImpact) event=strike tick=1010 striker=0a1b2c3d struck=11223344 trains=0a1b2c3d,11223344 closing=0.80 shared=0.40 gained=0.40
-[12:00:02] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.collision.CartImpact) event=strike tick=1011 striker=0a1b2c3d struck=0a1b2c3e trains=0a1b2c3d,0a1b2c3d closing=0.10 shared=0.05 gained=0.05
-[12:00:02] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.collision.CartImpact) event=overlap tick=1012 cart=11223344 other=0a1b2c3d trains=11223344,0a1b2c3d distance=0.31
-[12:00:02] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.collision.CartImpact) event=overspeed tick=1013 cart=11223344 train=11223344 speed=4.850e+150 ceiling=2.50 clamped=true
-[12:00:02] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.mixin.AbstractMinecartMixin) event=overspeed tick=1014 cart=22334455 train=11223344 speed=NaN ceiling=5.00 clamped=true
-[12:00:03] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.train.TrainCoupling) event=sever tick=1030 train=0a1b2c3d at=0a1b2c3e reason=SEAT_FOULED into=0a1b2c3d,0a1b2c3f
-[12:00:04] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.block.SwitchedRailBlock) event=switch tick=1500 pos=-14.00,-53.00,-2.00 from=south_east to=east_west spanned=true applied=false
-[12:00:04] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.block.SwitchedRailBlock) event=switch tick=1600 pos=-14.00,-53.00,-2.00 from=south_east to=east_west spanned=true applied=true
-[12:00:04] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.block.SwitchedRailBlock) event=switch tick=1700 pos=-1.00,-53.00,-12.00 from=south_east to=north_south spanned=false applied=true
-[12:00:05] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.mixin.MinecartFurnaceMixin) event=stall_reverse tick=1800 train=99990000 cart=99990001 pos=-4.50,-53.00,-8.50 rail=minecraft:rail
-[12:00:05] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.train.TrainPlacer) event=refusal tick=990 train=99990000 why=ORDER_UNREADABLE car=3 leader at 1.38 of -8.71..1.71, next car not far enough along it to say
-[12:00:05] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.train.TrainPlacer) event=refusal tick=1950 train=99990000 why=none car=none
-[12:00:06] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.train.TrainCoupling) event=sever tick=2000 train=55667788 at=55667789 reason=DIVERTED into=55667788,5566778a
-[12:00:06] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.collision.CartImpact) event=strike tick=1020 striker=0a1b2c3d
-[12:00:06] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.collision.CartImpact) event=teleport tick=1021 cart=0a1b2c3d
-[12:00:07] [Server thread/ERROR] (club.rainbowkitty.serversidetrains.train.Train) ribbon walk failed
+[12:00:01] [Server thread/DEBUG] (club.rainbowkitty.polytrains.train.TrainMeter) meter tick=1000 train=0a1b2c3d cars=8 kinds=FCHCCHCF lead=0a1b2c3d pos=-1.50,-53.00,-20.50 speed=0.40 maxspeed=0.45 fuel=71000 rail=minecraft:activator_rail(on) seated=8 refusal=none packing=false mass=8.00 pairs=7/7 gap_worst=0.02 gap_mean=0.01 turn=0.00 nodes=12 span=10.50 checked=7 offset_worst=0.01 resets=0 revisits=0
+[12:00:01] [Server thread/DEBUG] (club.rainbowkitty.polytrains.train.TrainMeter) meter tick=1000 train=99990000 cars=4 kinds=CCFF lead=none pos=-5.50,-53.00,-6.50 speed=0.00 maxspeed=n/a fuel=none rail=minecraft:rail seated=0 refusal=ORDER_UNREADABLE packing=false mass=4.00 pairs=0/3 gap_worst=n/a gap_mean=n/a turn=n/a nodes=0 span=n/a checked=0 offset_worst=n/a resets=1 revisits=0
+[12:00:01] [Server thread/DEBUG] (club.rainbowkitty.polytrains.train.TrainMeter) meter tick=1000 cart=f0e1d2c3 kind=C pos=-14.50,-53.00,-14.50 speed=0.00 maxspeed=0.00 rail=minecraft:rail
+[12:00:02] [Server thread/DEBUG] (club.rainbowkitty.polytrains.collision.CartImpact) event=strike tick=1010 striker=0a1b2c3d struck=11223344 trains=0a1b2c3d,11223344 closing=0.80 shared=0.40 gained=0.40
+[12:00:02] [Server thread/DEBUG] (club.rainbowkitty.polytrains.collision.CartImpact) event=strike tick=1011 striker=0a1b2c3d struck=0a1b2c3e trains=0a1b2c3d,0a1b2c3d closing=0.10 shared=0.05 gained=0.05
+[12:00:02] [Server thread/DEBUG] (club.rainbowkitty.polytrains.collision.CartImpact) event=overlap tick=1012 cart=11223344 other=0a1b2c3d trains=11223344,0a1b2c3d distance=0.31
+[12:00:02] [Server thread/DEBUG] (club.rainbowkitty.polytrains.collision.CartImpact) event=overspeed tick=1013 cart=11223344 train=11223344 speed=4.850e+150 ceiling=2.50 clamped=true
+[12:00:02] [Server thread/DEBUG] (club.rainbowkitty.polytrains.mixin.AbstractMinecartMixin) event=overspeed tick=1014 cart=22334455 train=11223344 speed=NaN ceiling=5.00 clamped=true
+[12:00:03] [Server thread/DEBUG] (club.rainbowkitty.polytrains.train.TrainCoupling) event=sever tick=1030 train=0a1b2c3d at=0a1b2c3e reason=SEAT_FOULED into=0a1b2c3d,0a1b2c3f
+[12:00:04] [Server thread/DEBUG] (club.rainbowkitty.polytrains.block.SwitchedRailBlock) event=switch tick=1500 pos=-14.00,-53.00,-2.00 from=south_east to=east_west spanned=true applied=false
+[12:00:04] [Server thread/DEBUG] (club.rainbowkitty.polytrains.block.SwitchedRailBlock) event=switch tick=1600 pos=-14.00,-53.00,-2.00 from=south_east to=east_west spanned=true applied=true
+[12:00:04] [Server thread/DEBUG] (club.rainbowkitty.polytrains.block.SwitchedRailBlock) event=switch tick=1700 pos=-1.00,-53.00,-12.00 from=south_east to=north_south spanned=false applied=true
+[12:00:05] [Server thread/DEBUG] (club.rainbowkitty.polytrains.mixin.MinecartFurnaceMixin) event=stall_reverse tick=1800 train=99990000 cart=99990001 pos=-4.50,-53.00,-8.50 rail=minecraft:rail
+[12:00:05] [Server thread/DEBUG] (club.rainbowkitty.polytrains.train.TrainPlacer) event=refusal tick=990 train=99990000 why=ORDER_UNREADABLE car=3 leader at 1.38 of -8.71..1.71, next car not far enough along it to say
+[12:00:05] [Server thread/DEBUG] (club.rainbowkitty.polytrains.train.TrainPlacer) event=refusal tick=1950 train=99990000 why=none car=none
+[12:00:06] [Server thread/DEBUG] (club.rainbowkitty.polytrains.train.TrainCoupling) event=sever tick=2000 train=55667788 at=55667789 reason=DIVERTED into=55667788,5566778a
+[12:00:06] [Server thread/DEBUG] (club.rainbowkitty.polytrains.collision.CartImpact) event=strike tick=1020 striker=0a1b2c3d
+[12:00:06] [Server thread/DEBUG] (club.rainbowkitty.polytrains.collision.CartImpact) event=teleport tick=1021 cart=0a1b2c3d
+[12:00:07] [Server thread/ERROR] (club.rainbowkitty.polytrains.train.Train) ribbon walk failed
 [12:00:08] [Server thread/ERROR] (net.minecraft.server.MinecraftServer) Encountered an unexpected exception
 java.lang.IllegalArgumentException: Invalid section range
 \tat net.minecraft.world.level.entity.EntitySectionStorage.getEntities(EntitySectionStorage.java:120)
-\tat club.rainbowkitty.serversidetrains.collision.CartImpact.strikeNearby(CartImpact.java:84)
+\tat club.rainbowkitty.polytrains.collision.CartImpact.strikeNearby(CartImpact.java:84)
 \tat net.minecraft.server.MinecraftServer.tickServer(MinecraftServer.java:900)
 [12:00:09] [Server thread/WARN] (net.minecraft.server.level.ChunkMap) Failed to save chunk
 java.io.IOException: disk full
@@ -1515,8 +1515,8 @@ java.io.IOException: disk full
 [12:00:10] [Server thread/ERROR] (net.minecraft.world.level.storage.LevelStorageSource) unrelated
 [12:00:11] [Server thread/INFO] (Minecraft) event=strike tick=5 not the mod's logger
 [12:00:12] [RCON Client /127.0.0.1 #30/INFO] (net.minecraft.server.rcon.thread.RconClient) Thread RCON Client /127.0.0.1 shutting down
-[12:00:13] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.train.TrainPlacer) event=refusal tick=2100 train=99990000 why=SEAT_FOULED car=1 a cart of [x/DEBUG] (y) lies across
-[12:00:14] [Server thread/DEBUG] (club.rainbowkitty.serversidetrains.train.TrainMeter) event=clip tick=2200 cart=0a1b2c3d other=f0e1d2c3 trains=0a1b2c3d,f0e1d2c3 depth=0.044 at -13.50,-52.90,-11.04 and -12.53,-52.90,-10.97
+[12:00:13] [Server thread/DEBUG] (club.rainbowkitty.polytrains.train.TrainPlacer) event=refusal tick=2100 train=99990000 why=SEAT_FOULED car=1 a cart of [x/DEBUG] (y) lies across
+[12:00:14] [Server thread/DEBUG] (club.rainbowkitty.polytrains.train.TrainMeter) event=clip tick=2200 cart=0a1b2c3d other=f0e1d2c3 trains=0a1b2c3d,f0e1d2c3 depth=0.044 at -13.50,-52.90,-11.04 and -12.53,-52.90,-10.97
 """
 
 
@@ -1608,12 +1608,12 @@ def parse_test():
           "23c98e74-50c5-4406-a96a-b8baa5e4d77a")
 
     dump = ('Minecart with Furnace has the following entity data: {PushX: 0.5d, Motion: [NaNd, '
-            '0.0d, 1.0E-5d], serversidetrains: {RealFuel: 72000}, "fabric:attachments": {'
-            '"serversidetrains:link": {slotB: [I; 1, 2, 3, 4], slotA: [I; 5, 6, 7, 8]}}, '
+            '0.0d, 1.0E-5d], polytrains: {RealFuel: 72000}, "fabric:attachments": {'
+            '"polytrains:link": {slotB: [I; 1, 2, 3, 4], slotA: [I; 5, 6, 7, 8]}}, '
             'Pos: [-35.5d, -52.9d, 4.5d]'
             ', UUID: [I; 600411764, 1355105286, -1452623686, -1511729286], PushZ: -0.5d}Minecart wi'
             'th Chest has the following entity data: {Motion: [0.0d, 0.0d, 0.4d], Items: [], Pos: ['
-            '-35.5d, -53.0d, 6.5d], UUID: [I; 5, 6, 7, 8], "fabric:attachments": {"serversidetrains:'
+            '-35.5d, -53.0d, 6.5d], UUID: [I; 5, 6, 7, 8], "fabric:attachments": {"polytrains:'
             'link": {}}}')
     carts = parse_dump(dump)
     engine = carts.get("23c98e74-50c5-4406-a96a-b8baa5e4d77a")
@@ -1699,7 +1699,7 @@ def parse_test():
 
     refusal = rule_refusal(rules_for(DEFAULT_SPEED), rules_for(40)) or ""
     check("speed refusal", ("gamerule minecraft:max_minecart_speed 40" in refusal,
-                            "gamerule sstrains:realistic_physics" in refusal), (True, False))
+                            "gamerule polytrains:realistic_physics" in refusal), (True, False))
     check("speed held", rule_refusal(rules_for(40), rules_for(40)), None)
 
     if failures:

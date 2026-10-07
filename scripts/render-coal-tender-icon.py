@@ -21,7 +21,7 @@ from PIL import Image
 JAR = Path.home() / ('.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/'
                      'minecraft-merged-deobf/26.2/minecraft-merged-deobf-26.2.jar')
 OUT = (Path(__file__).resolve().parent.parent
-       / 'src/main/resources/assets/serversidetrains/textures/item/coal_tender.png')
+       / 'src/main/resources/assets/polytrains/textures/item/coal_tender.png')
 
 # Below this summed RGB a chest pixel is its outline, which stays as it is.
 OUTLINE = 160

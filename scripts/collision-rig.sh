@@ -265,7 +265,7 @@ def couple(rcon):
         if car < TRAIN - 1:
             slots.append(f"{'slotB' if car > 0 else 'slotA'}:{uuids[car + 1]}")
         rcon(f'data merge entity @e[tag={name},limit=1] '
-             f'{{"fabric:attachments":{{"serversidetrains:link":{{{",".join(slots)}}}}}}}')
+             f'{{"fabric:attachments":{{"polytrains:link":{{{",".join(slots)}}}}}}}')
 
     print(f"  coupled {TRAIN} cars")
 
