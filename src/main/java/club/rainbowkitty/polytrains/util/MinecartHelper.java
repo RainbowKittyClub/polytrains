@@ -9,6 +9,8 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.MinecartBehavior;
@@ -111,6 +113,17 @@ public final class MinecartHelper {
         if (exit != null) {
             behavior.setYRot(yawOf(Vec3.atLowerCornerOf(exit.subtract(railPos)).horizontal()));
         }
+    }
+
+    /**
+     * The look {@link #faceAlongRail} points a cart of {@code type} by as {@code player} places it:
+     * their own, so the cart's front leads off ahead of them — but turned round for a furnace cart,
+     * whose front, the furnace's door, is turned to face the player who placed it.
+     */
+    public static Vec3 placementLook(EntityType<?> type, Player player) {
+        Vec3 look = player.getLookAngle();
+
+        return type == EntityTypes.FURNACE_MINECART ? look.reverse() : look;
     }
 
     /** The yaw a cart wears to point along {@code heading}, in vanilla's own reckoning. */

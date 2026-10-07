@@ -323,7 +323,8 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
             EntityType<?> type, EntitySpawnReason reason, ItemStack stack,
             @Nullable Player player) {
         if (player != null) {
-            MinecartHelper.faceAlongRail(level, pos, behavior, player.getLookAngle());
+            MinecartHelper.faceAlongRail(
+                    level, pos, behavior, MinecartHelper.placementLook(type, player));
         }
 
         behavior.adjustToRails(pos, state, instant);
