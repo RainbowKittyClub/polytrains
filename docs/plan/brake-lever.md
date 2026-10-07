@@ -79,7 +79,7 @@ cars packed 0.98 apart, lit engine against the buffer, cold engine at the free e
 its engines on the old code and left the buffer within half a second on the new; the lever trial
 and six of the brake matrix's cases gave the same figures as before.
 
-## S2 — The lever on screen, and its click — **in progress**
+## S2 — The lever on screen, and its click — **superseded by S4**
 
 **Build.** `display/BrakeLeverDisplay`, a kalic0re `CargoDisplayHolder` attached to every furnace
 cart from `MinecartFurnaceMixin`'s first server tick, the way `LinkChain` is (no teardown: it is
@@ -103,6 +103,26 @@ was, possibly in chunks that client has not loaded and so never ticks into its s
 `CargoDisplayHolder` has the same gap for every holder built on it, the tender's included; that fix
 belongs there.
 
+## S4 — The choo-choo parts, clicked through the cart — **prototype, in game check pending**
+
+**Build.** `display/ChooChooPartsDisplay` replaces S2's lever, riser and slime with one item display:
+the `choo_choo_parts` group of `art/furnace_minecart.bbmodel` (smokestack, whistle, brake lever),
+baked by `scripts/bbmodel-group-to-item-model.py` into `choo_choo_parts_brake_on` (as drawn) and
+`choo_choo_parts_brake_off` (`--turn brake_lever z 45`). The model was built on a copy of vanilla's
+cart and furnace, door on -x, so its axes are the cart's frame and one transform places it. Nothing
+virtual is clicked: `MinecartHelper.useMinecart` reads where on the cart's own box a click landed
+(Fabric's `EntityHitResult`, the packet's location plus the cart's position), and a plain main-hand
+click on the lever's half — frame +z, the cart's left as it faces its front: the left side and the
+left halves of the front, back and top — toggles the brake. Anything else on the cart is as before.
+A placed furnace cart is turned round (`MinecartHelper.placementLook`), its front, the door, to the
+player.
+
+**Done when (observed in game, vanilla client).** The parts stand on every furnace cart and stay on
+it as it moves, turns and climbs; the lever stands upright when thrown and tips 45° toward the door
+when released; a click on the lever's half flips it and brakes the train, a click on the other half
+fuels or otherwise answers as the cart did; a furnace cart placed from either end of a rail faces
+its placer.
+
 ## S3 — Documentation — **done**
 
 **Build.** A "Brake Lever" section in the README.
@@ -115,5 +135,5 @@ None blocking. Chosen without asking, and easy to change: right-click throws and
 everything else on the lever reaches the cart; a train whose engines disagree — two trains coupled
 with their levers set differently — is held by the thrown ones, brakes by their share only, and
 agrees again from whichever lever is clicked next; the lever is on every furnace cart, with no rule.
-On a slope the slime stays over the cart's middle while the drawn lever tips with the furnace, up to
-about half a block apart on a rail's grade.
+S4's click half is the cart's box, which does not turn or tip: on a curve or a slope the half that
+answers drifts a little from the drawn lever, as S2's slime did.

@@ -89,7 +89,7 @@ public class Polytrains implements ModInitializer {
 
         UseEntityCallback.EVENT.register((player, level, hand, entity, hitResult) ->
                 entity instanceof AbstractMinecart minecart
-                        ? MinecartHelper.useMinecart(player, level, hand, minecart)
+                        ? MinecartHelper.useMinecart(player, level, hand, minecart, hitResult)
                         : InteractionResult.PASS);
     }
 

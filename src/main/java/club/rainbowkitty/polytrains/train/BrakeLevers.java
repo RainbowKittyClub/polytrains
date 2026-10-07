@@ -11,8 +11,8 @@ import club.rainbowkitty.polytrains.init.EntityAttachments;
 import club.rainbowkitty.polytrains.rule.ModGameRules;
 
 /**
- * The brake lever on top of every furnace cart, thrown and released for all the engines of a train
- * at once.
+ * The brake lever beside every furnace cart's furnace, thrown and released for all the engines of
+ * a train at once.
  *
  * <p>A thrown lever brakes its own engine as one car standing on an unpowered powered rail does,
  * and like such a rail holds the train, which parks every engine of it: see
@@ -26,8 +26,9 @@ public final class BrakeLevers {
     private static final float THROWN_PITCH = 0.6f;
     private static final float RELEASED_PITCH = 0.5f;
 
-    // How far above the cart's position the click is played: the lever's own height.
-    private static final double CLICK_HEIGHT = 1.1;
+    // How far above the cart's position the click is played: the middle of the lever, which stands
+    // from about 0.37 to 1.0 (ChooChooPartsDisplay).
+    private static final double CLICK_HEIGHT = 0.7;
 
     // Static-only; blocks instantiation.
     private BrakeLevers() {}

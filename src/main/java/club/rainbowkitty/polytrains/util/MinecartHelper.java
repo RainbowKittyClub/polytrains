@@ -2,6 +2,8 @@ package club.rainbowkitty.polytrains.util;
 
 import java.util.List;
 
+import org.jspecify.annotations.Nullable;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -14,6 +16,7 @@ import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.MinecartBehavior;
+import net.minecraft.world.entity.vehicle.minecart.MinecartFurnace;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.MinecartItem;
@@ -21,8 +24,10 @@ import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseRailBlock;
+import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 
+import club.rainbowkitty.polytrains.display.ChooChooPartsDisplay;
 import club.rainbowkitty.polytrains.ext.Linkable;
 import club.rainbowkitty.polytrains.init.EntityAttachments;
 import club.rainbowkitty.polytrains.item.WrenchItems;
@@ -41,10 +46,13 @@ public final class MinecartHelper {
 
     /**
      * Answers one use of a minecart. The wrench does whichever job it is set to; shift-clicking
-     * with anything else tries to craft the cart into whatever that item upgrades it to.
+     * with anything else tries to craft the cart into whatever that item upgrades it to; a plain
+     * click on the lever's half of a furnace cart throws or releases its brake.
+     *
+     * @param hitResult where on the cart's box the click landed, or null if that is not known
      */
-    public static InteractionResult useMinecart(
-            Player player, Level level, InteractionHand hand, AbstractMinecart minecart) {
+    public static InteractionResult useMinecart(Player player, Level level, InteractionHand hand,
+            AbstractMinecart minecart, @Nullable EntityHitResult hitResult) {
         // An unconsumed click also reaches the off hand after the main hand already answered it —
         // this guards against a second wrench retry or upgrade attempt. Keyed on whether the click
         // was answered, not on which hand holds what, so swapping hands mid-click can't change the
@@ -53,6 +61,24 @@ public final class MinecartHelper {
                 && level instanceof ServerLevel serverLevel
                 && EntityAttachments.answeredUseAt(player, serverLevel.getGameTime())) {
             return InteractionResult.PASS;
+        }
+
+        // As the lever itself once answered: the main hand's plain click, whatever it holds but
+        // the wrench. A shift-click or the wrench is for the cart wherever it lands.
+        if (minecart instanceof MinecartFurnace
+                && hitResult != null
+                && hand == InteractionHand.MAIN_HAND
+                && !player.isShiftKeyDown()
+                && !WrenchItems.isWrench(player.getMainHandItem())
+                && ChooChooPartsDisplay.onLeverSide(
+                        minecart, hitResult.getLocation().subtract(minecart.position()))) {
+            if (level instanceof ServerLevel serverLevel) {
+                BrakeLevers.toggle(minecart);
+                EntityAttachments.setAnsweredUseAt(player, serverLevel.getGameTime());
+                player.swing(hand, true);
+            }
+
+            return InteractionResult.SUCCESS;
         }
 
         // Both of the things a use can mean here are shift-clicks. Leaving the plain click alone

@@ -26,7 +26,7 @@ import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.polytrains.Polytrains;
-import club.rainbowkitty.polytrains.display.BrakeLeverDisplay;
+import club.rainbowkitty.polytrains.display.ChooChooPartsDisplay;
 import club.rainbowkitty.polytrains.ext.AbstractMinecartExt;
 import club.rainbowkitty.polytrains.init.FurnaceTicketTypes;
 import club.rainbowkitty.polytrains.rail.RailForces;
@@ -97,10 +97,11 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     @Unique
     private boolean polytrains$parked;
 
-    // The brake lever drawn on top, built on the cart's first tick on a server and gone with the
-    // cart: it is only ever ticked through the cart's tracker, which goes when the cart does.
+    // The smokestack, whistle and brake lever drawn on it, built on the cart's first tick on a
+    // server and gone with the cart: it is only ever ticked through the cart's tracker, which goes
+    // when the cart does.
     @Unique
-    private @Nullable BrakeLeverDisplay polytrains$lever;
+    private @Nullable ChooChooPartsDisplay polytrains$parts;
 
     // The rail the engine was last aimed on, or stands parked on, so a reversal in place can be
     // told from one the track itself makes. Deliberately not saved: a cart reloads holding the
@@ -361,8 +362,8 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
 
         var rules = serverLevel.getGameRules();
 
-        if (polytrains$lever == null) {
-            polytrains$lever = BrakeLeverDisplay.attach(this);
+        if (polytrains$parts == null) {
+            polytrains$parts = ChooChooPartsDisplay.attach(this);
         }
 
         // Read before super.tick() moves the cart, so the movement path sees this tick's rail —
