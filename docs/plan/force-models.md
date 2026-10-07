@@ -228,7 +228,7 @@ cart arriving in five seconds instead of a minute. The consequence is that a **s
 impossible**, which is what surfaced it.
 
 The fix has to count the stall rather than derive it, there being no movement to derive from:
-`serversidetrains$countStall` runs at the top of the tick, where last tick's movement is still what the
+`polytrains$countStall` runs at the top of the tick, where last tick's movement is still what the
 cart has, and turns the impulse round after four ticks of no progress under power. Unconditional in
 both models, on the same grounds as the impulse projection — the trap is vanilla's, and a cart
 nothing can move is not behaviour worth mirroring. That makes two deliberate deviations in the
@@ -432,7 +432,7 @@ tick of engine impulse exactly, so the train was carrying precisely what the eng
 and nothing more. Each tick the brake found the speed under its `0.03` floor and returned `Vec3.ZERO`;
 each tick the engine added its impulse straight back. Neither ever won.
 
-The speed threshold is the two halves of the fault meeting. `serversidetrains$parked` was
+The speed threshold is the two halves of the fault meeting. `polytrains$parked` was
 `RailBrake.brakes(this)`, the engine's **own** rail, while the brake itself had already been made to
 read the whole train. Below `0.40` the train came to rest with the furnace still over the rail, so it
 parked and stopped properly; at `0.40` the furnace overran the rail and only the fourth car was left
@@ -457,7 +457,7 @@ harness than this mod has had: the two readings differ in exactly the thing unde
 vanilla reading has a predicted value in the Reference table below to be checked against. A stage is
 not finished until its "Done when" is observed, so a failure at stage N implicates stage N.
 
-`rcon "gamerule sstrains:realistic_physics true"` toggles live — game rules are a plain map
+`rcon "gamerule polytrains:realistic_physics true"` toggles live — game rules are a plain map
 read and nothing here caches one, so no restart is needed between the two readings of a leg.
 
 Two checks are code-level rather than in-world, and both are part of S1's exit criterion: no gated
@@ -509,7 +509,7 @@ file and a missing case is a compile error rather than a site someone forgot; th
 boolean read at each of the ten sites, which is less code and more drift, and the reason for
 preferring the enum is that this refactor's whole risk is a site left ungated.
 
-**Done when.** `rcon "gamerule sstrains:realistic_physics"` answers `false`, toggling it
+**Done when.** `rcon "gamerule polytrains:realistic_physics"` answers `false`, toggling it
 changes nothing observable, `devserver.sh … mixins` reports no failures, and `grep -rn
 REALISTIC_PHYSICS src/main/java` finds it only in `MTGameRules` and `RailForces`.
 
@@ -539,7 +539,7 @@ figures and picks — the mixin, which *can* call `super`, computes them. `engin
 which needed only its `private` dropped, and `slowed` for the physical one, which is today's
 behaviour unchanged. So S3's work is to split `slowed` apart, not to write a law from nothing.
 
-Verified on the dev server: `gamerule sstrains:realistic_physics` answers `false`, mixins
+Verified on the dev server: `gamerule polytrains:realistic_physics` answers `false`, mixins
 report `None.`, and `grep -rn REALISTIC_PHYSICS src/main/java` finds it in `MTGameRules` and
 `RailForces` only.
 
@@ -836,7 +836,7 @@ the halving made the ceiling depend on which end leads, and the repair is that t
 the lowest figure in its train. It recurses unless the walk is refused by every car that is not the
 driven one, which is what `TrainCoupling.trainCeiling` does: no reentrancy flag, no static, and the
 old `ownSpeedOnly` guard the ribbon redo deleted stays deleted. `AbstractMinecartExt` gains
-`serversidetrains$ownMaxSpeed` so the driven car can ask its neighbours without reaching for a
+`polytrains$ownMaxSpeed` so the driven car can ask its neighbours without reaching for a
 `protected` method on somebody else's instance.
 
 ## S6 — Wrecking behind the model — **built**
@@ -1020,7 +1020,7 @@ so the rule grades again; keep the cap and demote the rule to a boolean, or fold
 that recovers the middle settings, and it means changing what the rule is read against, which is a
 change to what it *means* rather than to how strong the friction is.
 
-**Done when.** Whichever is chosen, `gamerule sstrains:rail_drag_speed` at three different
+**Done when.** Whichever is chosen, `gamerule polytrains:rail_drag_speed` at three different
 values produces three different measured coasting distances, or the rule no longer takes three
 values.
 
@@ -1064,13 +1064,13 @@ on trust — the key was still there at `rail_drag_speed = 3` after the removal,
 ```
 [main/ERROR] (Minecraft) Failed to parse saved data for 'SavedDataType[minecraft:game_rules]':
   Unknown registry key in ResourceKey[minecraft:root / minecraft:game_rule]:
-  sstrains:rail_drag_speed ... missed input: {"sstrains:rail_drag_speed":3}
+  polytrains:rail_drag_speed ... missed input: {"polytrains:rail_drag_speed":3}
 ```
 
 Logged by `main` at level load, ten lines *before* `Starting minecraft server`, so it is not a
 runtime complaint and will not appear in a tail of a busy log. Dropped with `scripts/nbt.py`, server
 stopped first or the next save undoes the edit. The live world also carries a stale
-`sstrains:furnace_minecart_speed` from the 26.2 port, so both want dropping in one pass
+`polytrains:furnace_minecart_speed` from the 26.2 port, so both want dropping in one pass
 whenever this deploys.
 
 ## S10 — The engine put on a power curve — **built**
@@ -1132,7 +1132,7 @@ is on the falling branch and will slow until it re-enters the flat one, which is
 having — a heavy train losing speed on a bank and holding a lower one — but it means the climb test
 has to be read as "does it settle" rather than "does it keep its speed".
 
-*The stall counter is unaffected and should be confirmed so in a comment.* `serversidetrains$countStall`
+*The stall counter is unaffected and should be confirmed so in a comment.* `polytrains$countStall`
 fires on a lit, unparked, motionless cart, and effort at rest is at its maximum under the curve, so
 nothing about the wedge detection changes. A reader will wonder; answer it where they look.
 
@@ -1225,7 +1225,7 @@ got five blocks up and stopped, as mass 7.5 against `6 ×` gravity must.
 **One measurement here is contradicted by play, and the play is the authority.** The loaded train
 that failed to climb froze on its bank rather than rolling back, with the engine's `PushX` measured
 flipping between `+1.0` and `-1.0` every four ticks while both movement components stayed at exactly
-zero — so `serversidetrains$countStall` was firing and reversing faster than the train could build any
+zero — so `polytrains$countStall` was firing and reversing faster than the train could build any
 movement, cancelling itself out. In play a grade stall reverses as intended, so whatever that
 headless case was, it is narrower than "the counter does not work on a grade": most likely the
 continuous twenty-step 45° bank it was standing on, steeper and longer than anything a player builds,

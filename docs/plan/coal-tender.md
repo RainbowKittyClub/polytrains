@@ -40,7 +40,7 @@ draws that cart's block even with `DisplayState` air (sensible-storage
 `docs/plan/chest-minecarts.md:510-534`). And a plain minecart makes the client send each click
 twice, which kalic0re answers by taking the main hand only (`CargoMinecartChest.java:86-91`) — while
 this mod already dedupes two-handed clicks on every cart through its own `UseEntityCallback`
-(`ServersideTrains.java:86`) and `USE_ANSWERED_AT`. S2 reconciles the two rather than stacking them.
+(`Polytrains.java:86`) and `USE_ANSWERED_AT`. S2 reconciles the two rather than stacking them.
 
 **Vanilla's cargo slot cannot draw the load; a display element must.** A cart's display block is
 drawn at a uniform 0.75 (`AbstractMinecartRenderer.java:62`); the interior is 16 × 12 × 8 px (see
@@ -68,7 +68,7 @@ reuses. Removing the rule leaves no stale game-rule key anywhere: it never reach
 saves rules (live runs `30909e5`; the main dev server runs the main checkout).
 
 **Done when.** On the private server a lit engine coupled to a chest cart of coal burns its own fuel
-down one a tick and the chest keeps its coal; `gamerule sstrains:furnaces_refuel_from_storage_carts`
+down one a tick and the chest keeps its coal; `gamerule polytrains:furnaces_refuel_from_storage_carts`
 is an unknown rule; the mixin check is clean.
 
 ### As built
@@ -112,7 +112,7 @@ coupled and with its contents.
 synched). `MinecartFurnaceMixin`'s tick hook runs before vanilla's `fuel--`
 (`MinecartFurnace.java:50-58`): there, a lit engine whose fuel is under a floor of 20 ticks draws
 the shortfall from a tender coupled to it — out of `burnLeft`, opening the next coal or charcoal for
-`MinecartFurnaceAccessor.serversidetrains$fuelTicksPerItem()` ticks when that runs out. The engine
+`MinecartFurnaceAccessor.polytrains$fuelTicksPerItem()` ticks when that runs out. The engine
 never needs room for a whole item, so the draw follows consumption whatever `furnace_max_burn_time`
 is, and a parked engine, burning a tenth, draws a tenth. Coupled means what it means everywhere else
 here: a direct neighbour, loaded, with `trainsEnabled` — the review of `079657a` found that path

@@ -53,7 +53,7 @@ TODO: insert train demonstration video
 
 ## Configuration
 
-Everything is done with `sstrains:` gamerules:
+Everything is done with `polytrains:` gamerules:
 
 
 | Key [default value] | Description |

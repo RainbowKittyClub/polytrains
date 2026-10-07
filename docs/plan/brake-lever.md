@@ -39,14 +39,14 @@ points are straight up from the cart whatever its pitch.
 
 On the private dev server (`run/` of this worktree, port 25681), driven over rcon by
 `lever_trial.py` in the job's tmp dir: a train rolls east on a flat line at z=460 under its engines'
-power, its engines' levers are thrown by writing the `serversidetrains:brake_lever` attachment, and
+power, its engines' levers are thrown by writing the `polytrains:brake_lever` attachment, and
 the leading car's speed is read each tick until it stands; then the levers are released. The click
 and the drawing need a client and are observed in game by the user. A stage is not finished until
 its "Done when" is observed.
 
 ## S1 — The brake — **done**
 
-**Build.** A persistent `serversidetrains:brake_lever` attachment (`EntityAttachments.BRAKE_LEVER`,
+**Build.** A persistent `polytrains:brake_lever` attachment (`EntityAttachments.BRAKE_LEVER`,
 `Codec.BOOL`, absent when released). `RailBrake.brakes` answers true for a car with it set.
 `train/BrakeLevers.toggle(engine)` flips the clicked engine's lever and sets every furnace cart of
 its train the same, and plays vanilla's lever click.
