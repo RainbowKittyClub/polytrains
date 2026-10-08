@@ -125,6 +125,13 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
     @Unique
     private int polytrains$gaugeTicks;
 
+    // Whether a tender is coupled straight to this engine, read once per train it belongs to: a
+    // new link, unlink or a car loaded or gone hands it a new train.
+    @Unique
+    private @Nullable Train polytrains$tenderTrain;
+    @Unique
+    private boolean polytrains$tenderCoupled;
+
     // Never called: present only to satisfy the compiler about the superclass this mixin extends.
     protected MinecartFurnaceMixin(EntityType<?> entityType, Level level) {
         super(entityType, level);
@@ -402,9 +409,26 @@ public abstract class MinecartFurnaceMixin extends AbstractMinecart implements A
         int tenderFill = Math.min(
                 FurnaceFuel.ticksPerCoal(), rules.get(ModGameRules.FURNACE_MAX_BURN_TIME));
 
-        if (fuel > 0 && fuel < tenderFill) {
+        if (fuel > 0 && fuel < tenderFill && polytrains$tenderNext()) {
             fuel += CoalTenderMinecart.feed(this, tenderFill - fuel);
         }
+    }
+
+    // Whether a tender is coupled to this engine, walked again only when its train has changed.
+    @Unique
+    private boolean polytrains$tenderNext() {
+        if (!hasLink() || !ModGameRules.trainsEnabled(level())) {
+            return false;
+        }
+
+        Train train = Train.of(this);
+
+        if (train != polytrains$tenderTrain) {
+            polytrains$tenderTrain = train;
+            polytrains$tenderCoupled = CoalTenderMinecart.coupledTo(this);
+        }
+
+        return polytrains$tenderCoupled;
     }
 
     // The car leading this engine's train: one behind it can stand while the train stretches out.

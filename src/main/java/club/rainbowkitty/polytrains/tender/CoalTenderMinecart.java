@@ -97,6 +97,17 @@ public class CoalTenderMinecart extends AbstractMinecartContainer implements Car
         return given;
     }
 
+    /** Whether a tender is coupled straight to {@code engine}, by {@link #feed}'s reading. */
+    public static boolean coupledTo(AbstractMinecart engine) {
+        for (AbstractMinecart neighbour : engine.getNeighbours()) {
+            if (neighbour instanceof CoalTenderMinecart) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * Gives up to {@code wanted} ticks of burn, opening coal or charcoal one at a time as the last
      * runs out, and returns how many it gave.
