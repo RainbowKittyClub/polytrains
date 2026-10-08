@@ -273,7 +273,7 @@ public final class TrainPlacer {
 
         // Where each pair stands, read once: nothing below moves a car before it is placed.
         double[] standing = train.standingGaps(TrainCoupling.maxLinkDistance());
-        double[] gaps = train.nextGaps(target, standing, speed, landed);
+        double[] gaps = train.nextGaps(target, standing, speed, landed, false);
         double travelSign = travelSign(leader, ribbon.tangentAt(leadArc));
         int order = train.orderSign();
 
@@ -356,7 +356,7 @@ public final class TrainPlacer {
         // A pressing or packing train still widens against zero speed: paying that widening into
         // gaps it has nowhere to drive a car into would pin it to the wall it is pressing on.
         if (pressing || packing) {
-            gaps = train.nextGaps(target, standing, 0.0, landed);
+            gaps = train.nextGaps(target, standing, 0.0, landed, true);
             offsets = offsets(ribbon, gaps, leadArc, order, fromHead);
         }
 
@@ -442,7 +442,7 @@ public final class TrainPlacer {
         if (contact != null && contact.depth() > EPSILON) {
             // Run into something, a train lengthens no further into it.
             if (!pressing && !packing) {
-                gaps = train.nextGaps(target, standing, 0.0, landed);
+                gaps = train.nextGaps(target, standing, 0.0, landed, true);
                 arcs = arcsFor(ribbon, gaps, leadArc, order, fromHead, leadIndex, tailIndex);
                 offsets = arcs.offsets();
                 headArc = arcs.headArc();

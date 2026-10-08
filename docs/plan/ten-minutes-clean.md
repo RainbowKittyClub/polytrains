@@ -1562,8 +1562,9 @@ width and is set back 0.07 to 0.30 for a tick, 8 times in 1,500 ticks.
 to where that car stood before the tick, so it moves on with it; no closer than it stands unless
 already closer than a car. From there the gap eases to the target as any other: narrowing at the
 flat rate, widening out of the leading car's ground, and a gap below a car's width opens from where
-it is rather than being set to it, at no less than the flat rate, so a train stopped or pressing
-there does not hold two cars inside each other.
+it is rather than being set to it, at no less than the flat rate, so a stopped train does not hold
+two cars inside each other. One that has met something or presses on it keeps that gap until it
+runs on: opened there, the gap pushes an end car into what holds the train.
 
 **Done when.** `3bjump` traced tick by tick for 1,500 ticks at 8, 40 and 100 shows no car of the
 train move backward against its travel, the start and the eastern buffer aside, and no SNAP at 40;

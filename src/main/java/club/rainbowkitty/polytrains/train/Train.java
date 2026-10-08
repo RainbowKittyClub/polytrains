@@ -519,8 +519,11 @@ public final class Train {
      * @param standing how far apart each pair of cars stands, from {@link #standingGaps}
      * @param advance how far the leading car moved this tick, which is all the room there is
      * @param landed by car, whether that car has just come down off a jump onto this ribbon
+     * @param held whether the train has met something or presses on it, when a gap a landing left
+     *     inside a car opens only out of {@code advance}, as any other does
      */
-    public double[] nextGaps(double target, double[] standing, double advance, boolean[] landed) {
+    public double[] nextGaps(
+            double target, double[] standing, double advance, boolean[] landed, boolean held) {
         int count = cars.size() - 1;
         double[] next = new double[count];
         double pitchFloor = floor(target);
@@ -554,9 +557,9 @@ public final class Train {
                 interval = Math.max(Math.min(interval, standing[i]), gapFloor);
             }
 
-            // A gap a landing left inside a car opens at the flat rate even standing, or a train
-            // stopped or pressing there would hold its cars inside each other.
-            double opening = interval < pitchFloor
+            // A gap a landing left inside a car opens at the flat rate even standing, unless held:
+            // there the opening pushes the train's end car into what it met or presses on.
+            double opening = interval < pitchFloor && !held
                     ? Math.max(advance / count, Math.min(pitchFloor - interval, PITCH_STEP))
                     : advance / count;
 
