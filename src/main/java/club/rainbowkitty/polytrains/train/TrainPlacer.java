@@ -506,6 +506,9 @@ public final class TrainPlacer {
         double runLimit = furthestRun(leader);
         double moved = 0.0;
         boolean anyElsewhere = false;
+        // A placed car's push is the one shove that parts it from another train's cart, so only a
+        // train with none in reach, as holdStill takes, goes without it at rest.
+        boolean shoveAtRest = !nearby.in(trainBox(cars).inflate(RUN_SHELL)).isEmpty();
 
         for (int i = 0; i < cars.size(); i++) {
             anyElsewhere |= placedElsewhere[i];
@@ -527,7 +530,7 @@ public final class TrainPlacer {
             }
 
             moved = Math.max(moved, place(ribbon, cars.get(i), seats[i], seatArcs[i], faceSign,
-                    speed, runLimit, i != leadIndex));
+                    speed, runLimit, i != leadIndex, shoveAtRest));
 
             // Drawn back off an end the train is leaving, the leading car stays vanilla's: seated,
             // it skips vanilla's move and is drawn back again every tick that end still presses.
@@ -861,13 +864,14 @@ public final class TrainPlacer {
 
         if (leavingIndex != Refusal.NONE) {
             place(ribbon, cars.get(leavingIndex), seats[leavingIndex], seatArcs[leavingIndex],
-                    runSign, speed, runLimit, true);
+                    runSign, speed, runLimit, true, true);
             leaveTrack(level, cars.get(leavingIndex));
         }
 
         for (int i = 0; i < cars.size(); i++) {
             if (seats[i] != null && i != leavingIndex) {
-                place(ribbon, cars.get(i), seats[i], seatArcs[i], runSign, speed, runLimit, true);
+                place(ribbon, cars.get(i), seats[i], seatArcs[i], runSign, speed, runLimit, true,
+                        true);
             }
         }
     }
@@ -1759,7 +1763,8 @@ public final class TrainPlacer {
     // Puts one car on its seat along ribbon and does by hand everything vanilla would have done
     // moving it there, answering how far that moved it.
     private static double place(TrackRibbon ribbon, AbstractMinecart car, Seat seat, double arc,
-            double faceSign, double speed, double runLimit, boolean shouldAim) {
+            double faceSign, double speed, double runLimit, boolean shouldAim,
+            boolean shoveAtRest) {
         Vec3 previousPosition = car.position();
         Vec3 forward = seat.tangent().scale(faceSign);
 
@@ -1805,7 +1810,7 @@ public final class TrainPlacer {
 
         // Vanilla hangs both off Entity.move, which a placed car never reaches; a cart at rest
         // never moves, so it pushes and picks up nothing.
-        if (displacement.length() > EPSILON || speed > EPSILON) {
+        if (shoveAtRest || displacement.length() > EPSILON || speed > EPSILON) {
             behavior.pushAndPickupEntities();
         }
 
