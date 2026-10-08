@@ -1294,6 +1294,10 @@ public final class TrainCoupling {
         Vec3 movement = leader.getDeltaMovement().horizontal();
         int previousFrame = ribbon.arcEpoch();
 
+        // Rail taken up past an end since it was recorded ends the ribbon there, before anything
+        // reads that end as track still going on.
+        ribbon.dropTakenUpEnds(level);
+
         // A ribbon holds only what the leading car has stepped along, and a car standing still
         // steps along nothing — so a train that was stopped when its world loaded has an empty one
         // and no way to come by a first node. Seeded with the rail it stands on, which is the block

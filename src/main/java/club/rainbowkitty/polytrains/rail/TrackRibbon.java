@@ -734,6 +734,20 @@ public final class TrackRibbon {
         }
     }
 
+    /**
+     * Drops recorded track off either end whose rail has since been taken up, so the ribbon ends
+     * where the track now does. Only the ends: a seat on a gap mid-ribbon already finds no rail.
+     */
+    public void dropTakenUpEnds(Level level) {
+        while (nodes.size() > 1 && takenUp(level, nodes.getLast().block())) {
+            nodes.removeLast();
+        }
+
+        while (nodes.size() > 1 && takenUp(level, nodes.getFirst().block())) {
+            nodes.removeFirst();
+        }
+    }
+
     /** Whether this ribbon records {@code pos} anywhere along it. */
     public boolean holds(BlockPos pos) {
         for (Node node : nodes) {
@@ -926,6 +940,12 @@ public final class TrackRibbon {
         }
 
         return nodes.size() > before;
+    }
+
+    // Whether the rail recorded at pos is gone. An unloaded block counts as still there: reading it
+    // would load its chunk, and a train would then pin it every tick.
+    private static boolean takenUp(Level level, BlockPos pos) {
+        return level.isLoaded(pos) && !BaseRailBlock.isRail(level.getBlockState(pos));
     }
 
     // Whether a walk heading outwardDirection can go on into the block in state.
