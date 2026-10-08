@@ -8,6 +8,7 @@ import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
@@ -576,13 +577,15 @@ public final class TrainPlacer {
         RailDrag.bend(leader, turn);
 
         // Laid exactly where it stood with nothing left to close, so the next tick may skip all
-        // this; the leading car, never placed here, stays vanilla's.
+        // this; the leading car, never placed here, stays vanilla's. Nor while a car's push still
+        // has another train's cart to part it from, which holding still would skip.
         boolean still = refusal == null && !anyElsewhere && !drawnBack && !closed && gapsHeld
                 && moved <= EPSILON && speed <= EPSILON
-                && leader.getDeltaMovement().horizontalDistance() < EPSILON;
+                && leader.getDeltaMovement().horizontalDistance() < EPSILON
+                && !touching(cars, inReach);
 
         if (still) {
-            markStill(train, cars, seats, leadIndex, leader);
+            markStill(train, cars, seats, leadIndex, leader, inReach);
         } else {
             train.wake();
         }
@@ -601,9 +604,24 @@ public final class TrainPlacer {
         return null;
     }
 
+    // Whether any of cars stands against one of others, as near as a cart's push reaches.
+    private static boolean touching(List<AbstractMinecart> cars, List<AbstractMinecart> others) {
+        for (AbstractMinecart other : others) {
+            AABB otherBox = other.getBoundingBox().inflate(EPSILON);
+
+            for (AbstractMinecart car : cars) {
+                if (car.getBoundingBox().intersects(otherBox)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     // Records where every car but the leading one was placed this tick, for holdStill.
     private static void markStill(Train train, List<AbstractMinecart> cars, Seat[] seats,
-            int leadIndex, AbstractMinecart leader) {
+            int leadIndex, AbstractMinecart leader, List<AbstractMinecart> inReach) {
         Vec3[] positions = new Vec3[cars.size()];
         BlockPos[] rails = new BlockPos[cars.size()];
 
@@ -614,7 +632,8 @@ public final class TrainPlacer {
             }
         }
 
-        train.markStill(leader.level().getGameTime(), positions, rails, leader.position());
+        train.markStill(leader.level().getGameTime(), positions, rails, leader.position(),
+                inReach);
     }
 
     /**
@@ -623,8 +642,9 @@ public final class TrainPlacer {
      * changed nothing, when the train needs laying out in full.
      *
      * <p>A fixed point of {@link #seat}: whatever wakes a parked train reaches its leading car's
-     * movement, a car's position, the arc frame, or a foreign cart or player in reach. A switch
-     * thrown near it wakes it outright, and a full pass now and then covers anything missed.
+     * movement, a car's position, the arc frame, a cart in reach, or a player in reach. A switch
+     * thrown near it, a shove, a strike or another train moving in reach wakes it outright, and a
+     * full pass now and then covers anything missed.
      */
     public static boolean holdStill(ServerLevel level, Train train) {
         long tick = level.getGameTime();
@@ -671,15 +691,21 @@ public final class TrainPlacer {
             }
         }
 
-        AABB box = trainBox(cars);
+        // Carts in reach must stand where they stood; a train coming into reach wakes this one,
+        // which is cheaper than asking the level for carts every tick.
+        if (!train.neighboursInPlace()) {
+            return false;
+        }
+
+        AABB leanBox = trainBox(cars).inflate(SHOVE_SHELL);
 
         // A rider leans on nothing; anyone else in reach may be packing a jammed train.
-        if (!foreignCarts(train, box.inflate(RUN_SHELL)).isEmpty()
-                || !level.getEntitiesOfClass(Player.class, box.inflate(SHOVE_SHELL),
-                        player -> !player.isSpectator() && !(player.getVehicle()
-                                instanceof AbstractMinecart ridden && train.contains(ridden)))
-                        .isEmpty()) {
-            return false;
+        for (ServerPlayer player : level.players()) {
+            if (!player.isSpectator() && player.getBoundingBox().intersects(leanBox)
+                    && !(player.getVehicle() instanceof AbstractMinecart ridden
+                            && train.contains(ridden))) {
+                return false;
+            }
         }
 
         for (int i = 0; i < cars.size(); i++) {
