@@ -28,7 +28,7 @@ P20, P21 and P23 are independent of each other, P22 builds on P21, and R1 runs a
 P24 comes from the user's report of cars snapping onto the track after a jump, P25 from a review of
 P24. P26, planned for the torture failure seen most since R1 was last met, was skipped. P27 comes
 from a trace of `3bjump` at 100 and is independent of the rest; P28 from a trace of it at 8,
-building on P19 and P25.
+building on P19 and P25; P29 from the traces after P28, building on it.
 
 ---
 
@@ -1529,9 +1529,10 @@ The leader lands before the last cars have left the lip, the ribbon restarts und
 `seatCars` lays every car not yet flown onto the landing track: C2, F1 and C3 snap down off the
 ramp every lap. At 40 and 100 every car is off the lip first, so it never shows there.
 
-**Build.** A leader in the air under the new movement, past an end of its ribbon and going on out,
-is off the ribbon at once rather than a car's width later; one resting on the lip still reads at
-the end. `carried` is recorded only while the leader is on its rails. `followOff` keeps a copy of
+**Build.** A leader off its rails under the new movement, past an end of its ribbon and going on
+out, is off the ribbon at once rather than a car's width later, in the air or touching the lip's
+support; read at the clamped end on that touch, the cars `followOff` ran on stepped back 0.21 for
+a tick. One stopped on the lip, or down below it, still reads at the end. `carried` is recorded only while the leader is on its rails. `followOff` keeps a copy of
 the ribbon, on the same arc numbering and trimmed to the departing stretch, as the train's
 departure. Once the leader has landed on a restarted ribbon, cars still seated on that copy are
 not seated on the new one: after the landed cars are placed and the flying ones flown on, they run
@@ -1547,6 +1548,24 @@ until it leaves the lip, short of at most one ground-touch tick; `LEADER_IN_AIR`
 first airborne tick and `followOff` runs at the pre-lip speed. P25's bar holds at 8, 40 and 100,
 with SNAP and FACING counts at 40 and 100 unchanged, and two ten-minute torture runs at 100 and two
 at 40 pass every clause.
+
+## P29 — A car come down off a jump is drawn to its seat at the train's pace — **in progress**
+
+Once a flown car is caught by its rails the placer seats it with the rest, at its seat. At 40 on
+`3bjump`, C2 or F1 lands 2.5 behind the car ahead and is set 2.38 on in one tick, every lap, at
+Motion 0.63, the same on main. At 8, with P28 in, a car lands closer than its seat or than a car's
+width and is set back 0.07 to 0.30 for a tick, 8 times in 1,500 ticks.
+
+**Build.** The tick a car is down, its gap to the car ahead starts from where the two stand, taken
+to where that car stood before the tick, so it moves on with it; no closer than it stands unless
+already closer than a car. From there the gap eases to the target as any other: narrowing at the
+flat rate, widening out of the leading car's ground, and a gap below a car's width opens from where
+it is rather than being set to it.
+
+**Done when.** `3bjump` traced tick by tick for 1,500 ticks at 8, 40 and 100 shows no car of the
+train move backward against its travel, the start and the eastern buffer aside, and no SNAP at 40;
+P28's bar holds at 8 and P25's at 40 and 100; two ten-minute torture runs at 100 and two at 40 pass
+every clause.
 
 # Part R — The bar
 
