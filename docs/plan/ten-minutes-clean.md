@@ -200,7 +200,7 @@ datapack is likewise only in the main checkout's `run/world/datapacks/mtxrig/` u
 so M1 and M2 are one task: copy first, fix the copy under `scripts/mtxrig/`, sync it back with
 `rig-sync.sh`, and test on the main checkout. `scripts/torture.py` (M5) can be run from any
 checkout against the main one's server, since it only speaks rcon and reads
-`rkc/mods/serverside-trains/run/logs/debug.log` by path.
+`rkc/mods/polytrains/run/logs/debug.log` by path.
 
 P6 to P8 are the exception: they are physics and cannot be judged unrun, so each worktree runs a
 dev server of its own. It is a copy of the main checkout's `run/`, taken after `save-all flush`, on

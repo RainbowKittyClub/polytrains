@@ -447,7 +447,7 @@ other than an engine at its head.
 
 ## How these stages get tested
 
-On this mod's dev server, `scripts/devserver.sh rkc/mods/serverside-trains restart`, port 25603,
+On this mod's dev server, `scripts/devserver.sh rkc/mods/polytrains restart`, port 25603,
 against a world with `minecart_improvements` enabled. The standing test track from
 `train-ribbon.md` covers everything here except the long coast, which wants a straight of 130 blocks
 or more — vanilla's ridden cart runs that far and the default model has to as well.

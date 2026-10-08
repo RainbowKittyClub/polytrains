@@ -319,7 +319,7 @@ exactly the flat rolling term, which is sized at an eighth of the slope pull.
 
 ## How these stages get tested
 
-On this mod's own dev server, `scripts/devserver.sh rkc/mods/serverside-trains restart`, against a world
+On this mod's own dev server, `scripts/devserver.sh rkc/mods/polytrains restart`, against a world
 with `minecart_improvements` enabled — trains are off without it and every stage here is a no-op
 (`OldMinecartBehavior.stepAlongTrack` is a stub returning `0.0`). S1 exists because that harness is
 absent on this branch: without `dev_server_port` in `gradle.properties` the shared build never applies
@@ -327,7 +327,7 @@ absent on this branch: without `dev_server_port` in `gradle.properties` the shar
 `stopServer`.
 
 `docs/TESTING.md` governs what a pass is worth. A green build proves nothing about mixin targets, so
-every stage that adds an injection is checked with `scripts/devserver.sh rkc/mods/serverside-trains
+every stage that adds an injection is checked with `scripts/devserver.sh rkc/mods/polytrains
 mixins` before its in-world observation.
 
 **The meter S4 stands up measures spacing on the ground, not the ribbon's own residual.** That
