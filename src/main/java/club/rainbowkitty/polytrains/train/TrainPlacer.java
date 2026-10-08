@@ -81,10 +81,6 @@ public final class TrainPlacer {
     // slack for the spread of a flight, short of the link's full length.
     private static final double AIR_SLACK = 2.5;
 
-    // How far below the end of the track its train left by a car may sit and still be resting on
-    // that end's lip rather than come down.
-    private static final double LIP_DROP = 0.5;
-
     // Ticks between full passes for a train holdStill keeps, staggered per train: the most a
     // missed wake can leave one standing.
     private static final int STILL_RECHECK_TICKS = 20;
@@ -258,9 +254,12 @@ public final class TrainPlacer {
         // Nor is a car still on the ramp laid onto the track below; it runs on off the ramp.
         boolean[] departing = departing(train, cars, leadIndex, fromHead, flying);
         boolean[] placedElsewhere = flying.clone();
+        // Flown last tick and down now: drawn to its seat from where it came down.
+        boolean[] landed = new boolean[cars.size()];
 
         for (int i = 0; i < cars.size(); i++) {
             placedElsewhere[i] |= departing[i];
+            landed[i] = i != leadIndex && !placedElsewhere[i] && flown(cars.get(i));
         }
 
         Double nextArc = ribbon.arcOf(cars.get(leadIndex + fromHead));
@@ -274,7 +273,7 @@ public final class TrainPlacer {
 
         // Where each pair stands, read once: nothing below moves a car before it is placed.
         double[] stood = train.stood(TrainCoupling.maxLinkDistance());
-        double[] gaps = train.nextGaps(target, stood, speed);
+        double[] gaps = train.nextGaps(target, stood, speed, landed);
         double travelSign = travelSign(leader, ribbon.tangentAt(leadArc));
         int order = train.orderSign();
 
@@ -357,7 +356,7 @@ public final class TrainPlacer {
         // A pressing or packing train still widens against zero speed: paying that widening into
         // gaps it has nowhere to drive a car into would pin it to the wall it is pressing on.
         if (pressing || packing) {
-            gaps = train.nextGaps(target, stood, 0.0);
+            gaps = train.nextGaps(target, stood, 0.0, landed);
             offsets = offsets(ribbon, gaps, leadArc, order, fromHead);
         }
 
@@ -443,7 +442,7 @@ public final class TrainPlacer {
         if (contact != null && contact.depth() > EPSILON) {
             // Run into something, a train lengthens no further into it.
             if (!pressing && !packing) {
-                gaps = train.nextGaps(target, stood, 0.0);
+                gaps = train.nextGaps(target, stood, 0.0, landed);
                 arcs = arcsFor(ribbon, gaps, leadArc, order, fromHead, leadIndex, tailIndex);
                 offsets = arcs.offsets();
                 headArc = arcs.headArc();
@@ -747,7 +746,7 @@ public final class TrainPlacer {
         // The old movement casts whatever block a car stands on to a rail, so it releases instead.
         if (!(leader.level() instanceof ServerLevel level)
                 || !(leader.getBehavior() instanceof NewMinecartBehavior)
-                || leader.isOnRails() || leader.onGround() || ribbon.isEmpty()) {
+                || leader.isOnRails() || ribbon.isEmpty()) {
             return false;
         }
 
@@ -756,6 +755,7 @@ public final class TrainPlacer {
 
         // Past the end as arcOfLeader reads it, so the two never disagree.
         if (runSign == 0.0 || !(ribbon.pastEnd(leader.position(), farEnd) > 0.0)
+                || leader.onGround() && !ribbon.atLip(leader, farEnd)
                 || ribbon.blockedBeyond(level, farEnd)) {
             return false;
         }
@@ -1040,17 +1040,7 @@ public final class TrainPlacer {
     // Whether car rests on the support just past the end its train left by, which vanilla reads
     // as ground: a car leaving slowly touches it as its leading car did.
     private static boolean atLip(Train.@Nullable Departure departure, AbstractMinecart car) {
-        if (departure == null) {
-            return false;
-        }
-
-        TrackRibbon ribbon = departure.ribbon();
-        double past = ribbon.pastEnd(car.position(), departure.farEnd());
-        Vec3 endPosition = ribbon.positionAt(
-                departure.farEnd() ? ribbon.farArc() : ribbon.nearArc());
-
-        return past >= -EPSILON && past <= car.getBbWidth() && endPosition != null
-                && car.getY() > endPosition.y - LIP_DROP;
+        return departure != null && departure.ribbon().atLip(car, departure.farEnd());
     }
 
     // Flies on, front first, the cars still in the air behind a train come back onto its track,

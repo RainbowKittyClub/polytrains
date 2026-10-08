@@ -66,6 +66,10 @@ public final class TrackRibbon {
     // rather than the same place a lap on. One node's worth of track, with slack.
     private static final double CONTINUITY = 1.5;
 
+    // How far below an end of the track a car may sit and still be resting on that end's lip
+    // rather than come down.
+    private static final double LIP_DROP = 0.5;
+
     // The turn a right angle is worth, so that a bend is counted in right angles.
     private static final double RIGHT_ANGLE = Math.PI / 2.0;
 
@@ -291,8 +295,8 @@ public final class TrackRibbon {
             best = null;
         }
 
-        // The clamped projection pins a leader leaving an end at that end, so one in the air past
-        // it is off this ribbon, not a car's width later.
+        // The clamped projection pins a leader leaving an end at that end, so one flown past it is
+        // off this ribbon, not a car's width later.
         if (best != null && leavesEnd(leader, best)) {
             best = null;
         }
@@ -320,17 +324,17 @@ public final class TrackRibbon {
         return Math.abs(travel) > EPSILON && Math.signum(travel) != Math.signum(arc - leaderArc);
     }
 
-    // Whether a leading car read at arc has flown off the end it sits at: in the air under the
-    // new movement, past that end and going on out. A car resting on the lip still reads there.
+    // Whether a leading car read at arc has flown off the end it sits at: off its rails under the
+    // new movement, in the air or touching the lip, past that end and going on out.
     private boolean leavesEnd(AbstractMinecart leader, double arc) {
-        if (!(leader.getBehavior() instanceof NewMinecartBehavior)
-                || leader.isOnRails() || leader.onGround()) {
+        if (!(leader.getBehavior() instanceof NewMinecartBehavior) || leader.isOnRails()) {
             return false;
         }
 
         boolean farEnd = Math.abs(arc - farArc()) <= EPSILON;
 
-        if (!farEnd && Math.abs(arc - nearArc()) > EPSILON) {
+        if (!farEnd && Math.abs(arc - nearArc()) > EPSILON
+                || leader.onGround() && !atLip(leader, farEnd)) {
             return false;
         }
 
@@ -364,6 +368,19 @@ public final class TrackRibbon {
         Vec3 outward = farEnd ? heading : heading.reverse();
 
         return position.horizontal().subtract(endPoint.horizontal()).dot(outward);
+    }
+
+    /**
+     * Whether {@code car} rests on the support just past the far or near end of this ribbon, which
+     * vanilla reads as ground: a car leaving that end slowly touches it before it falls. Reads no
+     * world.
+     */
+    public boolean atLip(AbstractMinecart car, boolean farEnd) {
+        double past = pastEnd(car.position(), farEnd);
+        Vec3 endPosition = positionAt(farEnd ? farArc() : nearArc());
+
+        return past >= -EPSILON && past <= car.getBbWidth() && endPosition != null
+                && car.getY() > endPosition.y - LIP_DROP;
     }
 
     /**
