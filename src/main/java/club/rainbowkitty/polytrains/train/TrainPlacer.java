@@ -643,8 +643,8 @@ public final class TrainPlacer {
      *
      * <p>A fixed point of {@link #seat}: whatever wakes a parked train reaches its leading car's
      * movement, a car's position, the arc frame, a cart in reach, or a player in reach. A switch
-     * thrown near it, a shove, a strike or another train moving in reach wakes it outright, and a
-     * full pass now and then covers anything missed.
+     * thrown near it, a shove, a strike, another train moving in reach or a cart added in reach
+     * wakes it outright, and a full pass now and then covers anything missed.
      */
     public static boolean holdStill(ServerLevel level, Train train) {
         long tick = level.getGameTime();
@@ -735,6 +735,17 @@ public final class TrainPlacer {
         train.restampStill(tick);
 
         return true;
+    }
+
+    /**
+     * Wakes every train {@link #holdStill} may be keeping with a car in reach of {@code cart},
+     * which has just been added to its level: a cart that arrives without moving would wake none.
+     */
+    public static void wakeTrainsNear(AbstractMinecart cart) {
+        for (AbstractMinecart other : cart.level().getEntitiesOfClass(AbstractMinecart.class,
+                cart.getBoundingBox().inflate(RUN_SHELL), near -> near != cart)) {
+            Train.wakeTrainOf(other);
+        }
     }
 
     // Runs the cars still seated on after a leading car flown off the ribbon's end, and has each

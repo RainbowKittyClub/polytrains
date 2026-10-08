@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import eu.pb4.polymer.resourcepack.api.PolymerResourcePackUtils;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
@@ -27,6 +28,7 @@ import club.rainbowkitty.polytrains.rule.ModGameRules;
 import club.rainbowkitty.polytrains.rule.PhysicsGameRules;
 import club.rainbowkitty.polytrains.tender.CoalTenders;
 import club.rainbowkitty.polytrains.train.TrainMeter;
+import club.rainbowkitty.polytrains.train.TrainPlacer;
 import club.rainbowkitty.polytrains.util.MinecartHelper;
 import club.rainbowkitty.polytrains.util.ModText;
 
@@ -77,6 +79,12 @@ public class Polytrains implements ModInitializer {
 
         // Sampled after each level's tick, once every car of every train has moved.
         ServerTickEvents.END_LEVEL_TICK.register(TrainMeter::sample);
+
+        ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> {
+            if (entity instanceof AbstractMinecart cart) {
+                TrainPlacer.wakeTrainsNear(cart);
+            }
+        });
 
         CreativeModeTabEvents.modifyOutputEvent(REDSTONE_BLOCKS_TAB)
                 .register(RailBlocks::addCreativeTabEntries);
