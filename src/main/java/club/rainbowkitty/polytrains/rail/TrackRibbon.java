@@ -76,6 +76,15 @@ public final class TrackRibbon {
     // The block past one end of the ribbon that its track would carry on into, and the way out.
     private record Beyond(BlockPos pos, Vec3 outwardDirection) {}
 
+    /**
+     * One point of recorded track.
+     *
+     * @param position where the track is, at the height the rail runs there
+     * @param block the rail block the track runs through there
+     * @param tangent which way the track runs, flat, or null where that block's chord has no length
+     */
+    public record Spot(Vec3 position, BlockPos block, @Nullable Vec3 tangent) {}
+
     // The rail blocks and crossing points this train has traversed, in order.
     private final NodeRing nodes = new NodeRing();
 
@@ -473,12 +482,17 @@ public final class TrackRibbon {
     public @Nullable Vec3 positionAt(double arc) {
         Node node = nodeAt(arc);
 
-        if (node == null) {
-            return null;
-        }
+        return node == null ? null : positionOn(node, arc);
+    }
 
-        double fraction = node.span() < EPSILON ? 0.0 : (arc - node.arc()) / node.span();
-        return node.entry().lerp(node.exit(), fraction);
+    /**
+     * {@link #positionAt}, {@link #blockAt} and {@link #tangentAt} at arc length {@code arc} from
+     * one lookup, or null if that is off the recorded ends: everything a car seated there needs.
+     */
+    public @Nullable Spot spotAt(double arc) {
+        Node node = nodeAt(arc);
+
+        return node == null ? null : new Spot(positionOn(node, arc), node.block(), heading(node));
     }
 
     /**
@@ -1049,6 +1063,12 @@ public final class TrackRibbon {
         double run = node.exit().subtract(node.entry()).length();
 
         return run < EPSILON ? 1.0 : node.span() / run;
+    }
+
+    // Where along node's chord arc falls, at the height the rail runs there.
+    private static Vec3 positionOn(Node node, double arc) {
+        double fraction = node.span() < EPSILON ? 0.0 : (arc - node.arc()) / node.span();
+        return node.entry().lerp(node.exit(), fraction);
     }
 
     // Which way a node's own chord runs, or null where its two edge midpoints coincide. Flat: a
