@@ -47,7 +47,8 @@ public final class MinecartHelper {
     /**
      * Answers one use of a minecart. The wrench does whichever job it is set to; shift-clicking
      * with anything else tries to craft the cart into whatever that item upgrades it to; a plain
-     * click on the lever's half of a furnace cart throws or releases its brake.
+     * click on the lever's half of a furnace cart throws or releases its brake, unless it offers
+     * the cart fuel, which feeds it as anywhere else on the cart.
      *
      * @param hitResult where on the cart's box the click landed, or null if that is not known
      */
@@ -63,15 +64,12 @@ public final class MinecartHelper {
             return InteractionResult.PASS;
         }
 
-        // As the lever itself once answered: the main hand's plain click, whatever it holds but
-        // the wrench. A shift-click or the wrench is for the cart wherever it lands.
+        // The lever's own box takes most clicks meant for it; this is the rest, landing on the cart
+        // below that box or made by a player holding fuel, from whom the box is hidden.
         if (minecart instanceof MinecartFurnace
                 && hitResult != null
-                && hand == InteractionHand.MAIN_HAND
-                && !player.isShiftKeyDown()
-                && !WrenchItems.isWrench(player.getMainHandItem())
-                && ChooChooPartsDisplay.onLeverSide(
-                        minecart, hitResult.getLocation().subtract(minecart.position()))) {
+                && ChooChooPartsDisplay.throwsLever(minecart, player, hand, player.isShiftKeyDown(),
+                        hitResult.getLocation().subtract(minecart.position()))) {
             if (level instanceof ServerLevel serverLevel) {
                 BrakeLevers.toggle(minecart);
                 EntityAttachments.setAnsweredUseAt(player, serverLevel.getGameTime());

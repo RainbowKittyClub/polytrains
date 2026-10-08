@@ -103,25 +103,39 @@ was, possibly in chunks that client has not loaded and so never ticks into its s
 `CargoDisplayHolder` has the same gap for every holder built on it, the tender's included; that fix
 belongs there.
 
-## S4 — The choo-choo parts, clicked through the cart — **prototype, in game check pending**
+## S4 — The choo-choo parts and their lever box — **prototype, in game check pending**
 
 **Build.** `display/ChooChooPartsDisplay` replaces S2's lever, riser and slime with one item display:
 the `choo_choo_parts` group of `art/furnace_minecart.bbmodel` (smokestack, whistle, brake lever),
 baked by `scripts/bbmodel-group-to-item-model.py` into `choo_choo_parts_brake_on` (as drawn) and
 `choo_choo_parts_brake_off` (`--turn brake_lever z 45`). The model was built on a copy of vanilla's
-cart and furnace, door on -x, so its axes are the cart's frame and one transform places it. Nothing
-virtual is clicked: `MinecartHelper.useMinecart` reads where on the cart's own box a click landed
-(Fabric's `EntityHitResult`, the packet's location plus the cart's position), and a plain main-hand
-click on the lever's half — frame +z, the cart's left as it faces its front: the left side and the
-left halves of the front, back and top — toggles the brake. Anything else on the cart is as before.
+cart and furnace, door on -x, so its axes are the cart's frame and one transform places it.
+
+The lever is clicked through an interaction box riding the cart: 1.0 wide, from the passenger point
+(0.1875) to 1.0625, so a client draws it on the cart every frame, and a click on the cart above its
+foot meets the box first. A plain main-hand click on its lever half — frame +z, the cart's left as
+it faces its front: the left side and the left halves of the front, back and top — toggles the brake
+(`throwsLever`); anything else is redirected to the cart (`InteractionHandler.redirect`, which
+replays it through `handleInteract`, so Fabric's `UseEntityCallback` still runs). A click on the cart
+itself is answered by the same rule in `MinecartHelper.useMinecart` from where on the cart's box it
+landed (Fabric's `EntityHitResult`: the packet's location plus the cart's position).
+
+Why a box at all, when S4 first read the cart's own: a client answers a click on a furnace cart
+itself before the server hears of it, and the client mod Sounds (`sounds-2.5.1`) plays its "Furnace
+Minecart crackles" from a `TAIL` inject on `MinecartFurnace.interact` on every such click, fuel or
+not. Only a click that lands on another entity escapes it. Fuel goes past the box: a player holding
+fuel the cart would take (`FurnaceFuel.feeds`) is told, alone, that the box has no size, so their
+click lands on the cart, feeds it, and crackles as Sounds means it to. Left over: below the box's
+foot, the cart's lowest 0.1875 is still the cart's own, lever half and crackle included.
+
 A placed furnace cart is turned round (`MinecartHelper.placementLook`), its front, the door, to the
 player.
 
 **Done when (observed in game, vanilla client).** The parts stand on every furnace cart and stay on
 it as it moves, turns and climbs; the lever stands upright when thrown and tips 45° toward the door
-when released; a click on the lever's half flips it and brakes the train, a click on the other half
-fuels or otherwise answers as the cart did; a furnace cart placed from either end of a rail faces
-its placer.
+when released; a click on the lever's half flips it and brakes the train, with no crackle from
+Sounds; a click holding fuel feeds the cart wherever it lands, crackling; a click on the other half
+answers as the cart did; a furnace cart placed from either end of a rail faces its placer.
 
 ## S3 — Documentation — **done**
 

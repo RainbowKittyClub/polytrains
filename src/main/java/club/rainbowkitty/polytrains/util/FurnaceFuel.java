@@ -9,6 +9,7 @@ import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemUtils;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Level;
 
 import club.rainbowkitty.polytrains.mixin.MinecartFurnaceAccessor;
 import club.rainbowkitty.polytrains.rule.ModGameRules;
@@ -45,6 +46,16 @@ public final class FurnaceFuel {
         return level.getGameRules().get(ModGameRules.FURNACES_CAN_USE_ALL_FUELS)
                 ? burnDuration(level, stack)
                 : 0;
+    }
+
+    /**
+     * Whether a furnace cart would take {@code stack} from a hand, by {@link #cartBurnDuration}. A
+     * client, which has no game rules to read, knows only coal and charcoal.
+     */
+    public static boolean feeds(Level level, ItemStack stack) {
+        return level instanceof ServerLevel serverLevel
+                ? cartBurnDuration(serverLevel, stack) > 0
+                : burnsUnaided(stack);
     }
 
     /**
