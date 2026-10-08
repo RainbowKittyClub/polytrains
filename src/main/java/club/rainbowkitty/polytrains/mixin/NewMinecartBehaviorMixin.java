@@ -54,7 +54,7 @@ public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccess
             Vec3 movement, RailShape shape, CallbackInfoReturnable<Vec3> cir) {
         AbstractMinecart cart = polytrains$cart();
         Vec3 pull = TrainCoupling.slopePull(
-                cart, movement, cir.getReturnValue().subtract(movement));
+                cart, movement, cir.getReturnValue().subtract(movement), shape);
 
         if (pull != null) {
             cir.setReturnValue(movement.add(pull));
@@ -67,7 +67,7 @@ public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccess
     @Inject(method = "calculateHaltTrackSpeed", at = @At("RETURN"), cancellable = true)
     private void polytrains$sharedHalt(
             Vec3 movement, BlockState state, CallbackInfoReturnable<Vec3> cir) {
-        Vec3 braked = TrainCoupling.braked(polytrains$cart(), movement);
+        Vec3 braked = TrainCoupling.braked(polytrains$cart(), movement, state);
 
         if (braked != null) {
             cir.setReturnValue(braked);
@@ -80,7 +80,7 @@ public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccess
     @Inject(method = "calculateBoostTrackSpeed", at = @At("RETURN"), cancellable = true)
     private void polytrains$sharedBoost(
             Vec3 movement, BlockPos pos, BlockState state, CallbackInfoReturnable<Vec3> cir) {
-        Vec3 boosted = TrainCoupling.boostPull(polytrains$cart(), movement);
+        Vec3 boosted = TrainCoupling.boostPull(polytrains$cart(), movement, state);
 
         if (boosted != null) {
             cir.setReturnValue(boosted);

@@ -44,6 +44,7 @@ public final class BrakeLevers {
         boolean thrown = !EntityAttachments.leverSet(engine);
 
         setAll(trainOf(engine), thrown);
+        Train.forgetCensus(engine);
         engine.level().playSound(null, engine.getX(), engine.getY() + CLICK_HEIGHT, engine.getZ(),
                 SoundEvents.LEVER_CLICK, SoundSource.NEUTRAL, CLICK_VOLUME,
                 thrown ? THROWN_PITCH : RELEASED_PITCH);
@@ -61,6 +62,7 @@ public final class BrakeLevers {
         for (AbstractMinecart car : cars) {
             if (EntityAttachments.leverSet(car)) {
                 setAll(cars, true);
+                Train.forgetCensus(cart);
                 return;
             }
         }
