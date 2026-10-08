@@ -38,6 +38,7 @@ import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.polytrains.Polytrains;
 import club.rainbowkitty.polytrains.rail.RailPath;
+import club.rainbowkitty.polytrains.rail.TrackRibbon;
 import club.rainbowkitty.polytrains.train.TrainCoupling;
 import club.rainbowkitty.polytrains.train.TrainMeter;
 
@@ -466,7 +467,15 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
             boolean movedByPiston) {
         super.onPlace(state, level, pos, oldState, movedByPiston);
 
-        if (oldState.is(this) && oldState.getValue(SHAPE) != state.getValue(SHAPE)) {
+        boolean reshaped = oldState.is(this) && oldState.getValue(SHAPE) != state.getValue(SHAPE);
+
+        // Counted first, so the walk below records the count it has seen. A new switch counts as
+        // well: track recorded across the rail it replaced can be thrown by it.
+        if (!level.isClientSide() && (reshaped || !oldState.is(this))) {
+            TrackRibbon.switchChanged();
+        }
+
+        if (reshaped) {
             TrainCoupling.forgetThrown(level, pos);
         }
     }

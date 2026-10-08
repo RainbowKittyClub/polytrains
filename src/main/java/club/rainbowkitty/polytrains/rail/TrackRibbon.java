@@ -50,6 +50,13 @@ public final class TrackRibbon {
     // is built on whichever thread a cart ticks on.
     private static final AtomicInteger EPOCH_COUNTER = new AtomicInteger();
 
+    // Bumped whenever a switch is laid or changes shape, so a ribbon looks for thrown switches only
+    // after one has. Shared by every level: counting another level's switch costs one extra walk.
+    private static final AtomicInteger SWITCH_CHANGES = new AtomicInteger();
+
+    // The most ticks a ribbon goes between walks, for a switch written with block updates off.
+    private static final int FULL_WALK_TICKS = 20;
+
     // Below this an arc offset or a chord length is treated as zero.
     private static final double EPSILON = 1.0E-5;
 
@@ -92,6 +99,12 @@ public final class TrackRibbon {
     // so state a car holds against one numbering is never mistaken for state against another —
     // which the reset count alone cannot manage, two ribbons on their first both answering it.
     private int arcEpoch = EPOCH_COUNTER.incrementAndGet();
+
+    // The switch count and tick of the last walk for thrown switches, and whether it found one
+    // under the train, which has to be cut the tick the train leaves it. Not copied: -1 walks.
+    private int walkedChanges = -1;
+    private long walkedAt;
+    private boolean thrownWithin;
 
     /** A ribbon with no track on it. */
     public TrackRibbon() {
@@ -598,6 +611,17 @@ public final class TrackRibbon {
             return;
         }
 
+        int changes = SWITCH_CHANGES.get();
+        long now = level.getGameTime();
+
+        // A switch recorded unthrown stays so until one changes, which onPlace counts.
+        if (!thrownWithin && changes == walkedChanges && now - walkedAt < FULL_WALK_TICKS) {
+            return;
+        }
+
+        walkedChanges = changes;
+        walkedAt = now;
+
         Node farCut = firstThrown(level, nodes.iterator(), node -> node.arc() > high + EPSILON);
         Node nearCut = firstThrown(level, nodes.descendingIterator(),
                 node -> node.arc() + node.span() < low - EPSILON);
@@ -610,6 +634,28 @@ public final class TrackRibbon {
         while (nearCut != null && nodes.removeFirst() != nearCut) {
             continue;
         }
+
+        thrownWithin = anyThrownWithin(level, low, high);
+    }
+
+    /**
+     * Counts a switch laid or changed in shape, so every ribbon's next {@link #forgetThrown}
+     * reads its track again rather than trusting the last reading.
+     */
+    public static void switchChanged() {
+        SWITCH_CHANGES.incrementAndGet();
+    }
+
+    // Whether any node on the train's own track between low and high is a thrown switch.
+    private boolean anyThrownWithin(Level level, double low, double high) {
+        for (Node node : nodes) {
+            if (node.arc() <= high + EPSILON && node.arc() + node.span() >= low - EPSILON
+                    && thrown(level, node)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Walking outward, the first node past the train that is a thrown switch, or null. Only nodes
