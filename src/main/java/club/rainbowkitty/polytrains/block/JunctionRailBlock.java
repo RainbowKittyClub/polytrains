@@ -70,13 +70,11 @@ public class JunctionRailBlock extends BaseRailBlock implements PolymerTexturedB
      *
      * <p>A train's leading car is laid by the track its train recorded there instead, since a knock
      * from a train on the other arm, or an engine round a bend aiming along it, would turn it onto
-     * that arm and off its train's track.
+     * that arm and off its train's track. {@code state} is the block at {@code pos}, the cart's.
      */
-    public static void steer(Level level, AbstractMinecart cart) {
-        BlockPos pos = cart.getCurrentBlockPosOrRailBelow();
-
+    public static void steer(Level level, AbstractMinecart cart, BlockPos pos, BlockState state) {
         // Asked here first: the heading below walks the train, and most carts are on no junction.
-        if (level.getBlockState(pos).getBlock() instanceof JunctionRailBlock) {
+        if (state.getBlock() instanceof JunctionRailBlock) {
             Vec3 recordedHeading = TrainCoupling.recordedHeading(cart, pos);
 
             lay(level, pos, recordedHeading != null ? recordedHeading

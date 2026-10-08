@@ -159,10 +159,14 @@ public enum CartInteraction {
      * is the whole of what the pickup site has to ask.
      */
     public static boolean gathers(AbstractMinecart cart) {
+        // Before the rule read: a cart built to carry nothing, or already carrying, never gathers.
+        if (!cart.isRideable() || cart.isVehicle()) {
+            return false;
+        }
+
         double speedLimit = threshold(cart, ModGameRules.CART_PICKUP_SPEED, 0.0);
 
-        return cart.isRideable() && !cart.isVehicle()
-                && cart.getDeltaMovement().lengthSqr() < speedLimit * speedLimit;
+        return cart.getDeltaMovement().lengthSqr() < speedLimit * speedLimit;
     }
 
     /** Whether the cart's movement is stopped by it — what {@code canCollideWith} answers. */

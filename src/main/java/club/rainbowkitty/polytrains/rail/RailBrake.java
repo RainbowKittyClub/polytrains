@@ -94,9 +94,10 @@ public final class RailBrake {
     /**
      * Keeps {@code cart}'s brake state current: the heading it arrived on while a brake holds it,
      * and the kick that sends it off again once the signal returns. Called once a tick per cart,
-     * before it moves, so the movement read is the one it came in on.
+     * before it moves, so the movement read is the one it came in on. {@code rail} is the block
+     * under it, which the caller has already read.
      */
-    public static void tick(ServerLevel level, AbstractMinecart cart) {
+    public static void tick(ServerLevel level, AbstractMinecart cart, BlockState rail) {
         // A furnace cart keeps its heading in vanilla's own impulse, which the parking brake
         // suspends rather than clears — it already leaves on that, or on any re-aim given while
         // it waited, and remembering a heading here would overrule either.
@@ -110,8 +111,6 @@ public final class RailBrake {
             forget(cart);
             return;
         }
-
-        BlockState rail = level.getBlockState(cart.getCurrentBlockPosOrRailBelow());
 
         if (!rail.is(Blocks.POWERED_RAIL)) {
             // A cart that has left the rail is not waiting on it, and a heading kept past that

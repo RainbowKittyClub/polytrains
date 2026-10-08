@@ -525,12 +525,23 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         // A seated cart is put on its track rather than driven along it, so it reads no rail shape
         // and has none to lay. Steering from one would write the world out of a position the placer
         // chose and a heading it copied off the leader, for a block the cart may not even be on.
-        if (!TrainPlacer.seated(self)) {
-            JunctionRailBlock.steer(serverLevel, self);
-            SwitchedRailBlock.steer(serverLevel, self);
-        }
+        boolean seated = TrainPlacer.seated(self);
+        boolean watchesBrake = !(self instanceof MinecartFurnace);
 
-        RailBrake.tick(serverLevel, self);
+        // One read for both; a seated furnace cart needs neither, so it reads nothing.
+        if (!seated || watchesBrake) {
+            BlockPos railPos = self.getCurrentBlockPosOrRailBelow();
+            BlockState rail = serverLevel.getBlockState(railPos);
+
+            if (!seated) {
+                JunctionRailBlock.steer(serverLevel, self, railPos, rail);
+                SwitchedRailBlock.steer(serverLevel, self);
+            }
+
+            if (watchesBrake) {
+                RailBrake.tick(serverLevel, self, rail);
+            }
+        }
 
         // Each cart draws exactly the one chain, to whichever cart it follows.
         AbstractMinecart parent = TrainCoupling.tickTrain(serverLevel, self);
