@@ -13,7 +13,6 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 
-
 /** Holding a train's position updates back so its cars are replayed on one beat. */
 @Mixin(ServerEntity.class)
 public abstract class ServerEntityMixin {
