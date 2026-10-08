@@ -576,9 +576,10 @@ public final class TrackRibbon {
 
     // Whether node is a switch that no longer joins the two edges recorded across it.
     private static boolean thrown(Level level, Node node) {
-        BlockState state = level.getBlockState(node.block());
+        // A node in an unloaded chunk is not thrown: nothing can throw a switch there.
+        BlockState state = RailPath.loadedState(level, node.block());
 
-        if (!(state.getBlock() instanceof SwitchedRailBlock)) {
+        if (state == null || !(state.getBlock() instanceof SwitchedRailBlock)) {
             return false;
         }
 
@@ -630,7 +631,12 @@ public final class TrackRibbon {
             return false;
         }
 
-        BlockState past = level.getBlockState(beyond.pos());
+        BlockState past = RailPath.loadedState(level, beyond.pos());
+
+        // Unloaded is not blocked: no ticking car can be within reach of it.
+        if (past == null) {
+            return false;
+        }
 
         return !enterable(past, beyond.outwardDirection())
                         && SwitchedRailBlock.held(level, beyond.pos())
@@ -645,9 +651,9 @@ public final class TrackRibbon {
      */
     public void openSwitchBeyond(ServerLevel level, boolean farEnd, AbstractMinecart car) {
         Beyond beyond = beyondEnd(level, farEnd);
+        BlockState state = beyond == null ? null : RailPath.loadedState(level, beyond.pos());
 
-        if (beyond != null
-                && !enterable(level.getBlockState(beyond.pos()), beyond.outwardDirection())) {
+        if (state != null && !enterable(state, beyond.outwardDirection())) {
             SwitchedRailBlock.steerOnto(level, beyond.pos(),
                     Direction.getApproximateNearest(beyond.outwardDirection()), car);
         }
@@ -912,8 +918,11 @@ public final class TrackRibbon {
                 ? null : onward(level, end.block(), outwardDirection);
 
         // Not stopped by track this ribbon already holds: a circuit re-enters its own blocks a lap
-        // on, and refusing to walk there leaves a looping train with no arc to sit at.
-        if (next == null || !enterable(level.getBlockState(next), outwardDirection)) {
+        // on, and refusing to walk there leaves a looping train with no arc to sit at. Stopped by
+        // an unloaded chunk, without loading it; extendTo asks again next tick.
+        BlockState nextState = next == null ? null : RailPath.loadedState(level, next);
+
+        if (nextState == null || !enterable(nextState, outwardDirection)) {
             return false;
         }
 
