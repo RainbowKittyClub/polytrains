@@ -793,6 +793,52 @@ public final class TrackRibbon {
         }
     }
 
+    /**
+     * Drops recorded track off either end whose rail has since been taken up, so the ribbon ends
+     * where the track now does. Only the ends: a seat on a gap mid-ribbon already finds no rail.
+     */
+    public void dropTakenUpEnds(Level level) {
+        while (nodes.size() > 1 && takenUp(level, nodes.getLast().block())) {
+            nodes.removeLast();
+        }
+
+        while (nodes.size() > 1 && takenUp(level, nodes.getFirst().block())) {
+            nodes.removeFirst();
+        }
+    }
+
+    /**
+     * The arc of the first joint between recorded blocks, within {@code reach} of {@code fromArc}
+     * going {@code outwardSign}, that a car can no longer cross, or null where the track holds.
+     * Track recorded while open can since have been cut short of either end of the ribbon.
+     */
+    public @Nullable Double barredJoint(
+            Level level, double fromArc, double reach, double outwardSign) {
+        Iterator<Node> walk = outwardSign > 0.0 ? nodes.iterator() : nodes.descendingIterator();
+        Node inner = null;
+
+        while (walk.hasNext()) {
+            Node outer = walk.next();
+
+            if (inner != null) {
+                double jointArc = outwardSign > 0.0 ? outer.arc() : inner.arc();
+                double ahead = (jointArc - fromArc) * outwardSign;
+
+                if (ahead > reach) {
+                    return null;
+                }
+
+                if (ahead >= 0.0 && barred(level, inner.block(), outer.block())) {
+                    return jointArc;
+                }
+            }
+
+            inner = outer;
+        }
+
+        return null;
+    }
+
     /** Whether this ribbon records {@code pos} anywhere along it. */
     public boolean holds(BlockPos pos) {
         for (Node node : nodes) {
@@ -988,6 +1034,29 @@ public final class TrackRibbon {
         }
 
         return nodes.size() > before;
+    }
+
+    // Whether the rail recorded at pos is gone. An unloaded block counts as still there: reading it
+    // would load its chunk, and a train would then pin it every tick.
+    private static boolean takenUp(Level level, BlockPos pos) {
+        return level.isLoaded(pos) && !BaseRailBlock.isRail(level.getBlockState(pos));
+    }
+
+    // Whether a car can no longer run from the rail at inner on to the one at outer: that rail is
+    // gone, or the step between their heights passes through something solid above the lower one.
+    private static boolean barred(Level level, BlockPos inner, BlockPos outer) {
+        if (takenUp(level, outer)) {
+            return true;
+        }
+
+        if (inner.getY() == outer.getY()) {
+            return false;
+        }
+
+        BlockPos gate = (inner.getY() < outer.getY() ? inner : outer).above();
+
+        return level.isLoaded(gate)
+                && !level.getBlockState(gate).getCollisionShape(level, gate).isEmpty();
     }
 
     // Whether a walk heading outwardDirection can go on into the block in state.

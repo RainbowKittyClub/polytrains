@@ -54,6 +54,9 @@ public final class TrainPlacer {
     // of the track.
     private static final double END_SHELL = 0.5;
 
+    // How far past a car a joint it can no longer cross is looked for: past any draw-back.
+    private static final double BARRED_REACH = 2.0;
+
     // Finding where a car clears another's box, by step along the track then halving the last.
     // Stepped by box, since two boxes on a diagonal touch with their middles 1.39 apart.
     private static final double CLEAR_STEP = 0.1;
@@ -1517,8 +1520,16 @@ public final class TrainPlacer {
 
     // The recorded end outwardSign away from fromArc, if nearer than reach and the rail stops
     // there against something solid; null otherwise. Near first, so no far block is ever read.
+    // A joint the track has since been cut at counts as that end, wherever the ribbon goes on to.
     private static @Nullable Double recordedEnd(TrackRibbon ribbon, Level level, double fromArc,
             double reach, double outwardSign) {
+        Double barredArc = ribbon.barredJoint(
+                level, fromArc, Math.min(reach, BARRED_REACH), outwardSign);
+
+        if (barredArc != null) {
+            return barredArc;
+        }
+
         boolean farEnd = outwardSign > 0.0;
         double endArc = farEnd ? ribbon.farArc() : ribbon.nearArc();
 
