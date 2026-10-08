@@ -1395,7 +1395,8 @@ public final class TrainCoupling {
         // record the intervals that would have made the ask smaller.
         double reach = train.length(MAX_LINK_DISTANCE) + 1.0;
 
-        ribbon.extendTo(level, arc - reach, arc + reach);
+        ribbon.extendTo(level, arc - reach, arc + reach,
+                !(movement.lengthSqr() > EPSILON * EPSILON));
 
         // A reset numbered the new ribbon off this movement, so the lie is settled from it as in
         // recordTrack. Unlike there, this car may be bouncing back into its train, so check first.

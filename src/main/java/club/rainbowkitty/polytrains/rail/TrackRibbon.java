@@ -106,6 +106,13 @@ public final class TrackRibbon {
     private long walkedAt;
     private boolean thrownWithin;
 
+    // The end nodes growth last failed off while the train stood, against the switch count and
+    // tick then. Keyed by node, so anything that changes an end asks again.
+    private @Nullable Node nearStop;
+    private @Nullable Node farStop;
+    private int stopsChanges = -1;
+    private long stopsAt;
+
     /** A ribbon with no track on it. */
     public TrackRibbon() {
     }
@@ -788,16 +795,29 @@ public final class TrackRibbon {
      * been linked, grown or reset has nowhere to seat the cars it already has — and it is standing
      * on that track the whole time it has none recorded. Walking stops at whatever the track does:
      * a dead end, or a block that is not rail.
+     *
+     * <p>An end that would not grow while the train stood is not walked again until it moves, a
+     * switch changes, or {@value #FULL_WALK_TICKS} ticks pass.
      */
-    public void extendTo(Level level, double from, double to) {
+    public void extendTo(Level level, double from, double to, boolean still) {
+        int changes = SWITCH_CHANGES.get();
+        long now = level.getGameTime();
+
+        if (!still || changes != stopsChanges || now - stopsAt >= FULL_WALK_TICKS) {
+            nearStop = null;
+            farStop = null;
+            stopsChanges = changes;
+            stopsAt = now;
+        }
+
         boolean nearGrowing = true;
         boolean farGrowing = true;
 
         // One block off each end in turn: grown one after the other, the near end could spend the
         // whole cap before the far end had any.
         while (nearGrowing || farGrowing) {
-            nearGrowing = nearGrowing && nearArc() > from + EPSILON && grow(level, true);
-            farGrowing = farGrowing && farArc() < to - EPSILON && grow(level, false);
+            nearGrowing = nearGrowing && nearArc() > from + EPSILON && growEnd(level, true);
+            farGrowing = farGrowing && farArc() < to - EPSILON && growEnd(level, false);
         }
     }
 
@@ -1064,7 +1084,7 @@ public final class TrackRibbon {
 
         // Not stopped by track this ribbon already holds: a circuit re-enters its own blocks a lap
         // on, and refusing to walk there leaves a looping train with no arc to sit at. Stopped by
-        // an unloaded chunk, without loading it; extendTo asks again next tick.
+        // an unloaded chunk, without loading it; extendTo asks again later.
         BlockState nextState = next == null ? null : RailPath.loadedState(level, next);
 
         if (nextState == null || !enterable(nextState, outwardDirection)) {
@@ -1080,6 +1100,27 @@ public final class TrackRibbon {
         }
 
         return nodes.size() > before;
+    }
+
+    // As grow, skipping an end node it has already failed off since extendTo last forgot them.
+    private boolean growEnd(Level level, boolean nearEnd) {
+        Node end = nodes.isEmpty() ? null : nearEnd ? nodes.getFirst() : nodes.getLast();
+
+        if (end == null || end == (nearEnd ? nearStop : farStop)) {
+            return false;
+        }
+
+        if (grow(level, nearEnd)) {
+            return true;
+        }
+
+        if (nearEnd) {
+            nearStop = end;
+        } else {
+            farStop = end;
+        }
+
+        return false;
     }
 
     // Whether the rail recorded at pos is gone. An unloaded block counts as still there: reading it
