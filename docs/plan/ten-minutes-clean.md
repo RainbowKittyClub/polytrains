@@ -1532,9 +1532,11 @@ ramp every lap. At 40 and 100 every car is off the lip first, so it never shows 
 **Build.** A leader off its rails under the new movement, past an end of its ribbon and going on
 out, is off the ribbon at once rather than a car's width later, in the air or touching the lip's
 support; read at the clamped end on that touch, the cars `followOff` ran on stepped back 0.21 for
-a tick. One stopped on the lip, or down below it, still reads at the end. `carried` is recorded only while the leader is on its rails. `followOff` keeps a copy of
-the ribbon, on the same arc numbering and trimmed to the departing stretch, as the train's
-departure. Once the leader has landed on a restarted ribbon, cars still seated on that copy are
+a tick. One stopped on the lip, or down below it, still reads at the end, as does one on ground
+running on past the end at the track's bed, which rolls to a stop there rather than falls.
+`carried` is recorded only while the leader is on its rails. `followOff` keeps a copy of the
+ribbon, on the same arc numbering and trimmed to the departing stretch, as the train's departure.
+Once the leader has landed on a restarted ribbon, cars still seated on that copy are
 not seated on the new one: after the landed cars are placed and the flying ones flown on, they run
 on off the copy, one leaving a tick, as `followOff` runs them: at the pre-lip speed `followOff` ran
 them at, or the landed train's own where that is faster or the train is held, squeezed, pressing
@@ -1560,7 +1562,8 @@ width and is set back 0.07 to 0.30 for a tick, 8 times in 1,500 ticks.
 to where that car stood before the tick, so it moves on with it; no closer than it stands unless
 already closer than a car. From there the gap eases to the target as any other: narrowing at the
 flat rate, widening out of the leading car's ground, and a gap below a car's width opens from where
-it is rather than being set to it.
+it is rather than being set to it, at no less than the flat rate, so a train stopped or pressing
+there does not hold two cars inside each other.
 
 **Done when.** `3bjump` traced tick by tick for 1,500 ticks at 8, 40 and 100 shows no car of the
 train move backward against its travel, the start and the eastern buffer aside, and no SNAP at 40;

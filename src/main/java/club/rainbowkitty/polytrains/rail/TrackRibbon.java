@@ -23,6 +23,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 import club.rainbowkitty.polytrains.block.SwitchedRailBlock;
 import club.rainbowkitty.polytrains.rule.ModGameRules;
@@ -372,15 +373,40 @@ public final class TrackRibbon {
 
     /**
      * Whether {@code car} rests on the support just past the far or near end of this ribbon, which
-     * vanilla reads as ground: a car leaving that end slowly touches it before it falls. Reads no
-     * world.
+     * vanilla reads as ground: a car leaving that end slowly touches it before it falls. Ground
+     * running on past the end at the track's bed is no lip, since a car there rolls to a stop on
+     * it. Reads only loaded blocks.
      */
     public boolean atLip(AbstractMinecart car, boolean farEnd) {
         double past = pastEnd(car.position(), farEnd);
         Vec3 endPosition = positionAt(farEnd ? farArc() : nearArc());
 
         return past >= -EPSILON && past <= car.getBbWidth() && endPosition != null
-                && car.getY() > endPosition.y - LIP_DROP;
+                && car.getY() > endPosition.y - LIP_DROP
+                && !groundBeyond(car.level(), farEnd, endPosition);
+    }
+
+    // Whether the block past an end, under the track's bed, holds a car up within LIP_DROP of it.
+    // Unloaded counts as ground: a car standing beside it is no reason to load it.
+    private boolean groundBeyond(Level level, boolean farEnd, Vec3 endPosition) {
+        Vec3 outwardDirection = outward(farEnd ? nodes.getLast() : nodes.getFirst(), !farEnd);
+
+        if (outwardDirection == null) {
+            return true;
+        }
+
+        double bed = Math.floor(endPosition.y);
+        BlockPos below = BlockPos.containing(endPosition.x + outwardDirection.x * 0.5, bed - 1.0,
+                endPosition.z + outwardDirection.z * 0.5);
+        BlockState state = RailPath.loadedState(level, below);
+
+        if (state == null) {
+            return true;
+        }
+
+        VoxelShape shape = state.getCollisionShape(level, below);
+
+        return !shape.isEmpty() && below.getY() + shape.max(Direction.Axis.Y) > bed - LIP_DROP;
     }
 
     /**
