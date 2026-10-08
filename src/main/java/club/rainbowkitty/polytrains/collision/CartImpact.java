@@ -2,6 +2,8 @@ package club.rainbowkitty.polytrains.collision;
 
 import java.util.List;
 
+import org.jspecify.annotations.Nullable;
+
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityTypes;
@@ -217,9 +219,11 @@ public final class CartImpact {
         // Onto the car its train is driven by, for the reason slowTrain gives: a placed car's
         // movement is written from that one, so a push left anywhere else is overwritten unused.
         AbstractMinecart pushed = TrainCoupling.drivenCar(struck);
+        // Neither car moves in here, so their places on the ribbon are read once for every carry.
+        TrainCoupling.@Nullable TrackRelay relay = relay(pushed, struck);
         Vec3 pushedMovement = pushed.getDeltaMovement();
         // Read at the struck car, since round a bend the driven car points another way entirely.
-        double aheadComponent = relaid(pushed, struck, pushedMovement).dot(heading);
+        double aheadComponent = toStruck(relay, pushedMovement).dot(heading);
         double cartMass = TrainCoupling.mass(cart);
         double struckMass = TrainCoupling.mass(struck);
         double sharedSpeed = (cartMass * movement.dot(heading) + struckMass * aheadComponent)
@@ -230,7 +234,7 @@ public final class CartImpact {
             return 0.0;
         }
 
-        Vec3 gainedMovement = relaid(struck, pushed, heading.scale(sharedSpeed - aheadComponent));
+        Vec3 gainedMovement = toPushed(relay, heading.scale(sharedSpeed - aheadComponent));
         Vec3 afterMovement = ceilinged(level, pushed, new Vec3(
                 pushedMovement.x() + gainedMovement.x(), pushedMovement.y(),
                 pushedMovement.z() + gainedMovement.z()));
@@ -240,8 +244,8 @@ public final class CartImpact {
 
         // Billed for what reached the struck car along the heading past the rails and the ceiling,
         // and not for the ceiling braking a train that was already over it before the hit.
-        double gainedSpeed = Math.min(relaid(pushed, struck, gainedMovement).dot(heading),
-                relaid(pushed, struck, afterMovement).dot(heading) - aheadComponent);
+        double gainedSpeed = Math.min(toStruck(relay, gainedMovement).dot(heading),
+                toStruck(relay, afterMovement).dot(heading) - aheadComponent);
 
         TrainMeter.strike(cart, struck, movement.dot(heading) - aheadComponent, sharedSpeed,
                 Math.max(0.0, gainedSpeed));
@@ -251,12 +255,23 @@ public final class CartImpact {
         return Math.max(0.0, gainedSpeed) * struckMass;
     }
 
-    // A movement at one car of a train as the other car carries it, along the rails between them;
-    // unchanged for a cart in no train, which has no ribbon to carry it along.
-    private static Vec3 relaid(AbstractMinecart from, AbstractMinecart to, Vec3 movement) {
-        return from.hasLink() && ModGameRules.trainsEnabled(from.level())
-                ? TrainCoupling.alongTrack(from, to, movement)
-                : movement;
+    // The pair's carry along their train's rails, or null for a cart in no train, which has no
+    // ribbon to carry along. pushed is struck's driven car, so the two share a train or are one.
+    private static TrainCoupling.@Nullable TrackRelay relay(
+            AbstractMinecart pushed, AbstractMinecart struck) {
+        return pushed.hasLink() && ModGameRules.trainsEnabled(pushed.level())
+                ? TrainCoupling.relayBetween(pushed, struck)
+                : null;
+    }
+
+    // A movement at the pushed car as the struck car carries it; unchanged without a relay.
+    private static Vec3 toStruck(TrainCoupling.@Nullable TrackRelay relay, Vec3 movement) {
+        return relay == null ? movement : relay.toSecond(movement);
+    }
+
+    // A movement at the struck car as the pushed car carries it; unchanged without a relay.
+    private static Vec3 toPushed(TrainCoupling.@Nullable TrackRelay relay, Vec3 movement) {
+        return relay == null ? movement : relay.toFirst(movement);
     }
 
     // The movement with its horizontal speed scaled down to the car's ceiling: vanilla's clamp on

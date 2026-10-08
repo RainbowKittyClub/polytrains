@@ -83,9 +83,10 @@ public enum CartInteraction {
             // are solid to each other: placed cars (fixed offsets) aren't solid to each other or
             // the leader; unplaced ones are ordinary carts that must stop each other, or an
             // unplaced train piles into its own head. Placed is IGNORE on any track: no walk.
-            boolean placedPair = placed(cart, car);
+            // Membership first: a pair of two trains never needs the placed test at all.
+            boolean oneVehicle = sameVehicle(cart, car);
 
-            if (placedPair && sameVehicle(cart, car)) {
+            if (oneVehicle && placed(cart, car)) {
                 return IGNORE;
             }
 
@@ -96,7 +97,7 @@ public enum CartInteraction {
                 return IGNORE;
             }
 
-            if (!placedPair && sameVehicle(cart, car)) {
+            if (oneVehicle) {
                 return BUFFER;
             }
 
