@@ -189,6 +189,18 @@ public final class TrainCoupling {
     }
 
     /**
+     * {@link #resyncTrain}, unless a sibling of {@code cart} has already resynced the train this
+     * tick: several cars of one train come into view together.
+     */
+    public static void resyncTrainOnce(AbstractMinecart cart) {
+        if (cart.polytrains$resyncAt() == cart.level().getGameTime() + RESYNC_HOLD) {
+            return;
+        }
+
+        resyncTrain(cart);
+    }
+
+    /**
      * The train's drive laid on {@code resisted}, or {@code resisted} unchanged where this car is
      * owed none of it.
      *

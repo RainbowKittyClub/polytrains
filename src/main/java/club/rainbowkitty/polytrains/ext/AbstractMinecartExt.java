@@ -169,4 +169,9 @@ public interface AbstractMinecartExt extends Linkable {
     public default void polytrains$setResyncAt(long gameTime) {
         throw Unmixed.error();
     }
+
+    /** Marks this cart's train to be put back in step on the cart's next tick. */
+    public default void polytrains$setResyncPending(boolean pending) {
+        throw Unmixed.error();
+    }
 }

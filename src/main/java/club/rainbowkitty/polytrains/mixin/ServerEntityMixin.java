@@ -13,7 +13,6 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 
-import club.rainbowkitty.polytrains.train.TrainCoupling;
 
 /** Holding a train's position updates back so its cars are replayed on one beat. */
 @Mixin(ServerEntity.class)
@@ -68,11 +67,11 @@ public abstract class ServerEntityMixin {
     }
 
     // A cart tracked from a different tick to the rest of its train is the case this exists for, so
-    // the train is put back in step the moment one appears rather than waiting to be noticed.
+    // the train is put back in step on the cart's first tick, by when its siblings have loaded too.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void polytrains$resyncOnTrack(CallbackInfo info) {
         if (entity instanceof AbstractMinecart cart && cart.hasLink()) {
-            TrainCoupling.resyncTrain(cart);
+            cart.polytrains$setResyncPending(true);
         }
     }
 }

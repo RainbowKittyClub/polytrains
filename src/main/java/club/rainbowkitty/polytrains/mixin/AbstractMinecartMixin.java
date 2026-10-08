@@ -88,6 +88,10 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     @Unique
     private long polytrains$resyncUntil;
 
+    // Whether this cart's tracker appeared since its last tick, so its train is due a resync.
+    @Unique
+    private boolean polytrains$resyncPendingFlag;
+
     // The train this cart was last placed in, which knows for itself whether it is still good.
     @Unique
     private @Nullable Train polytrains$ownTrain;
@@ -293,6 +297,11 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     @Override
     public void polytrains$setResyncAt(long gameTime) {
         polytrains$resyncUntil = gameTime;
+    }
+
+    @Override
+    public void polytrains$setResyncPending(boolean pending) {
+        polytrains$resyncPendingFlag = pending;
     }
 
     // ---- injections ----
@@ -540,6 +549,14 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         }
 
         RailBrake.tick(serverLevel, self);
+
+        if (polytrains$resyncPendingFlag) {
+            polytrains$resyncPendingFlag = false;
+
+            if (self.hasLink()) {
+                TrainCoupling.resyncTrainOnce(self);
+            }
+        }
 
         // Each cart draws exactly the one chain, to whichever cart it follows.
         AbstractMinecart parent = TrainCoupling.tickTrain(serverLevel, self);
