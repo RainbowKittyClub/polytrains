@@ -1562,14 +1562,9 @@ public final class TrainPlacer {
     }
 
     // Whether any of these cars holds a link to other, read off the slots rather than the walk.
+    // Only the two ends: the walk took in both links of every car between them.
     private static boolean coupledToAny(List<AbstractMinecart> cars, AbstractMinecart other) {
-        for (AbstractMinecart car : cars) {
-            if (Linkable.coupled(car, other)) {
-                return true;
-            }
-        }
-
-        return false;
+        return Linkable.coupled(cars.getFirst(), other) || Linkable.coupled(cars.getLast(), other);
     }
 
     // Where a car may meet another train's cart reaching its seat: its current box joined to the
