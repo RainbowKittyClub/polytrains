@@ -50,7 +50,7 @@ import club.rainbowkitty.polytrains.util.FurnaceFuel;
  *
  * <p>The smokestack and whistle are drawn only while {@code enable_choochoo} is on; off, the same
  * lever is drawn alone, from two more models of its group by itself. While they are drawn and the
- * furnace burns, the stack smokes as a campfire does.
+ * furnace burns, the stack puffs campfire smoke on a steady beat, five times sparser parked.
  *
  * <p>The lever is clicked through a {@link ClickBox} reaching to the furnace's top, so a client's
  * click on it never crackles as one on the furnace cart itself does under the Sounds mod. A click
@@ -68,16 +68,20 @@ public class ChooChooPartsDisplay extends CargoDisplayHolder {
     private static final Identifier LEVER_ON = Polytrains.id("brake_lever_on");
     private static final Identifier LEVER_OFF = Polytrains.id("brake_lever_off");
 
-    // The middle of the smokestack's top, in the cart's frame: the model's stack_top, 4 pixels
-    // square and centred at (2, 0), tops out 21.5 pixels above the cart's position.
-    private static final Vector3f STACK_TOP = new Vector3f(2.0f / 16.0f, 21.5f / 16.0f, 0.0f);
+    // The middle of the smokestack's top, in the cart's frame: the model's stack_top, 5 pixels
+    // square and centred at (1.5, 0) once its group's half turn is taken, tops out 21.5 pixels
+    // above the cart's position. Moves with the model: read it off the baked stack_top.
+    private static final Vector3f STACK_TOP = new Vector3f(1.5f / 16.0f, 21.5f / 16.0f, 0.0f);
 
-    // Smoke as a campfire makes it (CampfireBlockEntity#particleTick, CampfireBlock#makeParticles):
-    // on about one tick in nine, two or three puffs rising at 0.07 a tick. Spread over the stack's
-    // mouth, inside its 4 pixels, rather than a campfire's third of a block.
-    private static final float SMOKE_CHANCE = 0.11f;
+    // Campfire smoke, one puff on a steady beat rather than a campfire's two or three on one tick
+    // in nine (CampfireBlockEntity#particleTick): every 4 ticks while the engine drives, about a
+    // campfire's own average, and every 20 while it burns parked. Rising at a campfire's 0.07 a
+    // tick, from within a pixel of the mouth's middle. Each puff's size, sprite and life are still
+    // the client's to pick (SingleQuadParticle, CampfireSmokeParticle); nothing sent sets them.
+    private static final int SMOKE_INTERVAL = 4;
+    private static final int PARKED_SMOKE_INTERVAL = 20;
     private static final double SMOKE_RISE = 0.07;
-    private static final double SMOKE_SPREAD = 1.5 / 16.0;
+    private static final double SMOKE_SPREAD = 1.0 / 16.0;
 
     // Every item display is drawn half a turn about its own y before its transform applies, which
     // would stand the smokestack over the door; the model is turned back first.
@@ -187,8 +191,11 @@ public class ChooChooPartsDisplay extends CargoDisplayHolder {
 
         smokeTrail.push(cart());
 
+        // Parked is lit but not driving: braked, or held by its train.
+        int interval = cart().polytrains$driving() ? SMOKE_INTERVAL : PARKED_SMOKE_INTERVAL;
+
         if (chooChoo && cart().polytrains$fuel() > 0
-                && cart().getRandom().nextFloat() < SMOKE_CHANCE
+                && cart().tickCount % interval == 0
                 && cart().level() instanceof ServerLevel level) {
             smoke(level);
         }
@@ -197,24 +204,21 @@ public class ChooChooPartsDisplay extends CargoDisplayHolder {
         super.onTick();
     }
 
-    // Two or three puffs from the stack's mouth, where the client is drawing it.
+    // A puff from the stack's mouth, where the client is drawing it.
     private void smoke(ServerLevel level) {
         double lag = renderLag();
         Vector3f mouth = cartFrame(smokeTrail.yaw(lag), smokeTrail.pitch(lag))
                 .transform(new Vector3f(STACK_TOP));
         Vec3 at = smokeTrail.position(lag).add(mouth.x(), mouth.y(), mouth.z());
         RandomSource random = cart().getRandom();
-        int puffs = 2 + random.nextInt(2);
 
         // A count of zero sends one particle whose spread is its velocity, scaled by the speed:
         // straight up at the rise, as a campfire's.
-        for (int i = 0; i < puffs; i++) {
-            level.sendParticles(ParticleTypes.CAMPFIRE_COSY_SMOKE, false, true,
-                    at.x + (random.nextDouble() * 2.0 - 1.0) * SMOKE_SPREAD,
-                    at.y,
-                    at.z + (random.nextDouble() * 2.0 - 1.0) * SMOKE_SPREAD,
-                    0, 0.0, 1.0, 0.0, SMOKE_RISE);
-        }
+        level.sendParticles(ParticleTypes.CAMPFIRE_COSY_SMOKE, false, true,
+                at.x + (random.nextDouble() * 2.0 - 1.0) * SMOKE_SPREAD,
+                at.y,
+                at.z + (random.nextDouble() * 2.0 - 1.0) * SMOKE_SPREAD,
+                0, 0.0, 1.0, 0.0, SMOKE_RISE);
     }
 
     // Whether engine's world draws the smokestack and whistle; read each tick, never kept.

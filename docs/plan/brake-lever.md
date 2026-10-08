@@ -112,9 +112,11 @@ baked by `scripts/bbmodel-group-to-item-model.py` into `choo_choo_parts_brake_on
 cart and furnace, door on -x, so its axes are the cart's frame and one transform places it. The
 smokestack and whistle are gated on `enable_choochoo` (default on); off, the display draws
 `brake_lever_on`/`brake_lever_off`, the `brake_lever` group baked alone, whose lever is the same.
-While they are drawn and the furnace burns, the stack's mouth sends `CAMPFIRE_COSY_SMOKE` as a
-campfire does (one tick in nine, two or three puffs rising at 0.07), placed from a `RenderTrail`
-read at the holder's render lag so it leaves the stack the client draws, not the one ahead of it.
+While they are drawn and the furnace burns, the stack's mouth sends one `CAMPFIRE_COSY_SMOKE` puff
+on a steady beat — every 4 ticks driving, every 20 parked — rising at a campfire's 0.07, placed from
+a `RenderTrail` read at the holder's render lag so it leaves the stack the client draws, not the one
+ahead of it. A puff's size (0.3 to 0.6), sprite and life are the client's own pick; no particle
+packet sets them, so a steadier size would take display-entity puffs instead.
 
 The lever is clicked through an interaction box riding the cart: 1.0 wide, from the passenger point
 (0.1875) to 1.0625, so a client draws it on the cart every frame, and a click on the cart above its
