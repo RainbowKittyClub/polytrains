@@ -90,7 +90,7 @@ public enum CartInteraction {
             // are solid to each other: placed cars (fixed offsets) aren't solid to each other or
             // the leader; unplaced ones are ordinary carts that must stop each other, or an
             // unplaced train piles into its own head.
-            if (TrainCoupling.sameTrain(cart, car) || Linkable.coupled(cart, car)) {
+            if (sameVehicle(cart, car)) {
                 return placed(cart, car) ? IGNORE : BUFFER;
             }
 
@@ -112,6 +112,11 @@ public enum CartInteraction {
      */
     public static boolean participates(AbstractMinecart cart, Entity other) {
         return AbstractBoat.canVehicleCollide(cart, other);
+    }
+
+    /** Whether the pair are cars of one vehicle: of one train, or chained across a border. */
+    public static boolean sameVehicle(AbstractMinecart cart, AbstractMinecart car) {
+        return TrainCoupling.sameTrain(cart, car) || Linkable.coupled(cart, car);
     }
 
     /**

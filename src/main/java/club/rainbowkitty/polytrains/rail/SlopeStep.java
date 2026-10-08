@@ -1,13 +1,16 @@
 package club.rainbowkitty.polytrains.rail;
 
+import java.util.List;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
  * A car's step along its rail, kept on the line of the step when it meets another cart. Vanilla's
@@ -21,6 +24,9 @@ public final class SlopeStep {
     // Closer than this two faces count as touching: the tolerance VoxelShape.collide settles a
     // face at.
     private static final double TOUCH = 1.0E-7;
+
+    // The margin vanilla's getEntityCollisions grows its query box by.
+    private static final double QUERY_MARGIN = 1.0E-7;
 
     // How far off its rail's line, or its step's, a car may stand and still be on it.
     private static final double ON_LINE = 1.0E-3;
@@ -37,14 +43,15 @@ public final class SlopeStep {
      * <p>{@code Entity.move} settles height first, so a step up a slope into another cart's box
      * rises without advancing, one down a slope onto a cart's roof slides across it, and one up a
      * slope under a cart's floor slides beneath it, to be lifted into it by the stepper after. A
-     * step round a corner is held on one axis and slides on along the other.
+     * step round a corner is held on one axis and slides on along the other. {@code solids} are
+     * {@link #solidsAlong} for the step, read before the move.
      */
     public static void moveOnRail(AbstractMinecart cart, Vec3 step, BlockPos railPos,
-            RailShape shape, Runnable move) {
+            RailShape shape, List<Entity> solids, Runnable move) {
         Vec3 start = cart.position();
         // Read before the move, as the move reads it: the pushes the move hands out change
         // speeds, and whether a cart may pass through something can turn on its speed.
-        double reach = reach(cart, step, railPos, shape);
+        double reach = reach(cart, step, railPos, shape, solids);
 
         move.run();
 
@@ -71,6 +78,16 @@ public final class SlopeStep {
     }
 
     /**
+     * The entities that can stop {@code cart} stepping by {@code step}: vanilla's own
+     * {@code getEntityCollisions} query, keeping the entities rather than their boxes' shapes.
+     */
+    public static List<Entity> solidsAlong(AbstractMinecart cart, Vec3 step) {
+        return cart.level().getEntities(cart,
+                cart.getBoundingBox().expandTowards(step).inflate(QUERY_MARGIN),
+                EntitySelector.NO_SPECTATORS.and(cart::canCollideWith));
+    }
+
+    /**
      * Whether {@code movement}, with nothing along the slope laid to {@code shape}, leaves it by
      * its low end. Vanilla sends such a movement out by the shape's first exit and reads it as
      * climbing, aiming a block above that exit: a block above the rail wherever the first exit
@@ -89,7 +106,7 @@ public final class SlopeStep {
     // a car already above its rail, which has no line left to hold to. Blocks are the move's own
     // affair: the collision context it builds for a cart leaves out the ones a slope stands on.
     private static double reach(AbstractMinecart cart, Vec3 step, BlockPos railPos,
-            RailShape shape) {
+            RailShape shape, List<Entity> solids) {
         if (aboveRail(cart.position(), railPos, shape)) {
             return 1.0;
         }
@@ -97,8 +114,8 @@ public final class SlopeStep {
         AABB box = cart.getBoundingBox();
         double reach = 1.0;
 
-        for (VoxelShape solid : cart.level().getEntityCollisions(cart, box.expandTowards(step))) {
-            reach = Math.min(reach, touchAt(box, step, solid.bounds()));
+        for (Entity solid : solids) {
+            reach = Math.min(reach, touchAt(box, step, solid.getBoundingBox()));
         }
 
         return reach;
