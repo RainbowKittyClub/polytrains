@@ -1621,8 +1621,12 @@ public final class TrainPlacer {
                     (float) displacement.length()));
         }
 
-        // Vanilla hangs both off Entity.move, which a placed car never reaches.
-        behavior.pushAndPickupEntities();
+        // Vanilla hangs both off Entity.move, which a placed car never reaches; a cart at rest
+        // never moves, so it pushes and picks up nothing.
+        if (displacement.length() > EPSILON || speed > EPSILON) {
+            behavior.pushAndPickupEntities();
+        }
+
         car.applyEffectsFromBlocks(previousPosition, car.position());
 
         return displacement.length();
