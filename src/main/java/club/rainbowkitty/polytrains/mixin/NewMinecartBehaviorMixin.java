@@ -11,6 +11,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
@@ -163,9 +164,10 @@ public abstract class NewMinecartBehaviorMixin implements MinecartBehaviorAccess
             Operation<Void> move, @Local(argsOnly = true) BlockPos railPos,
             @Local(argsOnly = true) RailShape shape) {
         Vec3 openStep = SwitchedRailBlock.shortOfClosed(cart, railPos, shape, step);
+        List<Entity> solids = SlopeStep.solidsAlong(cart, openStep);
 
-        SlopeStep.moveOnRail(cart, openStep, railPos, shape, () -> {
-            if (!CartImpact.deepens(cart, openStep)) {
+        SlopeStep.moveOnRail(cart, openStep, railPos, shape, solids, () -> {
+            if (!CartImpact.deepens(cart, openStep, solids)) {
                 move.call(cart, moverType, openStep);
             }
         });

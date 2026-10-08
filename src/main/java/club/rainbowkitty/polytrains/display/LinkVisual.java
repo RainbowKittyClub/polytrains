@@ -33,6 +33,9 @@ public final class LinkVisual {
     // chain is built from where the carts were three ticks ago, which is where they are drawn.
     private static final double RENDER_LAG = 3.5;
 
+    // Past this many unmoved ticks every lagged sample aim() reads is the same placement.
+    private static final int STILL_TICKS = (int) Math.ceil(RENDER_LAG) + 1;
+
     // The chain model runs up the block's Y axis through (0.5, *, 0.5), so the transform has to
     // cancel that corner offset after rotating it, or the chain hangs beside the carts.
     private static final Vector3f MODEL_AXIS = new Vector3f(0.5F, 0.0F, 0.5F);
@@ -58,6 +61,15 @@ public final class LinkVisual {
     // Whether both carts have been on the track since the ends were chosen.
     private boolean seated;
 
+    // Each cart's placement last tick, and how many ticks in a row neither has moved.
+    private Vec3 cartSeen;
+    private float cartYawSeen;
+    private float cartPitchSeen;
+    private Vec3 parentSeen;
+    private float parentYawSeen;
+    private float parentPitchSeen;
+    private int stillTicks;
+
     /**
      * Builds the chain between {@code cart} and {@code parent}, ready to draw once ticked.
      *
@@ -80,6 +92,13 @@ public final class LinkVisual {
         // from there rather than from the cart's own position.
         this.seatOffset = cart.getType().getDimensions().attachments()
                 .getClamped(EntityAttachment.PASSENGER, 0, 0.0F);
+
+        this.cartSeen = cart.position();
+        this.cartYawSeen = cart.getYRot();
+        this.cartPitchSeen = cart.getXRot();
+        this.parentSeen = parent.position();
+        this.parentYawSeen = parent.getYRot();
+        this.parentPitchSeen = parent.getXRot();
     }
 
     /** The block display element rendering the chain, for a holder to ride it as a passenger. */
@@ -87,10 +106,17 @@ public final class LinkVisual {
         return chain;
     }
 
-    /** Samples both carts' current position, then re-aims the chain to span their couplers. */
+    /**
+     * Samples both carts' current position, then re-aims the chain to span their couplers unless
+     * neither has moved for long enough that the aim cannot change.
+     */
     public void tick() {
         cartTrail.push(cart);
         parentTrail.push(parent);
+
+        if (stoodStill()) {
+            return;
+        }
 
         // Only worth asking while the ends hold: aim() asks again for itself once they do not.
         if (seated) {
@@ -98,6 +124,26 @@ public final class LinkVisual {
         }
 
         aim();
+    }
+
+    // Whether neither cart has moved or turned for more than STILL_TICKS ticks, counting this one.
+    private boolean stoodStill() {
+        boolean moved = !cart.position().equals(cartSeen)
+                || cart.getYRot() != cartYawSeen
+                || cart.getXRot() != cartPitchSeen
+                || !parent.position().equals(parentSeen)
+                || parent.getYRot() != parentYawSeen
+                || parent.getXRot() != parentPitchSeen;
+
+        cartSeen = cart.position();
+        cartYawSeen = cart.getYRot();
+        cartPitchSeen = cart.getXRot();
+        parentSeen = parent.position();
+        parentYawSeen = parent.getYRot();
+        parentPitchSeen = parent.getXRot();
+        stillTicks = moved ? 0 : Math.min(stillTicks + 1, STILL_TICKS + 1);
+
+        return stillTicks > STILL_TICKS;
     }
 
     // Rewrites the display's transform so the chain spans the two carts' couplers.

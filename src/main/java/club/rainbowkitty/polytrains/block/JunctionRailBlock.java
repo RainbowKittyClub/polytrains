@@ -23,7 +23,6 @@ import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.polytrains.Polytrains;
-import club.rainbowkitty.polytrains.rail.RailPath;
 import club.rainbowkitty.polytrains.train.TrainCoupling;
 
 /** A rail block that allows carts to pass through in both axes without turning. */
@@ -83,8 +82,8 @@ public class JunctionRailBlock extends BaseRailBlock implements PolymerTexturedB
     }
 
     /**
-     * Lays the junction rail {@code cart} is about to cross from {@code pos}, so that it is already
-     * pointing the right way when the cart gets there.
+     * Lays the junction rail at {@code nextPos}, the one a cart is about to cross onto from
+     * {@code pos}, so that it is already pointing the right way when the cart gets there.
      *
      * <p>Vanilla re-reads the shape off the blockstate once per rail block crossed, inside a loop
      * that runs several times in a tick, while a cart is only ever standing on one block when a
@@ -93,14 +92,10 @@ public class JunctionRailBlock extends BaseRailBlock implements PolymerTexturedB
      * A train used to paper over this, each car laying the block it stood on, until the placer left
      * only the leading car reading rails at all.
      */
-    public static void steerAhead(Level level, AbstractMinecart cart, BlockPos pos) {
-        BlockPos nextPos = RailPath.ahead(level, pos, cart.getDeltaMovement());
-
-        if (nextPos != null) {
-            // Along the step onto it rather than the cart's heading: vanilla turns the delta onto
-            // the rail inside the step, so a junction just past a bend was laid on the old axis.
-            lay(level, nextPos, Vec3.atLowerCornerOf(nextPos.subtract(pos)).horizontal());
-        }
+    public static void layAhead(Level level, BlockPos pos, BlockPos nextPos) {
+        // Along the step onto it rather than the cart's heading: vanilla turns the delta onto the
+        // rail inside the step, so a junction just past a bend was laid on the old axis.
+        lay(level, nextPos, Vec3.atLowerCornerOf(nextPos.subtract(pos)).horizontal());
     }
 
     @Override

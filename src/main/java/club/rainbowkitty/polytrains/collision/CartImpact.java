@@ -12,6 +12,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.Shapes;
 
+import club.rainbowkitty.polytrains.rail.SlopeStep;
 import club.rainbowkitty.polytrains.rule.ModGameRules;
 import club.rainbowkitty.polytrains.train.TrainCoupling;
 import club.rainbowkitty.polytrains.train.TrainMeter;
@@ -102,8 +103,11 @@ public final class CartImpact {
                 .expandTowards(movement)
                 .inflate(CONTACT_SHELL);
 
-        List<Entity> inReach = level.getEntities(
-                cart, sweepBox, other -> CartInteraction.participates(cart, other));
+        // A train's own cars are IGNORE or BUFFER here, so they skip of()'s track walk.
+        List<Entity> inReach = level.getEntities(cart, sweepBox,
+                other -> CartInteraction.participates(cart, other)
+                        && !(other instanceof AbstractMinecart car
+                                && CartInteraction.sameVehicle(cart, car)));
         double drag = 0.0;
 
         for (Entity other : inReach) {
@@ -153,9 +157,10 @@ public final class CartImpact {
      * Whether {@code step} carries {@code cart} closer to a cart of another train that its box is
      * already inside. Vanilla's move stops a box only at a face it has yet to cross, so two carts
      * that have come to overlap at all slide on into each other as far as their movement takes
-     * them.
+     * them. {@code solids} are what the step can be stopped by, from
+     * {@link SlopeStep#solidsAlong}.
      */
-    public static boolean deepens(AbstractMinecart cart, Vec3 step) {
+    public static boolean deepens(AbstractMinecart cart, Vec3 step, List<Entity> solids) {
         Vec3 run = step.horizontal();
 
         if (run.lengthSqr() <= STILL * STILL) {
@@ -165,10 +170,11 @@ public final class CartImpact {
         // Shrunk by the tolerance the move settles a face at, so carts touching are not inside.
         AABB box = cart.getBoundingBox().deflate(OVERLAP_TOLERANCE);
 
-        for (Entity other : cart.level().getEntities(cart, box,
-                candidate -> candidate instanceof AbstractMinecart struck
-                        && CartInteraction.of(cart, struck) == CartInteraction.COLLIDE)) {
-            if (other.position().subtract(cart.position()).horizontal().dot(run) > 0.0) {
+        for (Entity other : solids) {
+            if (other instanceof AbstractMinecart struck
+                    && other.getBoundingBox().intersects(box)
+                    && CartInteraction.of(cart, struck) == CartInteraction.COLLIDE
+                    && other.position().subtract(cart.position()).horizontal().dot(run) > 0.0) {
                 return true;
             }
         }

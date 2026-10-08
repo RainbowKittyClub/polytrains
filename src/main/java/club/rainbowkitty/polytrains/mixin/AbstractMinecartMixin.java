@@ -354,8 +354,12 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     private void polytrains$steerAhead(
             BlockPos pos, RailShape shape, double budget, CallbackInfoReturnable<Double> cir) {
         if (level() instanceof ServerLevel serverLevel) {
-            JunctionRailBlock.steerAhead(serverLevel, polytrains$self(), pos);
-            SwitchedRailBlock.steerAhead(serverLevel, polytrains$self(), pos);
+            BlockPos nextPos = RailPath.ahead(serverLevel, pos, getDeltaMovement());
+
+            if (nextPos != null) {
+                JunctionRailBlock.layAhead(serverLevel, pos, nextPos);
+                SwitchedRailBlock.orientAhead(serverLevel, polytrains$self(), pos, nextPos);
+            }
         }
     }
 

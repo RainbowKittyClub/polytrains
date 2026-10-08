@@ -166,21 +166,16 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
     }
 
     /**
-     * Orients the switch {@code cart} is about to cross from {@code pos}, so that it is already
-     * laid for this car's approach by the time vanilla reads it.
+     * Orients the switch at {@code nextPos}, the one {@code cart} is about to cross onto from
+     * {@code pos}, so that it is already laid for this car's approach by the time vanilla reads it.
      *
      * <p>Vanilla reads each rail block's shape as it reaches it, several of them to a tick, so one
      * switch laid per tick covers the first and none of the rest. The approach is taken from the
      * step onto the block rather than the car's heading, which vanilla turns onto the rail only
      * once the step is under way — so a switch just past a bend used to be read the pre-bend way.
      */
-    public static void steerAhead(ServerLevel level, AbstractMinecart cart, BlockPos pos) {
-        BlockPos nextPos = RailPath.ahead(level, pos, cart.getDeltaMovement());
-
-        if (nextPos == null) {
-            return;
-        }
-
+    public static void orientAhead(
+            ServerLevel level, AbstractMinecart cart, BlockPos pos, BlockPos nextPos) {
         int eastDelta = nextPos.getX() - pos.getX();
         int southDelta = nextPos.getZ() - pos.getZ();
 
@@ -192,7 +187,7 @@ public class SwitchedRailBlock extends BaseRailBlock implements PolymerTexturedB
 
     /**
      * Orients the switch at {@code pos} for {@code cart} arriving on it travelling {@code travel},
-     * as {@link #steerAhead} does for a car stepping onto it: for a car the placer carries, which
+     * as {@link #orientAhead} does for a car stepping onto it: for a car the placer carries, which
      * steps onto no rail of its own.
      */
     public static void steerOnto(

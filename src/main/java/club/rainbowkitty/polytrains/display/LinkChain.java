@@ -66,8 +66,8 @@ public final class LinkChain extends ElementHolder {
         return current;
     }
 
-    // Runs from the entity tracker rather than the cart's own tick, so a train nobody is near costs
-    // nothing, and a stationary one resolves to the same transform and sends no packet.
+    // Runs from the tracker's sendChanges every tick the cart is in entity-ticking range, watched
+    // or not; a pair standing still skips the re-aim and sends no packet.
     @Override
     protected void onTick() {
         CargoDisplayHolder.keepRidersCurrent(this);
