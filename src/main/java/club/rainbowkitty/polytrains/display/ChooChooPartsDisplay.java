@@ -1,22 +1,15 @@
 package club.rainbowkitty.polytrains.display;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 import java.util.function.Consumer;
 
 import eu.pb4.polymer.virtualentity.api.attachment.EntityAttachment;
-import eu.pb4.polymer.virtualentity.api.data.InteractionEntityData;
-import eu.pb4.polymer.virtualentity.api.elements.InteractionElement;
 import eu.pb4.polymer.virtualentity.api.elements.ItemDisplayElement;
 import eu.pb4.polymer.virtualentity.api.elements.VirtualElement;
 import org.joml.Quaternionf;
 
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
-import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
-import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
@@ -49,15 +42,12 @@ import club.rainbowkitty.polytrains.util.FurnaceFuel;
  * as it faces its front. Two models, one per lever position: thrown is the group as drawn,
  * released turns its {@code brake_lever} group 45° about z, which tips the lever toward the door.
  *
- * <p>The lever is clicked through an interaction box riding the cart, a little wider than the
- * cart's own and standing from its passenger point to the furnace's top, so a client draws it
- * wherever it draws the cart. A click on the box's lever half throws or releases the lever
- * ({@link #throwsLever}); anything else is passed to the cart as if it had been clicked there.
- * The box is there at all, rather than the cart's own box being read, because a client answers a
- * click on a furnace cart itself before the server hears of it — the Sounds mod plays its "furnace
- * minecart crackles" from there on every click — and a click on another entity never reaches it.
- * Fuel goes past the box: from a player holding fuel it is hidden, shrunk to nothing in what that
- * player alone is told, so their click lands on the cart and feeds it as any other would.
+ * <p>The lever is clicked through a {@link ClickBox} reaching to the furnace's top, so a client's
+ * click on it never crackles as one on the furnace cart itself does under the Sounds mod. A click
+ * on its lever half throws or releases the lever ({@link #throwsLever}); anything else is the
+ * cart's, passed on. Fuel goes past it: a player holding fuel the cart would take is not shown the
+ * box, so their click lands on the cart and feeds it — unless they are sneaking, which shows them
+ * the box again, and the lever with it.
  */
 public class ChooChooPartsDisplay extends CargoDisplayHolder {
 
@@ -72,22 +62,16 @@ public class ChooChooPartsDisplay extends CargoDisplayHolder {
     // top rather than the underside, which no click on the lever's half is meant to reach: a pixel.
     private static final double UNDERSIDE = 1.0 / 16.0;
 
-    // The lever box's width, a hair over the cart's 0.98 so a click on the cart above the box's
-    // foot meets the box first, and its top above the cart's position: the furnace's top (1.03125,
-    // as AbstractMinecartRenderer draws it) and a hair, which the lever stands under.
-    private static final float BOX_WIDTH = 1.0f;
+    // The lever box's top above the cart's position: the furnace's top (1.03125, as
+    // AbstractMinecartRenderer draws it) and a hair, which the lever stands under.
     private static final float BOX_TOP = 17.0f / 16.0f;
-    private static final float BOX_HEIGHT = BOX_TOP - PASSENGER_ATTACHMENT_Y;
 
     // Vanilla's allowance past a player's reach for a click on an entity
     // (ServerGamePacketListenerImpl#handleInteract), which a virtual entity is not given.
     private static final double REACH_BUFFER = 3.0;
 
     private final ItemDisplayElement parts;
-    private final InteractionElement leverBox;
-
-    // The watchers holding fuel, from whom the lever box is hidden.
-    private final Set<ServerGamePacketListenerImpl> boxHiddenFrom = new HashSet<>();
+    private final ClickBox leverBox;
 
     // Whether the lever was last drawn thrown.
     private boolean shownThrown;
@@ -97,17 +81,15 @@ public class ChooChooPartsDisplay extends CargoDisplayHolder {
         super(engine);
         this.shownThrown = EntityAttachments.leverSet(engine);
         this.parts = addCargoElement(ItemDisplays.element());
-        this.leverBox = addCargoElement(new InteractionElement(new LeverBoxHandler()));
+        this.leverBox = new ClickBox(this, BOX_TOP,
+                player -> !feedsPast(engine, player, player.isShiftKeyDown()),
+                new LeverBoxHandler());
 
         parts.setItem(partsStack(shownThrown));
         parts.setRightRotation(UNDO_RENDERER_TURN);
 
         // Snapping, never easing, as a tender's coal does: the cart turns in whole-tick steps.
         parts.setInterpolationDuration(0);
-
-        // Responding, so the clicking client swings its own arm, as it does on the cart itself.
-        leverBox.setSize(BOX_WIDTH, BOX_HEIGHT);
-        leverBox.setResponse(true);
 
         poseNow();
     }
@@ -125,10 +107,10 @@ public class ChooChooPartsDisplay extends CargoDisplayHolder {
     }
 
     /**
-     * Whether a click throws or releases {@code engine}'s lever: the main hand's plain click on
-     * the lever's half — the cart's left side, or the left half of its front, back or top — holding
-     * anything but the wrench or fuel the cart would take, which are for the cart wherever they
-     * land.
+     * Whether a click throws or releases {@code engine}'s lever: the main hand's click on the
+     * lever's half — the cart's left side, or the left half of its front, back or top — plain, or
+     * sneaking with fuel in hand. The wrench is for the cart wherever it lands, and so is fuel
+     * offered without sneaking, which feeds it; a shift-click with anything else is the cart's.
      *
      * @param sneaking whether the click is a shift-click
      * @param hit where the click landed, relative to the foot of the box it landed on: the lever
@@ -137,12 +119,17 @@ public class ChooChooPartsDisplay extends CargoDisplayHolder {
     public static boolean throwsLever(AbstractMinecart engine, Player player,
             InteractionHand hand, boolean sneaking, Vec3 hit) {
         ItemStack held = player.getMainHandItem();
+        boolean fuel = FurnaceFuel.feeds(engine.level(), held);
 
         return hand == InteractionHand.MAIN_HAND
-                && !sneaking
                 && !WrenchItems.isWrench(held)
-                && !FurnaceFuel.feeds(engine.level(), held)
+                && (fuel ? sneaking : !sneaking)
                 && onLeverSide(engine, hit);
+    }
+
+    // Whether player's click, sneaking or not, offers engine fuel, which goes past the lever box.
+    private static boolean feedsPast(AbstractMinecart engine, Player player, boolean sneaking) {
+        return !sneaking && FurnaceFuel.feeds(engine.level(), player.getMainHandItem());
     }
 
     // On the lever's half: across the cart toward its frame's +z, which its pitch never moves, and
@@ -163,37 +150,20 @@ public class ChooChooPartsDisplay extends CargoDisplayHolder {
             parts.setItem(partsStack(thrown));
         }
 
-        // A player taking fuel up loses the box and one putting it down gets it back, each told
-        // alone; the box's own data never changes, so nothing resends the true size over this.
-        for (ServerGamePacketListenerImpl watcher : getWatchingPlayers()) {
-            boolean holdsFuel = holdsFuel(watcher);
-
-            if (holdsFuel ? boxHiddenFrom.add(watcher) : boxHiddenFrom.remove(watcher)) {
-                watcher.send(boxSize(holdsFuel));
-            }
-        }
-
+        leverBox.tick(getWatchingPlayers());
         super.onTick();
     }
 
-    // A new watcher holding fuel is sent the box at its true size with everything else, and then
-    // at none.
     @Override
     protected void startWatchingExtraPackets(ServerGamePacketListenerImpl player,
             Consumer<Packet<ClientGamePacketListener>> packetConsumer) {
         super.startWatchingExtraPackets(player, packetConsumer);
-
-        if (holdsFuel(player)) {
-            boxHiddenFrom.add(player);
-            packetConsumer.accept(boxSize(true));
-        } else {
-            boxHiddenFrom.remove(player);
-        }
+        leverBox.startWatching(player, packetConsumer);
     }
 
     @Override
     public boolean stopWatching(ServerGamePacketListenerImpl player) {
-        boxHiddenFrom.remove(player);
+        leverBox.stopWatching(player);
         return super.stopWatching(player);
     }
 
@@ -207,20 +177,6 @@ public class ChooChooPartsDisplay extends CargoDisplayHolder {
         parts.setTranslation(cargoOrigin(cartFrame, 0.0f));
     }
 
-    // Whether watcher holds fuel the cart would take, and so is to click past the box.
-    private boolean holdsFuel(ServerGamePacketListenerImpl watcher) {
-        return FurnaceFuel.feeds(cart().level(), watcher.player.getMainHandItem());
-    }
-
-    // The lever box's size as one player is told it: none, which no click can meet, or its own.
-    private Packet<ClientGamePacketListener> boxSize(boolean hidden) {
-        return new ClientboundSetEntityDataPacket(leverBox.getEntityId(), List.of(
-                SynchedEntityData.DataValue.create(
-                        InteractionEntityData.WIDTH, hidden ? 0.0f : BOX_WIDTH),
-                SynchedEntityData.DataValue.create(
-                        InteractionEntityData.HEIGHT, hidden ? 0.0f : BOX_HEIGHT)));
-    }
-
     // The parts with the lever thrown or released, carried on a lever, which is what a client
     // without this mod's resource pack is shown instead.
     private static ItemStack partsStack(boolean thrown) {
@@ -228,12 +184,11 @@ public class ChooChooPartsDisplay extends CargoDisplayHolder {
     }
 
     // What the lever box does when clicked: the lever, if the click is for it, and otherwise
-    // whatever the cart does, the click passed on as if it had landed there. A client offers the
-    // box only the main hand's half of a click, since a responding box answers it.
+    // whatever the cart does. A client offers the box only the main hand's half of a click, since
+    // a responding box answers it.
     private final class LeverBoxHandler implements VirtualElement.InteractionHandler {
 
-        private final VirtualElement.InteractionHandler toCart =
-                VirtualElement.InteractionHandler.redirect(cart());
+        private final VirtualElement.InteractionHandler toCart = ClickBox.passedTo(cart());
 
         @Override
         public void interact(ServerPlayer player, InteractionHand hand, Vec3 pos,
@@ -243,10 +198,7 @@ public class ChooChooPartsDisplay extends CargoDisplayHolder {
             }
 
             if (!throwsLever(cart(), player, hand, usingSecondaryAction, pos)) {
-                // Measured from the box's foot, which is the cart's passenger point; the cart
-                // reads a click from its own position.
-                toCart.interact(player, hand, pos.add(0.0, PASSENGER_ATTACHMENT_Y, 0.0),
-                        usingSecondaryAction);
+                toCart.interact(player, hand, pos, usingSecondaryAction);
                 return;
             }
 

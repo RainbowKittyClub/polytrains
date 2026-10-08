@@ -124,9 +124,16 @@ Why a box at all, when S4 first read the cart's own: a client answers a click on
 itself before the server hears of it, and the client mod Sounds (`sounds-2.5.1`) plays its "Furnace
 Minecart crackles" from a `TAIL` inject on `MinecartFurnace.interact` on every such click, fuel or
 not. Only a click that lands on another entity escapes it. Fuel goes past the box: a player holding
-fuel the cart would take (`FurnaceFuel.feeds`) is told, alone, that the box has no size, so their
-click lands on the cart, feeds it, and crackles as Sounds means it to. Left over: below the box's
-foot, the cart's lowest 0.1875 is still the cart's own, lever half and crackle included.
+fuel the cart would take (`FurnaceFuel.feeds`) and not sneaking is told, alone, that the box has no
+size, so their click lands on the cart, feeds it, and crackles as Sounds means it to. Sneaking with
+fuel shows the box again, and a shift-click with fuel on its lever half works the lever. Left over:
+below the box's foot, the cart's lowest 0.1875 is still the cart's own, lever half and crackle
+included.
+
+The box is `display/ClickBox`, shared with `display/CommandCartBox`: a command block cart's client
+opens the editor itself on any click by an op in creative (`MinecartCommandBlock#interact`), wrench
+or not, sneaking or not, so such a player holding the wrench is shown a box on the cart that passes
+the click to it on the server instead.
 
 A placed furnace cart is turned round (`MinecartHelper.placementLook`), its front, the door, to the
 player.
@@ -134,8 +141,10 @@ player.
 **Done when (observed in game, vanilla client).** The parts stand on every furnace cart and stay on
 it as it moves, turns and climbs; the lever stands upright when thrown and tips 45° toward the door
 when released; a click on the lever's half flips it and brakes the train, with no crackle from
-Sounds; a click holding fuel feeds the cart wherever it lands, crackling; a click on the other half
-answers as the cart did; a furnace cart placed from either end of a rail faces its placer.
+Sounds; a click holding fuel feeds the cart wherever it lands, crackling, and a shift-click with
+fuel on the lever half works the lever; a click on the other half answers as the cart did; a
+furnace cart placed from either end of a rail faces its placer; an op in creative holding the
+wrench links a command block cart without its editor opening.
 
 ## S3 — Documentation — **done**
 

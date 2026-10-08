@@ -25,6 +25,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.entity.vehicle.minecart.MinecartCommandBlock;
 import net.minecraft.world.entity.vehicle.minecart.MinecartFurnace;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 import net.minecraft.world.item.ItemStack;
@@ -38,6 +39,7 @@ import club.rainbowkitty.polytrains.block.SwitchedRailBlock;
 import club.rainbowkitty.polytrains.collision.CartImpact;
 import club.rainbowkitty.polytrains.collision.CartInteraction;
 import club.rainbowkitty.polytrains.collision.OffRails;
+import club.rainbowkitty.polytrains.display.CommandCartBox;
 import club.rainbowkitty.polytrains.display.LinkChain;
 import club.rainbowkitty.polytrains.ext.AbstractMinecartExt;
 import club.rainbowkitty.polytrains.init.EntityAttachments;
@@ -74,6 +76,11 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     // The chain drawn back to the cart this one follows, or null when it follows nothing.
     @Unique
     private @Nullable LinkChain polytrains$chain;
+
+    // A command block cart's box for the wrench, built on its first tick on a server and gone with
+    // the cart, as a furnace cart's parts are; null on every other kind of cart.
+    @Unique
+    private @Nullable CommandCartBox polytrains$commandBox;
 
     // Game time this cart's tracker withholds position updates until, or zero for none. Zero rather
     // than a negative sentinel because the field starts at Java's default; a real hold is always a
@@ -510,6 +517,10 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         }
 
         AbstractMinecart self = polytrains$self();
+
+        if (polytrains$commandBox == null && self instanceof MinecartCommandBlock) {
+            polytrains$commandBox = CommandCartBox.attach(self);
+        }
 
         // A seated cart is put on its track rather than driven along it, so it reads no rail shape
         // and has none to lay. Steering from one would write the world out of a position the placer
