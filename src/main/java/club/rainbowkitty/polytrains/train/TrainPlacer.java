@@ -751,8 +751,8 @@ public final class TrainPlacer {
         return departure;
     }
 
-    // Which cars behind the leading car are still seated on the track their train left by, the
-    // departure dropped once none are.
+    // Which cars behind the leading car are still seated on the track their train left by. The
+    // departure outlives them while a flown car rests on its lip, read as flying only while kept.
     private static boolean[] departing(Train train, List<AbstractMinecart> cars, int leadIndex,
             int fromHead, boolean[] flying) {
         boolean[] departing = new boolean[cars.size()];
@@ -769,7 +769,7 @@ public final class TrainPlacer {
 
             departing[i] = !flying[i] && car.isOnRails()
                     && seatArcOn(departure.ribbon(), car) != null;
-            any |= departing[i];
+            any |= departing[i] || flying[i] && atLip(departure, car);
         }
 
         if (!any) {
