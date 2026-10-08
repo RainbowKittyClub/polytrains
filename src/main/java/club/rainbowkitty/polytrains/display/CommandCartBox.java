@@ -37,8 +37,8 @@ public class CommandCartBox extends CargoDisplayHolder {
     public CommandCartBox(AbstractMinecart cart) {
         super(cart);
         this.box = new ClickBox(this, TOP,
-                player -> player.canUseGameMasterBlocks()
-                        && WrenchItems.isWrench(player.getMainHandItem()),
+                player -> WrenchItems.isWrench(player.getMainHandItem())
+                        && player.canUseGameMasterBlocks(),
                 ClickBox.passedTo(cart));
 
         poseNow();
