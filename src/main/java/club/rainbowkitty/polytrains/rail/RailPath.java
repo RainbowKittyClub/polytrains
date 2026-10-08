@@ -12,6 +12,7 @@ import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.SectionPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
@@ -19,6 +20,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.RailShape;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.polytrains.block.JunctionRailBlock;
@@ -298,7 +300,8 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
      * {@code movement}, or null if that block is not a rail.
      */
     public static @Nullable Crossing crossing(Level level, BlockPos pos, Vec3 movement) {
-        RailShape railShape = shape(level.getBlockState(pos), movement, Switches.LAID);
+        BlockState state = loadedState(level, pos);
+        RailShape railShape = state == null ? null : shape(state, movement, Switches.LAID);
 
         if (railShape == null) {
             return null;
@@ -348,7 +351,8 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     // As the public neighbours, taking a switch the given way.
     private static BlockPos @Nullable [] neighbours(
             Level level, BlockPos pos, Vec3 movement, Switches switches) {
-        RailShape railShape = shape(level.getBlockState(pos), movement, switches);
+        BlockState state = loadedState(level, pos);
+        RailShape railShape = state == null ? null : shape(state, movement, switches);
 
         return railShape == null ? null : neighboursFor(level, pos, railShape);
     }
@@ -611,6 +615,11 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     private static BlockPos neighbour(Level level, BlockPos pos, Vec3i exit, boolean uphill) {
         BlockPos candidate = pos.offset(exit.getX(), uphill ? 1 : 0, exit.getZ());
 
+        // An unloaded column is no way on, and the block below shares its chunk.
+        if (loadedState(level, candidate) == null) {
+            return candidate;
+        }
+
         if (railAt(level, candidate)) {
             return candidate;
         }
@@ -618,9 +627,23 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         return railAt(level, candidate.below()) ? candidate.below() : candidate;
     }
 
-    // Whether the block at pos is a rail.
+    /**
+     * The state at {@code pos}, or null where its chunk is not loaded: reading it through the level
+     * would load that chunk and pin it. Server thread only, where getChunkNow answers.
+     */
+    public static @Nullable BlockState loadedState(Level level, BlockPos pos) {
+        LevelChunk chunk = level.getChunkSource().getChunkNow(
+                SectionPos.blockToSectionCoord(pos.getX()),
+                SectionPos.blockToSectionCoord(pos.getZ()));
+
+        return chunk == null ? null : chunk.getBlockState(pos);
+    }
+
+    // Whether the block at pos is a rail, never loading its chunk to say so.
     private static boolean railAt(Level level, BlockPos pos) {
-        return BaseRailBlock.isRail(level.getBlockState(pos));
+        BlockState state = loadedState(level, pos);
+
+        return state != null && BaseRailBlock.isRail(state);
     }
 
     // Horizontal only, matching the horizontal distances vanilla charges a cart's movement against.
