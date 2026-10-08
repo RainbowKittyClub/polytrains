@@ -259,7 +259,12 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
      * and the direction is then the line its cars lie along rather than anything they are doing.
      */
     public static int grade(AbstractMinecart cart, Vec3 towardsDirection) {
-        BlockState state = cart.level().getBlockState(cart.getCurrentBlockPosOrRailBelow());
+        return grade(cart.level().getBlockState(cart.getCurrentBlockPosOrRailBelow()),
+                towardsDirection);
+    }
+
+    /** {@link #grade(AbstractMinecart, Vec3)} for a cart standing on {@code state}. */
+    public static int grade(BlockState state, Vec3 towardsDirection) {
         Vec3 alongDirection = towardsDirection.horizontal();
 
         if (alongDirection.lengthSqr() < EPSILON * EPSILON) {
@@ -384,8 +389,17 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
         return outwardComponent(high, edge) > 0.0 ? 1.0 + RAIL_LIFT : RAIL_LIFT;
     }
 
-    // Whether the rail climbs, drops or runs level in the direction of alongDirection.
-    private static int grade(RailShape railShape, Vec3 alongDirection) {
+    /**
+     * Whether a rail laid to {@code railShape} climbs, drops or runs level in the direction of
+     * {@code towardsDirection}: 1, -1 or 0.
+     */
+    public static int grade(RailShape railShape, Vec3 towardsDirection) {
+        Vec3 alongDirection = towardsDirection.horizontal();
+
+        if (alongDirection.lengthSqr() < EPSILON * EPSILON) {
+            return 0;
+        }
+
         var exits = AbstractMinecart.exits(railShape);
         Vec3i firstExit = exits.getFirst();
         Vec3i secondExit = exits.getSecond();

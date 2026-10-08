@@ -18,6 +18,8 @@ import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseRailBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -204,8 +206,7 @@ public final class TrainCoupling {
     public static Vec3 hauled(AbstractMinecart cart, Vec3 resisted) {
         if (!cart.hasLink()
                 || !ModGameRules.trainsEnabled(cart.level())
-                || cart.polytrains$driving()
-                || held(cart)) {
+                || cart.polytrains$driving()) {
             return resisted;
         }
 
@@ -217,7 +218,7 @@ public final class TrainCoupling {
         // fails when the placer cannot hold the train. Every car then drew the whole train's force
         // on its own account, with nothing coupling them but a chain that is a record and not a
         // rope, and a train already in trouble tore itself apart under its own power.
-        if (train.leader() != cart) {
+        if (train.leader() != cart || held(cart)) {
             return resisted;
         }
 
@@ -540,7 +541,8 @@ public final class TrainCoupling {
      * reached flat track went weightless with its other cars still on the bank. Only the magnitude
      * is borrowed, which is where the water case and the speed term still come from.
      */
-    public static @Nullable Vec3 slopePull(AbstractMinecart cart, Vec3 movement, Vec3 pull) {
+    public static @Nullable Vec3 slopePull(
+            AbstractMinecart cart, Vec3 movement, Vec3 pull, RailShape shape) {
         if (!cart.hasLink() || !ModGameRules.trainsEnabled(cart.level())) {
             return null;
         }
@@ -564,6 +566,14 @@ public final class TrainCoupling {
             return null;
         }
 
+        double share = downhillShare(
+                train, cart, shape, RailForces.forLevel(cart.level()), headLeads);
+        boolean flatTrack = pull.lengthSqr() == 0.0;
+
+        if (share == 0.0 && flatTrack) {
+            return null;
+        }
+
         // Laid along the rail rather than along that chord, so a pull taken through a corner stays
         // on the track; the chord only has to say which of the block's two ends is the front.
         RailPath.Crossing crossing = RailPath.crossing(
@@ -573,11 +583,8 @@ public final class TrainCoupling {
             return null;
         }
 
-        double share = downhillShare(cars, RailForces.forLevel(cart.level()), headLeads);
-        boolean flatTrack = pull.lengthSqr() == 0.0;
-
         if (share == 0.0) {
-            return flatTrack ? null : Vec3.ZERO;
+            return Vec3.ZERO;
         }
 
         return crossing.forward()
@@ -585,9 +592,12 @@ public final class TrainCoupling {
     }
 
     // How much of one car's worth of downhill pull a train is owed in the direction its leading end
-    // points, from the mass-weighted mean of its cars' grades.
-    private static double downhillShare(
-            List<AbstractMinecart> cars, RailForces forces, boolean headLeads) {
+    // points, from the mass-weighted mean of its cars' grades. The driven car's rail is vanilla's
+    // shape, already read; every other car's comes off the train's census.
+    private static double downhillShare(Train train, AbstractMinecart driven, RailShape shape,
+            RailForces forces, boolean headLeads) {
+        List<AbstractMinecart> cars = train.cars();
+        long tick = driven.level().getGameTime();
         double weighted = 0.0;
         double total = 0.0;
 
@@ -600,8 +610,13 @@ public final class TrainCoupling {
                     .subtract(cars.get(i == 0 ? 1 : i).position())
                     .horizontal();
 
-            weighted += forces.cartMass(car) * RailPath.grade(car, headward);
-            total += forces.cartMass(car);
+            double carMass = train.carMass(i, forces, tick);
+            int grade = car == driven
+                    ? RailPath.grade(shape, headward)
+                    : RailPath.grade(train.railUnder(i), headward);
+
+            weighted += carMass * grade;
+            total += carMass;
         }
 
         // Downhill rather than up, and towards the leading end rather than the head: a train
@@ -640,10 +655,11 @@ public final class TrainCoupling {
      * whether or not anything is linked to it. That costs the default nothing: a lone cart weighs
      * one there, so its share is one and every branch here hands back the figure vanilla computed.
      */
-    public static @Nullable Vec3 boostPull(AbstractMinecart cart, Vec3 movement) {
-        List<AbstractMinecart> cars = drivenCars(cart);
+    public static @Nullable Vec3 boostPull(
+            AbstractMinecart cart, Vec3 movement, BlockState state) {
+        Train train = drivenTrain(cart);
 
-        if (cars == null) {
+        if (train != null && drivenCar(cart) != cart) {
             return null;
         }
 
@@ -651,12 +667,20 @@ public final class TrainCoupling {
         // included: the parking brake is a hold, and a train launched off one lit rail would only
         // be halted again a tick later. Declined outright rather than left to vanilla, which would
         // still boost the driven car off whatever it is standing on.
-        if (braking(cars)) {
+        if (RailBrake.brakingRail(state) || RailBrake.leverHeld(cart)
+                || (train != null && train.brakingExcept(cart) > 0)) {
             return movement;
         }
 
+        int boosting = (RailBrake.boostingRail(state) ? 1 : 0)
+                + (train == null ? 0 : train.boostingExcept(cart));
+
+        if (boosting == 0) {
+            return null;
+        }
+
         RailForces forces = RailForces.forLevel(cart.level());
-        double share = railShare(cars, forces, RailBrake::boosts);
+        double share = trackShare(boosting, cart, train, forces);
 
         if (share <= 0.0) {
             return null;
@@ -670,8 +694,8 @@ public final class TrainCoupling {
 
         // Vanilla's kick carries whatever speed the cart already had, which is under the rolling
         // threshold but need not be nothing, so the whole of its figure is what gets shared.
-        return launchVelocity(
-                cart, cars, forces.launch(movement.length() + RailBrake.LAUNCH_SPEED, share));
+        return launchVelocity(cart, train == null ? List.of(cart) : train.cars(),
+                forces.launch(movement.length() + RailBrake.LAUNCH_SPEED, share));
     }
 
     /**
@@ -689,44 +713,35 @@ public final class TrainCoupling {
      * train creeping off a rail it is fractionally standing on, and what stops a player towing one
      * off a brake by its far end.
      */
-    public static @Nullable Vec3 braked(AbstractMinecart cart, Vec3 movement) {
-        List<AbstractMinecart> cars = drivenCars(cart);
+    public static @Nullable Vec3 braked(AbstractMinecart cart, Vec3 movement, BlockState state) {
+        Train train = drivenTrain(cart);
 
-        if (cars == null) {
+        if (train != null && drivenCar(cart) != cart) {
             return null;
         }
 
-        double share = railShare(cars, RailForces.forLevel(cart.level()), RailBrake::brakes);
+        int braking = (RailBrake.brakingRail(state) || RailBrake.leverHeld(cart) ? 1 : 0)
+                + (train == null ? 0 : train.brakingExcept(cart));
+
+        if (braking == 0) {
+            return null;
+        }
+
+        RailForces forces = RailForces.forLevel(cart.level());
+        double share = trackShare(braking, cart, train, forces);
 
         if (share <= 0.0) {
             return null;
         }
 
-        return RailBrake.stopsDead(movement)
-                ? Vec3.ZERO
-                : RailForces.forLevel(cart.level()).halted(movement, share);
+        return RailBrake.stopsDead(movement) ? Vec3.ZERO : forces.halted(movement, share);
     }
 
     /** Whether a brake has hold of any car of {@code cart}'s train, or of {@code cart} alone. */
     public static boolean held(AbstractMinecart cart) {
         return cart.hasLink() && ModGameRules.trainsEnabled(cart.level())
-                ? braking(Train.of(cart).cars())
+                ? Train.of(cart).braking()
                 : RailBrake.brakes(cart);
-    }
-
-    /**
-     * Whether any of {@code cars} is braking, on a brake rail or by its lever. {@link #held}, for a
-     * train already in hand: Train asks it of its own cars before it can name the car {@code held}
-     * reaches it by.
-     */
-    public static boolean braking(List<AbstractMinecart> cars) {
-        for (AbstractMinecart car : cars) {
-            if (RailBrake.brakes(car)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -769,6 +784,28 @@ public final class TrainCoupling {
         List<AbstractMinecart> cars = Train.of(cart).cars();
 
         return cars.size() < 2 ? List.of(cart) : cars;
+    }
+
+    // The train of two or more cars that cart belongs to, or null where it answers for its own rail
+    // alone. Whether it is the car driving that train is drivenCar's to say.
+    private static @Nullable Train drivenTrain(AbstractMinecart cart) {
+        if (!cart.hasLink() || !ModGameRules.trainsEnabled(cart.level())) {
+            return null;
+        }
+
+        Train train = Train.of(cart);
+
+        return train.size() < 2 ? null : train;
+    }
+
+    // railShare's figure for count cars on such a rail, counted off vanilla's state and the census.
+    private static double trackShare(
+            int count, AbstractMinecart cart, @Nullable Train train, RailForces forces) {
+        double total = train == null
+                ? forces.cartMass(cart)
+                : train.mass(forces, cart.level().getGameTime());
+
+        return total <= 0.0 ? 0.0 : count / total;
     }
 
     // Which way a standing train leaves, read at each car that is over a lit rail and carried up to
@@ -965,15 +1002,7 @@ public final class TrainCoupling {
             return ownCeiling;
         }
 
-        double lowest = ownCeiling;
-
-        for (AbstractMinecart car : Train.of(cart).cars()) {
-            if (car != cart) {
-                lowest = Math.min(lowest, car.polytrains$ownMaxSpeed(level));
-            }
-        }
-
-        return lowest;
+        return Math.min(ownCeiling, Train.of(cart).ceilingExcept(cart, level));
     }
 
     /**

@@ -1,6 +1,7 @@
 package club.rainbowkitty.polytrains.train;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -8,8 +9,10 @@ import com.mojang.logging.LogUtils;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.polytrains.ext.AbstractMinecartExt;
@@ -104,6 +107,22 @@ public final class Train {
     private double mass;
     // The tick when mass was last calculated.
     private long massTick = Long.MIN_VALUE;
+    // What each car weighs, by index, filled in the same pass.
+    private final double[] carMasses;
+
+    // What each car stands on, by index: its rail, its lever, and the tick and position read at. A
+    // car that moves within the tick is read again, since fly() and the step hooks move cars too.
+    private final BlockState[] censusRail;
+    private final boolean[] censusLever;
+    private final double[] censusX;
+    private final double[] censusY;
+    private final double[] censusZ;
+    private final long[] censusAt;
+
+    // The lowest ceiling of every car but the driven one, for the tick and car it was taken for.
+    private double ceilingOthers;
+    private long ceilingTick = Long.MIN_VALUE;
+    private @Nullable AbstractMinecart ceilingDriven;
 
     // The tick this train last had give taken out of its gaps by something it has run into.
     private long packedTick = Long.MIN_VALUE;
@@ -168,6 +187,16 @@ public final class Train {
         this.checkedTick = tick;
         this.heldTick = tick;
         this.ribbon = inherited == null ? new TrackRibbon() : inherited;
+
+        int size = cars.size();
+        this.carMasses = new double[size];
+        this.censusRail = new BlockState[size];
+        this.censusLever = new boolean[size];
+        this.censusX = new double[size];
+        this.censusY = new double[size];
+        this.censusZ = new double[size];
+        this.censusAt = new long[size];
+        Arrays.fill(censusAt, Long.MIN_VALUE);
     }
 
     /**
@@ -749,14 +778,141 @@ public final class Train {
 
         double total = 0.0;
 
-        for (AbstractMinecart car : cars) {
-            total += forces.cartMass(car);
+        for (int i = 0; i < cars.size(); i++) {
+            carMasses[i] = forces.cartMass(cars.get(i));
+            total += carMasses[i];
         }
 
         mass = total;
         massTick = tick;
 
         return total;
+    }
+
+    /** What the car at {@code index} weighs, as summed into {@link #mass} on {@code tick}. */
+    public double carMass(int index, RailForces forces, long tick) {
+        mass(forces, tick);
+
+        return carMasses[index];
+    }
+
+    /**
+     * The rail under the car at {@code index}, read at most once a tick for each place that car
+     * stands. Never asks for the leading end, which {@link #leader} works out from this.
+     */
+    public BlockState railUnder(int index) {
+        refreshCensus(index);
+
+        return censusRail[index];
+    }
+
+    /** Whether the car at {@code index} is braking, on a brake rail or by its lever. */
+    public boolean brakes(int index) {
+        refreshCensus(index);
+
+        return censusLever[index] || RailBrake.brakingRail(censusRail[index]);
+    }
+
+    /** Whether the car at {@code index} is standing on a lit powered rail. */
+    public boolean boosts(int index) {
+        refreshCensus(index);
+
+        return RailBrake.boostingRail(censusRail[index]);
+    }
+
+    /** Whether any car of this train is braking, on a brake rail or by its lever. */
+    public boolean braking() {
+        for (int i = 0; i < cars.size(); i++) {
+            if (brakes(i)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** How many cars other than {@code driven} are braking. */
+    public int brakingExcept(AbstractMinecart driven) {
+        int count = 0;
+
+        for (int i = 0; i < cars.size(); i++) {
+            if (cars.get(i) != driven && brakes(i)) {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    /** How many cars other than {@code driven} are standing on lit powered rails. */
+    public int boostingExcept(AbstractMinecart driven) {
+        int count = 0;
+
+        for (int i = 0; i < cars.size(); i++) {
+            if (cars.get(i) != driven && boosts(i)) {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    /** Has every car read its rail and lever afresh the next time it is asked. */
+    public void forgetCensus() {
+        Arrays.fill(censusAt, Long.MIN_VALUE);
+    }
+
+    /** {@link #forgetCensus()} for the train {@code car} holds, if it holds one. */
+    public static void forgetCensus(AbstractMinecart car) {
+        Train held = peek(car);
+
+        if (held != null) {
+            held.forgetCensus();
+        }
+    }
+
+    /**
+     * The lowest speed ceiling of every car but {@code driven}, or infinity when there is no other
+     * car. Taken once a tick for the car driving; each other car's own hook stands down.
+     */
+    public double ceilingExcept(AbstractMinecart driven, ServerLevel level) {
+        long tick = level.getGameTime();
+
+        if (ceilingTick == tick && ceilingDriven == driven) {
+            return ceilingOthers;
+        }
+
+        double lowest = Double.POSITIVE_INFINITY;
+
+        for (AbstractMinecart car : cars) {
+            if (car != driven) {
+                lowest = Math.min(lowest, car.polytrains$ownMaxSpeed(level));
+            }
+        }
+
+        ceilingOthers = lowest;
+        ceilingTick = tick;
+        ceilingDriven = driven;
+
+        return lowest;
+    }
+
+    // Reads the car at index's rail and lever, unless already read this tick where it now stands.
+    private void refreshCensus(int index) {
+        AbstractMinecart car = cars.get(index);
+        long tick = car.level().getGameTime();
+
+        if (censusAt[index] == tick && censusX[index] == car.getX()
+                && censusY[index] == car.getY() && censusZ[index] == car.getZ()) {
+            return;
+        }
+
+        censusRail[index] = car.level().getBlockState(car.getCurrentBlockPosOrRailBelow());
+        censusLever[index] = RailBrake.leverHeld(car);
+        censusX[index] = car.getX();
+        censusY[index] = car.getY();
+        censusZ[index] = car.getZ();
+        censusAt[index] = tick;
     }
 
     /**
@@ -961,7 +1117,7 @@ public final class Train {
         // landed between ticks is read here first — a player leaning on a held car for three ticks
         // would hand the lead to the far end of a train that never moved. Anything faster does
         // move it, so a real reversal still names its new end.
-        if (RailBrake.stopsDead(head.getDeltaMovement()) && TrainCoupling.braking(cars)) {
+        if (RailBrake.stopsDead(head.getDeltaMovement()) && braking()) {
             return heldEnd != null ? heldEnd : head;
         }
 

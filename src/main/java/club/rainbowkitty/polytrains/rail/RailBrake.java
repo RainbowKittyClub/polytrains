@@ -56,14 +56,26 @@ public final class RailBrake {
      * held, see {@link TrainCoupling#held}.
      */
     public static boolean brakes(AbstractMinecart cart) {
-        if (EntityAttachments.leverSet(cart)) {
-            return true;
-        }
+        return leverHeld(cart)
+                || brakingRail(cart.level().getBlockState(cart.getCurrentBlockPosOrRailBelow()));
+    }
 
-        BlockState rail = cart.level().getBlockState(cart.getCurrentBlockPosOrRailBelow());
+    /**
+     * Whether {@code cart} is a furnace cart with its brake lever thrown. Only an engine carries a
+     * lever, so no other cart pays for the attachment lookup.
+     */
+    public static boolean leverHeld(AbstractMinecart cart) {
+        return cart instanceof MinecartFurnace && EntityAttachments.leverSet(cart);
+    }
 
-        // A powered rail brakes while it has no signal, and accelerates once it has one.
+    /** Whether {@code rail} brakes a cart standing on it: a powered rail with no signal. */
+    public static boolean brakingRail(BlockState rail) {
         return rail.is(Blocks.POWERED_RAIL) && !rail.getValue(PoweredRailBlock.POWERED);
+    }
+
+    /** Whether {@code rail} drives a cart standing on it: a powered rail with its signal. */
+    public static boolean boostingRail(BlockState rail) {
+        return rail.is(Blocks.POWERED_RAIL) && rail.getValue(PoweredRailBlock.POWERED);
     }
 
     /**
@@ -76,9 +88,7 @@ public final class RailBrake {
 
     /** Whether {@code cart} is standing on a rail that should drive it. */
     public static boolean boosts(AbstractMinecart cart) {
-        BlockState rail = cart.level().getBlockState(cart.getCurrentBlockPosOrRailBelow());
-
-        return rail.is(Blocks.POWERED_RAIL) && rail.getValue(PoweredRailBlock.POWERED);
+        return boostingRail(cart.level().getBlockState(cart.getCurrentBlockPosOrRailBelow()));
     }
 
     /**
