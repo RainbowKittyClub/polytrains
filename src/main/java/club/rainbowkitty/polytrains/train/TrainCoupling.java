@@ -885,22 +885,40 @@ public final class TrainCoupling {
      * cannot move that way, and vanilla discards it a moment later at the rail itself.
      */
     public static Vec3 alongTrack(AbstractMinecart shoved, AbstractMinecart driven, Vec3 push) {
-        TrackRibbon ribbon = Train.of(shoved).ribbon();
-        Double shovedArc = ribbon.arcOf(shoved);
-        Double drivenArc = shoved == driven ? shovedArc : ribbon.arcOf(driven);
-        Vec3 shovedTangent = shovedArc == null ? null : ribbon.tangentAt(shovedArc);
-        Vec3 drivenTangent = drivenArc == null ? null : ribbon.tangentAt(drivenArc);
+        return relayBetween(shoved, driven).toSecond(push);
+    }
 
-        // A train the ribbon cannot place is one whose shape it cannot speak for either, so the
-        // shove goes on as it arrived rather than being projected onto a guess.
-        if (shovedTangent == null || drivenTangent == null) {
-            return push;
+    /**
+     * {@link #alongTrack} either way between {@code first} and {@code second}, their places on
+     * {@code first}'s train's ribbon read once: for carrying several movements while neither moves.
+     */
+    public static TrackRelay relayBetween(AbstractMinecart first, AbstractMinecart second) {
+        TrackRibbon ribbon = Train.of(first).ribbon();
+        Double firstArc = ribbon.arcOf(first);
+        Double secondArc = first == second ? firstArc : ribbon.arcOf(second);
+
+        return new TrackRelay(firstArc == null ? null : ribbon.tangentAt(firstArc),
+                secondArc == null ? null : ribbon.tangentAt(secondArc));
+    }
+
+    /**
+     * Two cars' tangents along their train's ribbon, from {@link #relayBetween}; either is null
+     * where the ribbon cannot place that car.
+     *
+     * @param firstTangent the first car's tangent
+     * @param secondTangent the second car's tangent
+     */
+    public record TrackRelay(@Nullable Vec3 firstTangent, @Nullable Vec3 secondTangent) {
+
+        /** {@code push} at the first car as the second receives it, as {@link #alongTrack}. */
+        public Vec3 toSecond(Vec3 push) {
+            return carried(push, firstTangent, secondTangent);
         }
 
-        double travelComponent = push.horizontal().dot(shovedTangent);
-
-        return new Vec3(drivenTangent.x() * travelComponent, push.y(),
-                drivenTangent.z() * travelComponent);
+        /** {@code push} at the second car as the first receives it, as {@link #alongTrack}. */
+        public Vec3 toFirst(Vec3 push) {
+            return carried(push, secondTangent, firstTangent);
+        }
     }
 
     /**
@@ -1276,6 +1294,19 @@ public final class TrainCoupling {
     // The run of a train's ribbon between the lowest and highest arcs its cars stand at, and
     // whether every car was read there from a known leading car, as a cut of the track has to be.
     private record Span(double low, double high, boolean whole) {}
+
+    // Push's component along from, laid along to.
+    private static Vec3 carried(Vec3 push, @Nullable Vec3 from, @Nullable Vec3 to) {
+        // A train the ribbon cannot place is one whose shape it cannot speak for either, so the
+        // shove goes on as it arrived rather than being projected onto a guess.
+        if (from == null || to == null) {
+            return push;
+        }
+
+        double travelComponent = push.horizontal().dot(from);
+
+        return new Vec3(to.x() * travelComponent, push.y(), to.z() * travelComponent);
+    }
 
     // Where a train's cars stand, each read on the lap of the one before it from the leading end
     // (leadArc that car's, if given), a short loop recording blocks twice. Null if it places none.
