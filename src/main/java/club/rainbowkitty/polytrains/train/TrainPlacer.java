@@ -77,6 +77,10 @@ public final class TrainPlacer {
     // slack for the spread of a flight, short of the link's full length.
     private static final double AIR_SLACK = 2.5;
 
+    // Ticks between full passes for a train holdStill keeps, staggered per train: the most a
+    // missed wake can leave one standing.
+    private static final int STILL_RECHECK_TICKS = 20;
+
     /**
      * Why a train could not be seated. {@link #RIBBON_SHORT} and {@link #CAR_OFF_RIBBON} name one
      * car's own track; {@link #LEADER_IN_AIR} a leading car flown off the end of its track, which
@@ -487,8 +491,12 @@ public final class TrainPlacer {
         // The furthest any car can have run to its seat this tick, whatever speed the train is laid
         // with: a hold cuts that speed, and a car packing up or closing a gap outruns its lead.
         double runLimit = furthestRun(leader);
+        double moved = 0.0;
+        boolean anyFlying = false;
 
         for (int i = 0; i < cars.size(); i++) {
+            anyFlying |= flying[i];
+
             if (i == leadIndex && !drawnBack) {
                 continue;
             }
@@ -505,8 +513,8 @@ public final class TrainPlacer {
                 continue;
             }
 
-            place(train, cars.get(i), seats[i], seatArcs[i], faceSign, speed, runLimit,
-                    i != leadIndex);
+            moved = Math.max(moved, place(train, cars.get(i), seats[i], seatArcs[i], faceSign,
+                    speed, runLimit, i != leadIndex));
 
             // Drawn back off an end the train is leaving, the leading car stays vanilla's: seated,
             // it skips vanilla's move and is drawn back again every tick that end still presses.
@@ -516,6 +524,9 @@ public final class TrainPlacer {
         }
 
         flyOn(cars, flying, leadIndex, fromHead);
+
+        boolean gapsHeld = train.gapsHeld(gaps);
+
         train.setGaps(gaps);
 
         if (closed) {
@@ -533,11 +544,133 @@ public final class TrainPlacer {
                 leader.level().getGameTime());
         RailDrag.bend(leader, turn);
 
+        // Laid exactly where it stood with nothing left to close, so the next tick may skip all
+        // this; the leading car, never placed here, stays vanilla's.
+        boolean still = refusal == null && !anyFlying && !drawnBack && !closed && gapsHeld
+                && moved <= EPSILON && speed <= EPSILON
+                && leader.getDeltaMovement().horizontalDistance() < EPSILON;
+
+        if (still) {
+            markStill(train, cars, seats, leadIndex, leader);
+        } else {
+            train.wake();
+        }
+
         if (refusal != null) {
             return refusal;
         }
 
         return null;
+    }
+
+    // Records where every car but the leading one was placed this tick, for holdStill.
+    private static void markStill(Train train, List<AbstractMinecart> cars, Seat[] seats,
+            int leadIndex, AbstractMinecart leader) {
+        Vec3[] positions = new Vec3[cars.size()];
+        BlockPos[] rails = new BlockPos[cars.size()];
+
+        for (int i = 0; i < cars.size(); i++) {
+            if (i != leadIndex && seats[i] != null) {
+                positions[i] = cars.get(i).position();
+                rails[i] = seats[i].rail();
+            }
+        }
+
+        train.markStill(leader.level().getGameTime(), positions, rails, leader.position());
+    }
+
+    /**
+     * Holds {@code train} where it was laid out last tick, if it was laid out still and nothing
+     * has moved it since, doing for each placed car what placing it again would do. False, having
+     * changed nothing, when the train needs laying out in full.
+     *
+     * <p>A fixed point of {@link #seat}: whatever wakes a parked train reaches its leading car's
+     * movement, a car's position, the arc frame, or a foreign cart or player in reach. A switch
+     * thrown near it wakes it outright, and a full pass now and then covers anything missed.
+     */
+    public static boolean holdStill(ServerLevel level, Train train) {
+        long tick = level.getGameTime();
+
+        if (!train.stillSince(tick)
+                || Math.floorMod(tick + System.identityHashCode(train), STILL_RECHECK_TICKS) == 0) {
+            return false;
+        }
+
+        AbstractMinecart leader = train.leader();
+
+        // Vanilla's own floor for a cart going nowhere, not zero: a coasted cart keeps a crumb.
+        if (leader == null || train.laidLeadArc(leader, tick) == null
+                || !leader.position().equals(train.stillLeaderPos())
+                || leader.getDeltaMovement().horizontalDistanceSqr() >= EPSILON * EPSILON
+                || train.driving()) {
+            return false;
+        }
+
+        List<AbstractMinecart> cars = train.cars();
+        BlockState[] rails = new BlockState[cars.size()];
+
+        for (int i = 0; i < cars.size(); i++) {
+            AbstractMinecart car = cars.get(i);
+            Vec3 position = train.stillPosition(i);
+            BlockPos rail = train.stillRail(i);
+
+            if (position == null || rail == null) {
+                if (car != leader) {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (!seated(car) || flown(car) || !car.position().equals(position)) {
+                return false;
+            }
+
+            rails[i] = level.getBlockState(rail);
+
+            if (!BaseRailBlock.isRail(rails[i])) {
+                return false;
+            }
+        }
+
+        AABB box = trainBox(cars);
+
+        // A rider leans on nothing; anyone else in reach may be packing a jammed train.
+        if (!foreignCarts(train, box.inflate(RUN_SHELL)).isEmpty()
+                || !level.getEntitiesOfClass(Player.class, box.inflate(SHOVE_SHELL),
+                        player -> !player.isSpectator() && !(player.getVehicle()
+                                instanceof AbstractMinecart ridden && train.contains(ridden)))
+                        .isEmpty()) {
+            return false;
+        }
+
+        for (int i = 0; i < cars.size(); i++) {
+            AbstractMinecart car = cars.get(i);
+            Vec3 position = train.stillPosition(i);
+            BlockPos rail = train.stillRail(i);
+
+            if (position == null || rail == null || !(car instanceof AbstractMinecartExt ext)) {
+                continue;
+            }
+
+            ext.polytrains$setSeatedAt(tick);
+            // Takes back the gravity vanilla gave it this tick, as placing it would.
+            car.setDeltaMovement(Vec3.ZERO);
+
+            // As vanilla fires the rail a cart rests on every tick.
+            if (rails[i].is(Blocks.ACTIVATOR_RAIL)) {
+                car.activateMinecart(level, rail.getX(), rail.getY(), rail.getZ(),
+                        rails[i].getValue(PoweredRailBlock.POWERED));
+            }
+
+            car.applyEffectsFromBlocks(position, position);
+        }
+
+        train.restampLaid(tick);
+        train.setTurn(0.0);
+        train.restampStill(tick);
+
+        return true;
     }
 
     // Runs the cars still seated on after a leading car flown off the ribbon's end, and has each
@@ -1440,8 +1573,9 @@ public final class TrainPlacer {
         return new Seat(position, rail, tangent);
     }
 
-    // Puts one car on its seat and does by hand everything vanilla would have done moving it there.
-    private static void place(Train train, AbstractMinecart car, Seat seat, double arc,
+    // Puts one car on its seat and does by hand everything vanilla would have done moving it there,
+    // answering how far that moved it.
+    private static double place(Train train, AbstractMinecart car, Seat seat, double arc,
             double faceSign, double speed, double runLimit, boolean shouldAim) {
         Vec3 previousPosition = car.position();
         Vec3 forward = seat.tangent().scale(faceSign);
@@ -1470,11 +1604,11 @@ public final class TrainPlacer {
             car.polytrains$aimEngine(headingDirection.normalize());
         }
 
-        if (!(car.getBehavior() instanceof NewMinecartBehavior behavior)) {
-            return;
-        }
-
         Vec3 displacement = car.position().subtract(previousPosition);
+
+        if (!(car.getBehavior() instanceof NewMinecartBehavior behavior)) {
+            return displacement.length();
+        }
 
         if (shouldAim) {
             aim(car, seat.tangent(), lastTangent, faceSign, displacement);
@@ -1490,6 +1624,8 @@ public final class TrainPlacer {
         // Vanilla hangs both off Entity.move, which a placed car never reaches.
         behavior.pushAndPickupEntities();
         car.applyEffectsFromBlocks(previousPosition, car.position());
+
+        return displacement.length();
     }
 
     // Fires every activator rail a car crosses reaching its seat, then records where it ended up.

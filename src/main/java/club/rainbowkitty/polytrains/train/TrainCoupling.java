@@ -968,6 +968,8 @@ public final class TrainCoupling {
                 ? serverLevel.getGameRules().get(GameRules.MAX_MINECART_SPEED) / 20.0 : 0.0);
 
         anyTrainNear(level, pos, reach, Train::of, train -> {
+            // The ribbon regrows past the switch on a full pass, which a still train skips.
+            train.wake();
             forgetThrownPast(level, train, spanOf(train, null));
             return false;
         });
@@ -1074,6 +1076,11 @@ public final class TrainCoupling {
         // tick is being looked after, and the one thing that must not follow from a refusal is a
         // second car deciding the first never came.
         train.setHeldAt(level.getGameTime());
+
+        if (TrainPlacer.holdStill(level, train)) {
+            return;
+        }
+
         reachTrain(level, train);
 
         TrainPlacer.Refusal refusal = TrainPlacer.seat(train, TARGET_SPACING);
@@ -1086,6 +1093,11 @@ public final class TrainCoupling {
         // count. A refusal naming a car on the ground takes the tick, a diverted car any other,
         // refused or not; the car a tick passes over keeps its count standing, not cleared.
         int divertedIndex = divertedCarIndex(level, train);
+
+        // A count running is a count the still path would stall short of its sever.
+        if (refusal != null || divertedIndex != TrainPlacer.Refusal.NONE) {
+            train.wake();
+        }
 
         if (refusal != null && cutIfLost(level, train, refusal, divertedIndex)) {
             return;

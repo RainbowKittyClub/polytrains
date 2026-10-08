@@ -9,6 +9,7 @@ import com.mojang.logging.LogUtils;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.level.Level;
@@ -163,6 +164,14 @@ public final class Train {
     private @Nullable AbstractMinecart laidLeader;
     private long laidTick = Long.MIN_VALUE;
     private int laidLeadArcAt = -1;
+
+    // The last tick this train was laid out standing still, the arc frame then, where each placed
+    // car stood and on which rail (null for one left to vanilla), and where its leading car stood.
+    private long stillTick = Long.MIN_VALUE;
+    private int stillEpoch = -1;
+    private @Nullable Vec3 @Nullable [] stillPositions;
+    private @Nullable BlockPos @Nullable [] stillRails;
+    private @Nullable Vec3 stillLeaderPos;
 
     // How the last seating attempt went, so only a change of answer is worth reporting, and
     // whether one has been made at all — a train built this tick has been neither placed nor
@@ -692,6 +701,21 @@ public final class Train {
         return total;
     }
 
+    /** Whether {@code next} seats every gap where it was last seated, to within a hair. */
+    public boolean gapsHeld(double[] next) {
+        if (gaps == null || gaps.length != next.length) {
+            return false;
+        }
+
+        for (int i = 0; i < next.length; i++) {
+            if (Math.abs(next[i] - gaps[i]) > EPSILON) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /** Records the intervals this train's cars have just been seated at, one per gap. */
     public void setGaps(double[] intervals) {
         gaps = intervals;
@@ -979,6 +1003,68 @@ public final class Train {
     public @Nullable Double laidLeadArc(AbstractMinecart leader, long tick) {
         return leader == laidLeader && laidTick == tick - 1 && laidLeadArcAt == ribbon.arcEpoch()
                 ? laidLeadArc : null;
+    }
+
+    /**
+     * Has the laying out recorded on the tick before {@code tick} stand for {@code tick} as well,
+     * for a train {@link TrainPlacer#holdStill} has found where it was laid.
+     */
+    public void restampLaid(long tick) {
+        if (laidTick == tick - 1) {
+            laidTick = tick;
+        }
+    }
+
+    /**
+     * Records that this train was laid out on {@code tick} with nothing moved and nothing left to
+     * move: where each placed car stood and on which rail, null for a car not placed, and where
+     * its leading car stood.
+     */
+    public void markStill(long tick, @Nullable Vec3[] positions, @Nullable BlockPos[] rails,
+            Vec3 leaderPos) {
+        stillTick = tick;
+        stillEpoch = ribbon.arcEpoch();
+        stillPositions = positions;
+        stillRails = rails;
+        stillLeaderPos = leaderPos;
+    }
+
+    /** Has the still layout recorded before {@code tick} stand for {@code tick} as well. */
+    public void restampStill(long tick) {
+        stillTick = tick;
+    }
+
+    /** Forgets this train's still layout, so the next laying out is a full one. */
+    public void wake() {
+        stillTick = Long.MIN_VALUE;
+    }
+
+    /**
+     * Whether this train was laid out still on the tick before {@code tick}, against the arc frame
+     * its ribbon still has.
+     */
+    public boolean stillSince(long tick) {
+        return stillTick == tick - 1 && stillEpoch == ribbon.arcEpoch();
+    }
+
+    /** Whether this train was laid out still on {@code tick}, for the meter. */
+    public boolean still(long tick) {
+        return stillTick == tick;
+    }
+
+    /** Where the car at {@code index} stood when last laid out still, or null if not placed. */
+    public @Nullable Vec3 stillPosition(int index) {
+        return stillPositions == null ? null : stillPositions[index];
+    }
+
+    /** The rail the car at {@code index} was last laid out still on, or null if not placed. */
+    public @Nullable BlockPos stillRail(int index) {
+        return stillRails == null ? null : stillRails[index];
+    }
+
+    /** Where the leading car stood when this train was last laid out still. */
+    public @Nullable Vec3 stillLeaderPos() {
+        return stillLeaderPos;
     }
 
     /** Records how far this train's head has just turned, in right angles. */
