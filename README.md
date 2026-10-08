@@ -69,7 +69,7 @@ Everything is done with `polytrains:` gamerules:
 | `furnaces_can_use_all_fuels [true]` | Whether furnace carts accept all furnace fuels. |
 | `furnace_max_burn_time [72000]` | Furnace burn time ceiling, in ticks. |
 | `furnace_minecarts_load_chunks [false]` | Whether moving furnace carts act as chunkloaders. |
-| `enable_choochoo [true]` | Whether furnace carts wear a smokestack and whistle, and smoke from the stack while burning. The brake lever shows either way. |
+| `enable_choochoo [false]` | Whether furnace carts wear a smokestack and whistle, and smoke from the stack while burning. The brake lever shows either way. |
 
 
 **Note:** This mod respects vanilla's `max_minecart_speed` gamerule.

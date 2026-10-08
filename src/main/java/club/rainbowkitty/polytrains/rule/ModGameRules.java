@@ -50,10 +50,10 @@ public final class ModGameRules {
 
     /**
      * Whether a furnace cart wears its smokestack and whistle, and smokes from the stack while it
-     * burns. Its brake lever is drawn either way.
+     * burns. Its brake lever is drawn either way. Off by default: a world shows them once asked to.
      */
     public static final GameRule<Boolean> ENABLE_CHOOCHOO =
-            registerBoolean("enable_choochoo", true);
+            registerBoolean("enable_choochoo", false);
 
     /**
      * Scales the speed-based damage a moving cart deals on impact — half its speed in blocks per
