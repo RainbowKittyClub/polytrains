@@ -97,8 +97,16 @@ public interface AbstractMinecartExt extends Linkable {
         throw Unmixed.error();
     }
 
-    /** Hands this cart the train it belongs to, sparing its siblings walking their own. */
-    public default void polytrains$setTrain(Train train) {
+    /** This cart's index in the cars of {@link #polytrains$train}. */
+    public default int polytrains$trainIndex() {
+        throw Unmixed.error();
+    }
+
+    /**
+     * Hands this cart the train it belongs to and its index among that train's cars, sparing its
+     * siblings walking their own.
+     */
+    public default void polytrains$setTrain(Train train, int index) {
         throw Unmixed.error();
     }
 

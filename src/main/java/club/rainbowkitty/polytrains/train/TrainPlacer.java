@@ -217,16 +217,16 @@ public final class TrainPlacer {
             // Released, the cars behind stand a tick where they were seated if they tick before
             // it, then shunt each other to a stop on the ramp, solid to one another once let go.
             if (followOff(train, leader)) {
-                return new Refusal(Bail.LEADER_IN_AIR, cars.indexOf(leader), Refusal.NONE,
+                return new Refusal(Bail.LEADER_IN_AIR, train.indexOf(leader), Refusal.NONE,
                         ribbon.leaderArc(), leader);
             }
 
             return new Refusal(Bail.LEADER_OFF_RIBBON,
-                    ribbon.isEmpty() ? Refusal.NONE : cars.indexOf(leader), Refusal.NONE,
+                    ribbon.isEmpty() ? Refusal.NONE : train.indexOf(leader), Refusal.NONE,
                     Double.NaN, leader);
         }
 
-        int leadIndex = cars.indexOf(leader);
+        int leadIndex = train.indexOf(leader);
         // Where vanilla left the leading car, which stays its place unless it is seated elsewhere.
         double standingLeadArc = leadArc;
 

@@ -91,6 +91,9 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     // The train this cart was last placed in, which knows for itself whether it is still good.
     @Unique
     private @Nullable Train polytrains$ownTrain;
+    // This cart's place in that train's car list.
+    @Unique
+    private int polytrains$ownTrainIndex;
 
     // Where along its train's ribbon the placer last put this cart, and the tick it did. Zero
     // rather than a sentinel because the field starts at Java's default, so a cart's very first
@@ -231,8 +234,14 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
     }
 
     @Override
-    public void polytrains$setTrain(Train train) {
+    public int polytrains$trainIndex() {
+        return polytrains$ownTrainIndex;
+    }
+
+    @Override
+    public void polytrains$setTrain(Train train, int index) {
         polytrains$ownTrain = train;
+        polytrains$ownTrainIndex = index;
     }
 
     @Override
