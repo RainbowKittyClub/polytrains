@@ -253,9 +253,12 @@ public final class TrainPlacer {
         // Nor is a car still on the ramp laid onto the track below; it runs on off the ramp.
         boolean[] departing = departing(train, cars, leadIndex, fromHead, flying);
         boolean[] placedElsewhere = flying.clone();
+        // Flown last tick and down now: drawn to its seat from where it came down.
+        boolean[] landed = new boolean[cars.size()];
 
         for (int i = 0; i < cars.size(); i++) {
             placedElsewhere[i] |= departing[i];
+            landed[i] = i != leadIndex && !placedElsewhere[i] && flown(cars.get(i));
         }
 
         Double nextArc = ribbon.arcOf(cars.get(leadIndex + fromHead));
@@ -268,7 +271,7 @@ public final class TrainPlacer {
         }
 
         double maxLinkDistance = TrainCoupling.maxLinkDistance();
-        double[] gaps = train.nextGaps(target, maxLinkDistance, speed);
+        double[] gaps = train.nextGaps(target, maxLinkDistance, speed, landed);
         double travelSign = travelSign(leader, ribbon.tangentAt(leadArc));
         int order = train.orderSign();
 
@@ -350,7 +353,7 @@ public final class TrainPlacer {
         // A pressing or packing train still widens against zero speed: paying that widening into
         // gaps it has nowhere to drive a car into would pin it to the wall it is pressing on.
         if (pressing || packing) {
-            gaps = train.nextGaps(target, maxLinkDistance, 0.0);
+            gaps = train.nextGaps(target, maxLinkDistance, 0.0, landed);
             offsets = offsets(ribbon, gaps, leadArc, order, fromHead);
         }
 
@@ -436,7 +439,7 @@ public final class TrainPlacer {
         if (contact != null && contact.depth() > EPSILON) {
             // Run into something, a train lengthens no further into it.
             if (!pressing && !packing) {
-                gaps = train.nextGaps(target, maxLinkDistance, 0.0);
+                gaps = train.nextGaps(target, maxLinkDistance, 0.0, landed);
                 arcs = arcsFor(ribbon, gaps, leadArc, order, fromHead, leadIndex, tailIndex);
                 offsets = arcs.offsets();
                 headArc = arcs.headArc();

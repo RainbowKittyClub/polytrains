@@ -516,13 +516,16 @@ public final class Train {
      * @param maxLinkDistance the most two coupled cars can stand apart; a wider reading is a car
      *     that has drifted off this ribbon rather than a gap, and is not started from
      * @param advance how far the leading car moved this tick, which is all the room there is
+     * @param landed by car, whether that car has just come down off a jump onto this ribbon
      */
-    public double[] nextGaps(double target, double maxLinkDistance, double advance) {
+    public double[] nextGaps(
+            double target, double maxLinkDistance, double advance, boolean[] landed) {
         int count = cars.size() - 1;
         double[] next = new double[count];
         double pitchFloor = floor(target);
         double[] carArcs = arcs();
         double[] previousGaps = gaps != null && gaps.length == count ? gaps : null;
+        boolean leadsFromHead = cars.getFirst() == leader;
 
         for (int i = 0; i < count; i++) {
             // Along the rails, not in arc. An interval is a distance on the track and arc is its
@@ -531,9 +534,19 @@ public final class Train {
             double stood = Math.min(
                     ribbon.trackBetween(carArcs[i], carArcs[i + 1]), maxLinkDistance);
             double interval = previousGaps != null ? previousGaps[i] : target;
+            // Below a car only where a landing left it so, and then only opening from there.
+            double gapFloor = previousGaps != null
+                    ? Math.min(pitchFloor, previousGaps[i]) : pitchFloor;
 
             if (previousGaps == null && stood > 0.0) {
                 interval = stood;
+            }
+
+            int behind = leadsFromHead ? i + 1 : i;
+
+            if (landed[behind] && stood > 0.0) {
+                next[i] = landedGap(i, stood, target, pitchFloor, leadsFromHead);
+                continue;
             }
 
             // Never wider than the pair actually stands. A seated pair stands exactly at its
@@ -543,7 +556,7 @@ public final class Train {
             // a car either: closer than that is two cars inside each other, which vanilla's own
             // shove is left to separate.
             if (stood > 0.0) {
-                interval = Math.max(Math.min(interval, stood), pitchFloor);
+                interval = Math.max(Math.min(interval, stood), gapFloor);
             }
 
             next[i] = interval > target
@@ -552,6 +565,18 @@ public final class Train {
         }
 
         return next;
+    }
+
+    // A car come down off a jump stays where it landed and is drawn to its seat from there: kept to
+    // where the car ahead stood before this tick, so it moves on with that car and never back.
+    private double landedGap(
+            int gap, double stood, double target, double pitchFloor, boolean leadsFromHead) {
+        AbstractMinecart ahead = cars.get(leadsFromHead ? gap : gap + 1);
+        double aheadRun = ahead == leader ? ahead.getDeltaMovement().horizontalDistance() : 0.0;
+        // Nor any closer than it stands now, unless it stands closer than a car already.
+        double start = Math.max(stood - aheadRun, Math.min(stood, pitchFloor));
+
+        return start > target ? start - Math.min(start - target, PITCH_STEP) : start;
     }
 
     /**
