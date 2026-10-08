@@ -271,8 +271,9 @@ public final class TrainPlacer {
             speed = Math.min(speed, leader.polytrains$ownMaxSpeed(level));
         }
 
-        double maxLinkDistance = TrainCoupling.maxLinkDistance();
-        double[] gaps = train.nextGaps(target, maxLinkDistance, speed);
+        // Where each pair stands, read once: nothing below moves a car before it is placed.
+        double[] stood = train.stood(TrainCoupling.maxLinkDistance());
+        double[] gaps = train.nextGaps(target, stood, speed);
         double travelSign = travelSign(leader, ribbon.tangentAt(leadArc));
         int order = train.orderSign();
 
@@ -354,7 +355,7 @@ public final class TrainPlacer {
         // A pressing or packing train still widens against zero speed: paying that widening into
         // gaps it has nowhere to drive a car into would pin it to the wall it is pressing on.
         if (pressing || packing) {
-            gaps = train.nextGaps(target, maxLinkDistance, 0.0);
+            gaps = train.nextGaps(target, stood, 0.0);
             offsets = offsets(ribbon, gaps, leadArc, order, fromHead);
         }
 
@@ -440,7 +441,7 @@ public final class TrainPlacer {
         if (contact != null && contact.depth() > EPSILON) {
             // Run into something, a train lengthens no further into it.
             if (!pressing && !packing) {
-                gaps = train.nextGaps(target, maxLinkDistance, 0.0);
+                gaps = train.nextGaps(target, stood, 0.0);
                 arcs = arcsFor(ribbon, gaps, leadArc, order, fromHead, leadIndex, tailIndex);
                 offsets = arcs.offsets();
                 headArc = arcs.headArc();
@@ -1759,16 +1760,14 @@ public final class TrainPlacer {
 
     // Where one car would sit on recorded track, or null if that track is gone.
     private static @Nullable Seat seatAt(TrackRibbon ribbon, AbstractMinecart car, double arc) {
-        Vec3 position = ribbon.positionAt(arc);
-        BlockPos rail = ribbon.blockAt(arc);
-        Vec3 tangent = ribbon.tangentAt(arc);
+        TrackRibbon.Spot spot = ribbon.spotAt(arc);
 
-        if (position == null || rail == null || tangent == null
-                || !BaseRailBlock.isRail(car.level().getBlockState(rail))) {
+        if (spot == null || spot.tangent() == null
+                || !BaseRailBlock.isRail(car.level().getBlockState(spot.block()))) {
             return null;
         }
 
-        return new Seat(position, rail, tangent);
+        return new Seat(spot.position(), spot.block(), spot.tangent());
     }
 
     // Puts one car on its seat along ribbon and does by hand everything vanilla would have done

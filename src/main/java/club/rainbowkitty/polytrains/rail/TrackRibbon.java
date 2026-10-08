@@ -1,13 +1,15 @@
 package club.rainbowkitty.polytrains.rail;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
+import java.util.Arrays;
 import java.util.Iterator;
+import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 import com.mojang.logging.LogUtils;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -50,6 +52,13 @@ public final class TrackRibbon {
     // is built on whichever thread a cart ticks on.
     private static final AtomicInteger EPOCH_COUNTER = new AtomicInteger();
 
+    // Bumped whenever a switch is laid or changes shape, so a ribbon looks for thrown switches only
+    // after one has. Shared by every level: counting another level's switch costs one extra walk.
+    private static final AtomicInteger SWITCH_CHANGES = new AtomicInteger();
+
+    // The most ticks a ribbon goes between walks, for a switch written with block updates off.
+    private static final int FULL_WALK_TICKS = 20;
+
     // Below this an arc offset or a chord length is treated as zero.
     private static final double EPSILON = 1.0E-5;
 
@@ -67,8 +76,17 @@ public final class TrackRibbon {
     // The block past one end of the ribbon that its track would carry on into, and the way out.
     private record Beyond(BlockPos pos, Vec3 outwardDirection) {}
 
+    /**
+     * One point of recorded track.
+     *
+     * @param position where the track is, at the height the rail runs there
+     * @param block the rail block the track runs through there
+     * @param tangent which way the track runs, flat, or null where that block's chord has no length
+     */
+    public record Spot(Vec3 position, BlockPos block, @Nullable Vec3 tangent) {}
+
     // The rail blocks and crossing points this train has traversed, in order.
-    private final Deque<Node> nodes = new ArrayDeque<>();
+    private final NodeRing nodes = new NodeRing();
 
     // Where along this ribbon the leading car was last recorded. Held rather than looked back up:
     // a circuit shorter than the ribbon records every one of its blocks twice, a lap apart, and the
@@ -92,6 +110,19 @@ public final class TrackRibbon {
     // so state a car holds against one numbering is never mistaken for state against another —
     // which the reset count alone cannot manage, two ribbons on their first both answering it.
     private int arcEpoch = EPOCH_COUNTER.incrementAndGet();
+
+    // The switch count and tick of the last walk for thrown switches, and whether it found one
+    // under the train, which has to be cut the tick the train leaves it. Not copied: -1 walks.
+    private int walkedChanges = -1;
+    private long walkedAt;
+    private boolean thrownWithin;
+
+    // The end nodes growth last failed off while the train stood, against the switch count and
+    // tick then. Keyed by node, so anything that changes an end asks again.
+    private @Nullable Node nearStop;
+    private @Nullable Node farStop;
+    private int stopsChanges = -1;
+    private long stopsAt;
 
     /** A ribbon with no track on it. */
     public TrackRibbon() {
@@ -231,7 +262,7 @@ public final class TrackRibbon {
         RailPath.Crossing crossing = RailPath.crossing(level, pos, movement);
 
         if (crossing != null) {
-            nodes.add(new Node(pos, crossing.entry(), crossing.exit(), 0.0, crossing.span()));
+            nodes.addLast(new Node(pos, crossing.entry(), crossing.exit(), 0.0, crossing.span()));
             leaderArc = 0.0;
         }
     }
@@ -354,12 +385,10 @@ public final class TrackRibbon {
     private @Nullable Double occurrenceUnder(BlockPos pos, Vec3 position, double near) {
         Double best = null;
         double nearest = Double.MAX_VALUE;
+        IntArrayList at = nodes.seqsAt(pos);
 
-        for (Node node : nodes) {
-            if (!node.block().equals(pos)) {
-                continue;
-            }
-
+        for (int k = 0; k < at.size(); k++) {
+            Node node = nodes.bySeq(at.getInt(k));
             double arc = node.arc() + chordFraction(node, position) * node.span();
             double arcGap = Math.abs(arc - near);
 
@@ -413,9 +442,12 @@ public final class TrackRibbon {
     // if this ribbon holds none. A record is made once per block that car crosses, so a genuine
     // continuation is always that close and anything further off is a different lap.
     private @Nullable Double occurrenceNear(BlockPos pos, double from) {
-        for (Node node : nodes) {
-            if (node.block().equals(pos)
-                    && node.arc() + node.span() >= from - CONTINUITY
+        IntArrayList at = nodes.seqsAt(pos);
+
+        for (int k = 0; k < at.size(); k++) {
+            Node node = nodes.bySeq(at.getInt(k));
+
+            if (node.arc() + node.span() >= from - CONTINUITY
                     && node.arc() <= from + CONTINUITY) {
                 return node.arc();
             }
@@ -429,9 +461,12 @@ public final class TrackRibbon {
     private double nearestOccurrence(BlockPos pos, double from) {
         double best = from;
         double nearest = Double.MAX_VALUE;
+        IntArrayList at = nodes.seqsAt(pos);
 
-        for (Node node : nodes) {
-            if (node.block().equals(pos) && Math.abs(node.arc() - from) < nearest) {
+        for (int k = 0; k < at.size(); k++) {
+            Node node = nodes.bySeq(at.getInt(k));
+
+            if (Math.abs(node.arc() - from) < nearest) {
                 nearest = Math.abs(node.arc() - from);
                 best = node.arc();
             }
@@ -447,12 +482,17 @@ public final class TrackRibbon {
     public @Nullable Vec3 positionAt(double arc) {
         Node node = nodeAt(arc);
 
-        if (node == null) {
-            return null;
-        }
+        return node == null ? null : positionOn(node, arc);
+    }
 
-        double fraction = node.span() < EPSILON ? 0.0 : (arc - node.arc()) / node.span();
-        return node.entry().lerp(node.exit(), fraction);
+    /**
+     * {@link #positionAt}, {@link #blockAt} and {@link #tangentAt} at arc length {@code arc} from
+     * one lookup, or null if that is off the recorded ends: everything a car seated there needs.
+     */
+    public @Nullable Spot spotAt(double arc) {
+        Node node = nodeAt(arc);
+
+        return node == null ? null : new Spot(positionOn(node, arc), node.block(), heading(node));
     }
 
     /**
@@ -529,12 +569,10 @@ public final class TrackRibbon {
         Double best = null;
         double nearest = Double.MAX_VALUE;
         double apart = Double.MAX_VALUE;
+        IntArrayList at = nodes.seqsAt(pos);
 
-        for (Node node : nodes) {
-            if (!node.block().equals(pos)) {
-                continue;
-            }
-
+        for (int k = 0; k < at.size(); k++) {
+            Node node = nodes.bySeq(at.getInt(k));
             double fraction = chordFraction(node, position);
             double arc = node.arc() + fraction * node.span();
             double distanceSqr = node.entry().lerp(node.exit(), fraction)
@@ -598,6 +636,17 @@ public final class TrackRibbon {
             return;
         }
 
+        int changes = SWITCH_CHANGES.get();
+        long now = level.getGameTime();
+
+        // A switch recorded unthrown stays so until one changes, which onPlace counts.
+        if (!thrownWithin && changes == walkedChanges && now - walkedAt < FULL_WALK_TICKS) {
+            return;
+        }
+
+        walkedChanges = changes;
+        walkedAt = now;
+
         Node farCut = firstThrown(level, nodes.iterator(), node -> node.arc() > high + EPSILON);
         Node nearCut = firstThrown(level, nodes.descendingIterator(),
                 node -> node.arc() + node.span() < low - EPSILON);
@@ -610,6 +659,28 @@ public final class TrackRibbon {
         while (nearCut != null && nodes.removeFirst() != nearCut) {
             continue;
         }
+
+        thrownWithin = anyThrownWithin(level, low, high);
+    }
+
+    /**
+     * Counts a switch laid or changed in shape, so every ribbon's next {@link #forgetThrown}
+     * reads its track again rather than trusting the last reading.
+     */
+    public static void switchChanged() {
+        SWITCH_CHANGES.incrementAndGet();
+    }
+
+    // Whether any node on the train's own track between low and high is a thrown switch.
+    private boolean anyThrownWithin(Level level, double low, double high) {
+        for (int i = nodes.firstIndex(node -> node.arc() + node.span() >= low - EPSILON);
+                i < nodes.size() && nodes.get(i).arc() <= high + EPSILON; i++) {
+            if (thrown(level, nodes.get(i))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Walking outward, the first node past the train that is a thrown switch, or null. Only nodes
@@ -721,10 +792,12 @@ public final class TrackRibbon {
     public boolean covers(double from, double to, BlockPos pos) {
         double low = Math.min(from, to);
         double high = Math.max(from, to);
+        IntArrayList at = nodes.seqsAt(pos);
 
-        for (Node node : nodes) {
-            if (node.block().equals(pos)
-                    && node.arc() + node.span() >= low - EPSILON
+        for (int k = 0; k < at.size(); k++) {
+            Node node = nodes.bySeq(at.getInt(k));
+
+            if (node.arc() + node.span() >= low - EPSILON
                     && node.arc() <= high + EPSILON) {
                 return true;
             }
@@ -742,16 +815,29 @@ public final class TrackRibbon {
      * been linked, grown or reset has nowhere to seat the cars it already has — and it is standing
      * on that track the whole time it has none recorded. Walking stops at whatever the track does:
      * a dead end, or a block that is not rail.
+     *
+     * <p>An end that would not grow while the train stood is not walked again until it moves, a
+     * switch changes, or {@value #FULL_WALK_TICKS} ticks pass.
      */
-    public void extendTo(Level level, double from, double to) {
+    public void extendTo(Level level, double from, double to, boolean still) {
+        int changes = SWITCH_CHANGES.get();
+        long now = level.getGameTime();
+
+        if (!still || changes != stopsChanges || now - stopsAt >= FULL_WALK_TICKS) {
+            nearStop = null;
+            farStop = null;
+            stopsChanges = changes;
+            stopsAt = now;
+        }
+
         boolean nearGrowing = true;
         boolean farGrowing = true;
 
         // One block off each end in turn: grown one after the other, the near end could spend the
         // whole cap before the far end had any.
         while (nearGrowing || farGrowing) {
-            nearGrowing = nearGrowing && nearArc() > from + EPSILON && grow(level, true);
-            farGrowing = farGrowing && farArc() < to - EPSILON && grow(level, false);
+            nearGrowing = nearGrowing && nearArc() > from + EPSILON && growEnd(level, true);
+            farGrowing = farGrowing && farArc() < to - EPSILON && growEnd(level, false);
         }
     }
 
@@ -768,7 +854,10 @@ public final class TrackRibbon {
         walking = true;
 
         try {
-            for (Node node : nodes) {
+            for (int i = nodes.firstIndex(node -> node.arc() + node.span() >= low - EPSILON);
+                    i < nodes.size() && !(nodes.get(i).arc() > high + EPSILON); i++) {
+                Node node = nodes.get(i);
+
                 if (node.arc() + node.span() >= low - EPSILON && node.arc() <= high + EPSILON) {
                     action.accept(node.block());
                 }
@@ -841,13 +930,7 @@ public final class TrackRibbon {
 
     /** Whether this ribbon records {@code pos} anywhere along it. */
     public boolean holds(BlockPos pos) {
-        for (Node node : nodes) {
-            if (node.block().equals(pos)) {
-                return true;
-            }
-        }
-
-        return false;
+        return !nodes.seqsAt(pos).isEmpty();
     }
 
     // How far along a node's chord a point projects, clamped to the block. Flat on both sides: arc
@@ -900,12 +983,23 @@ public final class TrackRibbon {
             return 0.0;
         }
 
-        Iterator<Node> walk = sign < 0.0 ? nodes.descendingIterator() : nodes.iterator();
+        // Begun past the nodes the room test below would skip before anything is spent: arcs rise
+        // with index, so those are a run at the walk's start.
+        boolean back = sign < 0.0;
+        int step = back ? -1 : 1;
+        int i;
+
+        if (back) {
+            i = nodes.firstIndex(node -> Math.min(arc - node.arc(), node.span()) <= EPSILON) - 1;
+        } else {
+            i = nodes.firstIndex(node -> !(Math.min(node.arc() + node.span() - arc, node.span())
+                    <= EPSILON));
+        }
         double cursorArc = arc;
         double left = trackDistance;
 
-        while (walk.hasNext() && left > EPSILON) {
-            Node node = walk.next();
+        for (; i >= 0 && i < nodes.size() && left > EPSILON; i += step) {
+            Node node = nodes.get(i);
             double low = node.arc();
             double high = low + node.span();
             double room = Math.min(sign < 0.0 ? cursorArc - low : high - cursorArc, node.span());
@@ -945,7 +1039,10 @@ public final class TrackRibbon {
         double trackDistance = 0.0;
         double coveredArc = 0.0;
 
-        for (Node node : nodes) {
+        // Nodes wholly before low or from high on add nothing, and arcs rise with index.
+        for (int i = nodes.firstIndex(node -> node.arc() + node.span() > low);
+                i < nodes.size() && !(nodes.get(i).arc() >= high); i++) {
+            Node node = nodes.get(i);
             double lo = Math.max(low, node.arc());
             double hi = Math.min(high, node.arc() + node.span());
 
@@ -968,6 +1065,12 @@ public final class TrackRibbon {
         return run < EPSILON ? 1.0 : node.span() / run;
     }
 
+    // Where along node's chord arc falls, at the height the rail runs there.
+    private static Vec3 positionOn(Node node, double arc) {
+        double fraction = node.span() < EPSILON ? 0.0 : (arc - node.arc()) / node.span();
+        return node.entry().lerp(node.exit(), fraction);
+    }
+
     // Which way a node's own chord runs, or null where its two edge midpoints coincide. Flat: a
     // grade tilts a chord without turning it, and arc is a horizontal measure throughout.
     private static @Nullable Vec3 heading(Node node) {
@@ -978,10 +1081,11 @@ public final class TrackRibbon {
 
     // The node whose span covers arc, or null if arc is off either end.
     private @Nullable Node nodeAt(double arc) {
-        for (Node node : nodes) {
-            if (arc >= node.arc() - EPSILON && arc <= node.arc() + node.span() + EPSILON) {
-                return node;
-            }
+        // Arcs rise with index, so no node past the first ending at or after arc can start by it.
+        int i = nodes.firstIndex(node -> arc <= node.arc() + node.span() + EPSILON);
+
+        if (i < nodes.size() && arc >= nodes.get(i).arc() - EPSILON) {
+            return nodes.get(i);
         }
 
         return null;
@@ -1018,7 +1122,7 @@ public final class TrackRibbon {
 
         // Not stopped by track this ribbon already holds: a circuit re-enters its own blocks a lap
         // on, and refusing to walk there leaves a looping train with no arc to sit at. Stopped by
-        // an unloaded chunk, without loading it; extendTo asks again next tick.
+        // an unloaded chunk, without loading it; extendTo asks again later.
         BlockState nextState = next == null ? null : RailPath.loadedState(level, next);
 
         if (nextState == null || !enterable(nextState, outwardDirection)) {
@@ -1034,6 +1138,27 @@ public final class TrackRibbon {
         }
 
         return nodes.size() > before;
+    }
+
+    // As grow, skipping an end node it has already failed off since extendTo last forgot them.
+    private boolean growEnd(Level level, boolean nearEnd) {
+        Node end = nodes.isEmpty() ? null : nearEnd ? nodes.getFirst() : nodes.getLast();
+
+        if (end == null || end == (nearEnd ? nearStop : farStop)) {
+            return false;
+        }
+
+        if (grow(level, nearEnd)) {
+            return true;
+        }
+
+        if (nearEnd) {
+            nearStop = end;
+        } else {
+            farStop = end;
+        }
+
+        return false;
     }
 
     // Whether the rail recorded at pos is gone. An unloaded block counts as still there: reading it
@@ -1175,5 +1300,213 @@ public final class TrackRibbon {
     private static boolean adjacent(BlockPos a, BlockPos b) {
         return Math.abs(a.getX() - b.getX()) + Math.abs(a.getZ() - b.getZ()) == 1
                 && Math.abs(a.getY() - b.getY()) <= 1;
+    }
+
+    // The nodes in ribbon order, addressable by index, with where each block occurs. Sequence
+    // numbers rise along the ribbon and survive removal at either end, so the map never renumbers.
+    private static final class NodeRing implements Iterable<Node> {
+
+        // An empty block's occurrences, shared rather than allocated per lookup.
+        private static final IntArrayList NONE = new IntArrayList(0);
+
+        // Power-of-two ring storage; head is the slot of index 0.
+        private Node[] items = new Node[16];
+        private int head;
+        private int size;
+
+        // The sequence number of index 0.
+        private int firstSeq;
+
+        // Each block's sequence numbers, ascending, keyed by BlockPos.asLong.
+        private final Long2ObjectOpenHashMap<IntArrayList> seqsByBlock =
+                new Long2ObjectOpenHashMap<>();
+
+        // How many nodes are held.
+        private int size() {
+            return size;
+        }
+
+        // Whether no node is held.
+        private boolean isEmpty() {
+            return size == 0;
+        }
+
+        // The node at index i, 0 being the near end.
+        private Node get(int i) {
+            return items[(head + i) & (items.length - 1)];
+        }
+
+        // The node with sequence number seq, which must be held.
+        private Node bySeq(int seq) {
+            return get(seq - firstSeq);
+        }
+
+        // The near end node, throwing when empty as Deque does.
+        private Node getFirst() {
+            if (size == 0) {
+                throw new NoSuchElementException();
+            }
+
+            return get(0);
+        }
+
+        // The far end node, throwing when empty as Deque does.
+        private Node getLast() {
+            if (size == 0) {
+                throw new NoSuchElementException();
+            }
+
+            return get(size - 1);
+        }
+
+        // The far end node, or null when empty.
+        private @Nullable Node peekLast() {
+            return size == 0 ? null : get(size - 1);
+        }
+
+        // The sequence numbers of the nodes recording pos, ascending; read-only, empty if none.
+        private IntArrayList seqsAt(BlockPos pos) {
+            IntArrayList seqs = seqsByBlock.get(pos.asLong());
+
+            return seqs == null ? NONE : seqs;
+        }
+
+        // The first index whose node passes reached, or size() if none; reached must be false
+        // for a run of indices from 0 and true for every index after.
+        private int firstIndex(Predicate<Node> reached) {
+            int low = 0;
+            int high = size;
+
+            while (low < high) {
+                int middle = (low + high) >>> 1;
+
+                if (reached.test(get(middle))) {
+                    high = middle;
+                } else {
+                    low = middle + 1;
+                }
+            }
+
+            return low;
+        }
+
+        // Adds node at the near end.
+        private void addFirst(Node node) {
+            growIfFull();
+            head = (head - 1) & (items.length - 1);
+            items[head] = node;
+            size++;
+            firstSeq--;
+            seqsByBlock.computeIfAbsent(node.block().asLong(), key -> new IntArrayList(1))
+                    .add(0, firstSeq);
+        }
+
+        // Adds node at the far end.
+        private void addLast(Node node) {
+            growIfFull();
+            items[(head + size) & (items.length - 1)] = node;
+            seqsByBlock.computeIfAbsent(node.block().asLong(), key -> new IntArrayList(1))
+                    .add(firstSeq + size);
+            size++;
+        }
+
+        // Removes and returns the near end node, throwing when empty as Deque does.
+        private Node removeFirst() {
+            Node node = getFirst();
+
+            items[head] = null;
+            head = (head + 1) & (items.length - 1);
+            size--;
+            firstSeq++;
+            forget(node, 0);
+            return node;
+        }
+
+        // Removes and returns the far end node, throwing when empty as Deque does.
+        private Node removeLast() {
+            Node node = getLast();
+
+            items[(head + size - 1) & (items.length - 1)] = null;
+            size--;
+            forget(node, -1);
+            return node;
+        }
+
+        // Drops every node.
+        private void clear() {
+            Arrays.fill(items, null);
+            head = 0;
+            size = 0;
+            firstSeq = 0;
+            seqsByBlock.clear();
+        }
+
+        // Adds every node of other at the far end, in order.
+        private void addAll(NodeRing other) {
+            for (int i = 0; i < other.size(); i++) {
+                addLast(other.get(i));
+            }
+        }
+
+        @Override
+        public Iterator<Node> iterator() {
+            return walk(0, 1);
+        }
+
+        // The nodes from the far end back to the near end.
+        private Iterator<Node> descendingIterator() {
+            return walk(size - 1, -1);
+        }
+
+        // Walks from index start by step until off either end.
+        private Iterator<Node> walk(int start, int step) {
+            return new Iterator<>() {
+                private int cursor = start;
+
+                @Override
+                public boolean hasNext() {
+                    return cursor >= 0 && cursor < size;
+                }
+
+                @Override
+                public Node next() {
+                    if (!hasNext()) {
+                        throw new NoSuchElementException();
+                    }
+
+                    Node node = get(cursor);
+                    cursor += step;
+                    return node;
+                }
+            };
+        }
+
+        // Drops an end node's sequence number from its block: its first (end 0) or last (-1).
+        private void forget(Node node, int end) {
+            long key = node.block().asLong();
+            IntArrayList seqs = seqsByBlock.get(key);
+
+            seqs.removeInt(end == 0 ? 0 : seqs.size() - 1);
+
+            if (seqs.isEmpty()) {
+                seqsByBlock.remove(key);
+            }
+        }
+
+        // Doubles the storage when every slot is taken, laying index 0 at slot 0.
+        private void growIfFull() {
+            if (size < items.length) {
+                return;
+            }
+
+            Node[] grown = new Node[items.length * 2];
+
+            for (int i = 0; i < size; i++) {
+                grown[i] = get(i);
+            }
+
+            items = grown;
+            head = 0;
+        }
     }
 }

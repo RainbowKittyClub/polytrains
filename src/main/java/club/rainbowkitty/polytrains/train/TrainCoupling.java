@@ -1362,7 +1362,9 @@ public final class TrainCoupling {
         // ribbon only grows from an arc it can already place that car at. record() continues from
         // what is there when it can and starts over when it cannot, which is the same judgement it
         // makes for every other block the car steps onto.
-        if (ribbon.isEmpty() || ribbon.arcOfLeader(leader) == null) {
+        Double arc = ribbon.isEmpty() ? null : ribbon.arcOfLeader(leader);
+
+        if (arc == null) {
             BlockPos underPos = leader.getCurrentBlockPosOrRailBelow();
 
             if (!BaseRailBlock.isRail(level.getBlockState(underPos))) {
@@ -1370,9 +1372,8 @@ public final class TrainCoupling {
             }
 
             ribbon.record(level, underPos, movement);
+            arc = ribbon.arcOfLeader(leader);
         }
-
-        Double arc = ribbon.arcOfLeader(leader);
 
         if (arc == null) {
             return;
@@ -1395,7 +1396,8 @@ public final class TrainCoupling {
         // record the intervals that would have made the ask smaller.
         double reach = train.length(MAX_LINK_DISTANCE) + 1.0;
 
-        ribbon.extendTo(level, arc - reach, arc + reach);
+        ribbon.extendTo(level, arc - reach, arc + reach,
+                !(movement.lengthSqr() > EPSILON * EPSILON));
 
         // A reset numbered the new ribbon off this movement, so the lie is settled from it as in
         // recordTrack. Unlike there, this car may be bouncing back into its train, so check first.
