@@ -27,7 +27,8 @@ reports of `3bjump` after them, P19 building on P18. P20 to P23 take what P14, P
 P20, P21 and P23 are independent of each other, P22 builds on P21, and R1 runs again once they land.
 P24 comes from the user's report of cars snapping onto the track after a jump, P25 from a review of
 P24. P26, planned for the torture failure seen most since R1 was last met, was skipped. P27 comes
-from a trace of `3bjump` at 100 and is independent of the rest.
+from a trace of `3bjump` at 100 and is independent of the rest; P28 from a trace of it at 8,
+building on P19 and P25.
 
 ---
 
@@ -1518,6 +1519,32 @@ Motion sampled each tick: every car, the first lap's leader included, leaves the
 the way along its travel it approached with; a car on straight track never changes yaw between
 ticks, even when its train reverses at the buffer; and no lerp step through the hairpin turns more
 than 90 degrees. A ten-minute torture run at 100 and one at 40 pass every clause.
+
+## P28 — Cars still on the ramp when the leader lands run off it — **in progress**
+
+At 8 on `3bjump` the leader leaves the lip slowly enough to rest a tick on its support, where vanilla
+halves its speed, then reads at the ribbon's end for about five ticks: `nearestTrack` clamps its
+projection, so the cars behind stand still, and `followOff` then runs them at the halved `carried`.
+The leader lands before the last cars have left the lip, the ribbon restarts under it, and
+`seatCars` lays every car not yet flown onto the landing track: C2, F1 and C3 snap down off the
+ramp every lap. At 40 and 100 every car is off the lip first, so it never shows there.
+
+**Build.** A leader in the air under the new movement, past an end of its ribbon and going on out,
+is off the ribbon at once rather than a car's width later; one resting on the lip still reads at
+the end. `carried` is recorded only while the leader is on its rails. `followOff` keeps a copy of
+the ribbon, on the same arc numbering and trimmed to the departing stretch, as the train's
+departure. Once the leader has landed on a restarted ribbon, cars still seated on that copy are
+not seated on the new one: after the landed cars are placed and the flying ones flown on, they run
+on off the copy at the landed train's speed, one leaving a tick, as `followOff` runs them. A flown
+car resting on the lip's support still counts as flying. The departure is dropped on a release, a
+change of leader, once no car is on it, or where its track no longer answers.
+
+**Done when.** `3bjump` traced tick by tick for at least 1,500 ticks at 8 snaps no car from the ramp
+onto the landing track; from the leader's first airborne tick every trailing car moves each tick
+until it leaves the lip, short of at most one ground-touch tick; `LEADER_IN_AIR` begins on that
+first airborne tick and `followOff` runs at the pre-lip speed. P25's bar holds at 8, 40 and 100,
+with SNAP and FACING counts at 40 and 100 unchanged, and two ten-minute torture runs at 100 and two
+at 40 pass every clause.
 
 # Part R — The bar
 
