@@ -79,11 +79,21 @@ public final class FurnaceFuel {
     // a cart-specific table being invented. Both figures are read, so a mod changing either moves
     // every other fuel with it.
     private static int burnDuration(ServerLevel level, ItemStack stack) {
-        int coalInFurnace = level.fuelValues().burnDuration(new ItemStack(Items.COAL));
+        int burn = level.fuelValues().burnDuration(stack);
+
+        if (burn <= 0) {
+            return 0;
+        }
+
+        int coalInFurnace = level.fuelValues().burnDuration(Coal.STACK);
 
         return coalInFurnace <= 0
                 ? 0
-                : (int) ((long) level.fuelValues().burnDuration(stack) * ticksPerCoal()
-                        / coalInFurnace);
+                : (int) ((long) burn * ticksPerCoal() / coalInFurnace);
+    }
+
+    // Built on first use, after registries bind; only ever read, never handed out.
+    private static final class Coal {
+        private static final ItemStack STACK = new ItemStack(Items.COAL);
     }
 }

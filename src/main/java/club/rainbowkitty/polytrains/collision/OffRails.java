@@ -31,6 +31,9 @@ public final class OffRails {
     // tolerance VoxelShape.collide settles a face at, from which CartImpact.deepens counts too.
     private static final double INSIDE = Shapes.EPSILON;
 
+    // Entity.move's own floor: a grounded step under it, its fall stopped, goes nowhere at all.
+    private static final double RESTING = 1.0E-7;
+
     // Static-only; blocks instantiation.
     private OffRails() {}
 
@@ -105,6 +108,12 @@ public final class OffRails {
      */
     public static Vec3 shallowerPart(AbstractMinecart cart, Vec3 movement) {
         if (movement.lengthSqr() == 0.0) {
+            return movement;
+        }
+
+        // A car at rest on the ground, which vanilla's move would not move.
+        if (cart.onGround() && movement.y() < 0.0 && movement.y() * movement.y() >= RESTING
+                && movement.horizontalDistanceSqr() <= RESTING) {
             return movement;
         }
 

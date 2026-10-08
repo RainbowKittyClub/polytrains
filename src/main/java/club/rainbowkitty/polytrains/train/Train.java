@@ -239,9 +239,9 @@ public final class Train {
         // same train and one ribbon cannot be recorded on from two places at once.
         Train built = build(car, tick, held == null ? null : new TrackRibbon(held.ribbon));
 
-        for (AbstractMinecart member : built.cars) {
-            if (member instanceof AbstractMinecartExt ext) {
-                ext.polytrains$setTrain(built);
+        for (int i = 0; i < built.cars.size(); i++) {
+            if (built.cars.get(i) instanceof AbstractMinecartExt ext) {
+                ext.polytrains$setTrain(built, i);
             }
         }
 
@@ -1045,12 +1045,18 @@ public final class Train {
 
     /** Whether {@code car} is one of this train's. */
     public boolean contains(AbstractMinecart car) {
-        return cars.contains(car);
+        // Every car of a train is handed it at build, so membership is an identity test.
+        return car.polytrains$train() == this;
+    }
+
+    /** The index of {@code car} among this train's cars, or -1 if it is not one of them. */
+    public int indexOf(AbstractMinecart car) {
+        return car.polytrains$train() == this ? car.polytrains$trainIndex() : cars.indexOf(car);
     }
 
     /** The car {@code car} follows, or null if it heads the train or is unlinked. */
     public @Nullable AbstractMinecart follows(AbstractMinecart car) {
-        int index = cars.indexOf(car);
+        int index = indexOf(car);
 
         return index > 0 ? cars.get(index - 1) : null;
     }

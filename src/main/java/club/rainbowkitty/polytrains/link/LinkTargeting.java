@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -41,6 +42,10 @@ public final class LinkTargeting {
     // How long a click's own message holds the action bar before the standing prompt returns.
     private static final int NOTICE_TICKS = 40;
 
+    // How often an unchanged action-bar line is re-sent: the client fades one after 40 of its 60
+    // ticks, so this stays well inside that.
+    private static final int OVERLAY_REFRESH = 20;
+
     // How far a player can walk from the cart they picked before the pair is given up on. Beyond
     // this they have left rather than paused, and a selection they cannot see is one they have
     // forgotten making.
@@ -65,9 +70,14 @@ public final class LinkTargeting {
     public static void notice(ServerPlayer player, Component message) {
         Session session = SESSIONS.computeIfAbsent(player.getUUID(), id -> new Session());
 
-        session.noticeUntil = player.level().getGameTime() + NOTICE_TICKS;
+        long now = player.level().getGameTime();
+
+        session.noticeUntil = now + NOTICE_TICKS;
         session.notice = message;
         player.sendOverlayMessage(message);
+        session.shownKey = message;
+        session.shownTo = player;
+        session.shownAt = now;
     }
 
     private static void onEndTick(MinecraftServer server) {
@@ -89,6 +99,8 @@ public final class LinkTargeting {
 
         if (!LinkAction.holdsWrench(player)) {
             clearOutlines(player, level, session);
+            // So the prompt shows the moment the wrench is picked up again.
+            session.shownKey = null;
             return;
         }
 
@@ -182,14 +194,33 @@ public final class LinkTargeting {
     // The click's own message while it is still fresh, and the standing prompt the rest of the
     // time. Vanilla fades an action-bar line after a few seconds, so the prompt is re-sent.
     private static void showActionBar(ServerPlayer player, ServerLevel level, Session session) {
-        if (session.notice != null && level.getGameTime() < session.noticeUntil) {
-            player.sendOverlayMessage(session.notice);
+        long now = level.getGameTime();
+        Component notice = session.notice;
+
+        if (notice != null && now < session.noticeUntil) {
+            overlay(player, session, notice, () -> notice, now);
             return;
         }
 
         session.notice = null;
-        player.sendOverlayMessage(
-                LinkAction.modeLabel(EntityAttachments.getWrenchMode(player)));
+
+        WrenchMode mode = EntityAttachments.getWrenchMode(player);
+
+        overlay(player, session, mode, () -> LinkAction.modeLabel(mode), now);
+    }
+
+    // Sends a line only when it differs from the one shown, or that one is due a refresh.
+    private static void overlay(ServerPlayer player, Session session, Object key,
+            Supplier<Component> message, long now) {
+        if (key == session.shownKey && player == session.shownTo
+                && now - session.shownAt < OVERLAY_REFRESH) {
+            return;
+        }
+
+        player.sendOverlayMessage(message.get());
+        session.shownKey = key;
+        session.shownTo = player;
+        session.shownAt = now;
     }
 
     private static void onLeave(ServerPlayer player) {
@@ -205,5 +236,8 @@ public final class LinkTargeting {
         private List<Outline> outlines = List.of();
         private @Nullable Component notice;
         private long noticeUntil;
+        private @Nullable Object shownKey;
+        private @Nullable ServerPlayer shownTo;
+        private long shownAt;
     }
 }
