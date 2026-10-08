@@ -11,7 +11,7 @@ during the 2026-09-18 session; line numbers are from `09f3a8e` plus the uncommit
 it is deliberately placed after the cheap wins so the rest is not blocked on it.
 
 Status as of 2026-09-19: S1–S15 are done bar S3, which was built, measured and backed out. S16 is
-built and under test; S17 is not started.
+superseded by `0a24b2e`, which holds a per-car nose as a world heading; S17 is not started.
 S1–S8 were the original plan; S9–S15 came out of the unseating audit in the Findings below and
 landed the same day, measured in "Measured after S9–S15" near the end. What is left is the two
 Open decisions, which want evidence rather than code.
@@ -826,7 +826,10 @@ space is correct and must stay unconditional; a `FOUL_TICKS` give-up was tried i
 because it seated trains permanently into each other. What is wrong is not the refusal but what the
 refusal is taken to mean about the other cars.
 
-## S16 — Take a car's facing from its train, not from the car — **in progress**
+## S16 — Take a car's facing from its train, not from the car — **superseded**
+
+Superseded by `0a24b2e`: a car's facing is held per car again, as a world-space nose heading,
+since a sign along the ribbon was lost at every reset. What follows records S16 as it stood.
 
 **Build.** Delete the per-cart nose entirely — the `Vec3` field, both ext methods, and `noseOf` —
 and take a car's facing from the one thing that already describes where its head lies: the train's

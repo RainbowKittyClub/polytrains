@@ -26,7 +26,8 @@ independent of each other, and R1 runs again once they land. P18 and P19 come fr
 reports of `3bjump` after them, P19 building on P18. P20 to P23 take what P14, P15 and P19 left:
 P20, P21 and P23 are independent of each other, P22 builds on P21, and R1 runs again once they land.
 P24 comes from the user's report of cars snapping onto the track after a jump, P25 from a review of
-P24. P26, planned for the torture failure seen most since R1 was last met, was skipped.
+P24. P26, planned for the torture failure seen most since R1 was last met, was skipped. P27 comes
+from a trace of `3bjump` at 100 and is independent of the rest.
 
 ---
 
@@ -1495,6 +1496,28 @@ main. Either needs six consecutive runs at 100 and six at 40 against main, run s
 failures at 40 showed only there. Two faults the work turned up stand apart from it: a stall turn on
 a lapped ribbon in a loop can lay a train's body on the wrong pass, and a brush of a switch corner
 (P16's class) reads as a fouled seat.
+
+## P27 — A car keeps its facing through a hairpin at any speed — **in progress**
+
+At 100 a car crosses `3bjump`'s hairpin, two adjacent opposite corners, in one tick. Vanilla turns
+its yaw a chord at a time, W, NW, NE, E, so one tick can span 135 to 180 degrees; both `noseOf`
+(the new tangent against the held nose) and the tick-end `holdNose` then read the turn as a flip
+and put the car back facing the way it came. At 40 a tick ends on the 90-degree NW/NE chord about
+half the time, where float noise decides.
+
+**Build.** Carry the nose a rail step at a time: call `holdNose` from `makeStepAlongTrack` HEAD
+as well as at tick end, with a slack of 0.1 past square, since one step can turn a full right
+angle. For a placed car, take the nose's side against the tangent at its last seat arc rather than
+at the new one: every ribbon tangent points up the arc, so that side holds however far the track
+turned. The last seat arc is read before `sweep` records the new one, and only for a car seated last
+tick in the ribbon's current epoch; otherwise it falls back to the old test. The nose stays a world
+heading.
+
+**Done when.** `3bjump` traced tick by tick for 10 laps at 100 and at 40, every car's Rotation and
+Motion sampled each tick: every car, the first lap's leader included, leaves the hairpin facing
+the way along its travel it approached with; a car on straight track never changes yaw between
+ticks, even when its train reverses at the buffer; and no lerp step through the hairpin turns more
+than 90 degrees. A ten-minute torture run at 100 and one at 40 pass every clause.
 
 # Part R — The bar
 
