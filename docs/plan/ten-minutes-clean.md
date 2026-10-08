@@ -1535,9 +1535,11 @@ the end. `carried` is recorded only while the leader is on its rails. `followOff
 the ribbon, on the same arc numbering and trimmed to the departing stretch, as the train's
 departure. Once the leader has landed on a restarted ribbon, cars still seated on that copy are
 not seated on the new one: after the landed cars are placed and the flying ones flown on, they run
-on off the copy at the landed train's speed, one leaving a tick, as `followOff` runs them. A flown
-car resting on the lip's support still counts as flying. The departure is dropped on a release, a
-change of leader, once no car is on it, or where its track no longer answers.
+on off the copy, one leaving a tick, as `followOff` runs them: at the pre-lip speed `followOff` ran
+them at, or the landed train's own where that is faster or the train is held, squeezed, pressing
+or packing; slower, each stalls on the lip's support. A flown car resting on the lip's support
+still counts as flying. The departure is dropped on a release, a change of leader, once no car is
+seated on it or resting on its lip, or where its track no longer answers.
 
 **Done when.** `3bjump` traced tick by tick for at least 1,500 ticks at 8 snaps no car from the ramp
 onto the landing track; from the leader's first airborne tick every trailing car moves each tick

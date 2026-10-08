@@ -538,10 +538,14 @@ public final class TrainPlacer {
 
         flyOn(cars, flying, leadIndex, fromHead);
 
-        // At the landed train's own speed, so the chain across the drop keeps its length.
+        // No slower than they left before the landing unless the landed train is held: the air
+        // has slowed its leader, and a car leaving slower than that stalls on the lip's support.
         if (departure != null && leader.level() instanceof ServerLevel level) {
+            double departSpeed = held || squeezed || pressing || packing
+                    ? speed : Math.max(speed, departure.speed());
+
             runDeparture(level, train, cars, departing, departure, leadIndex, fromHead,
-                    Math.min(speed, leader.polytrains$ownMaxSpeed(level)), runLimit);
+                    Math.min(departSpeed, leader.polytrains$ownMaxSpeed(level)), runLimit);
         }
 
         boolean gapsHeld = train.gapsHeld(gaps);
@@ -746,7 +750,7 @@ public final class TrainPlacer {
             }
 
             keepDeparture(train, ribbon, leader, farEnd, cars.get(fromHead > 0
-                    ? cars.size() - 1 : 0));
+                    ? cars.size() - 1 : 0), speed);
         }
 
         double runLimit = furthestRun(leader);
@@ -771,7 +775,7 @@ public final class TrainPlacer {
     // Keeps a copy of ribbon, cut to the stretch between tailCar and the end its train leaves by,
     // for the cars still on it once the leading car lands and the ribbon restarts under it.
     private static void keepDeparture(Train train, TrackRibbon ribbon, AbstractMinecart leader,
-            boolean farEnd, AbstractMinecart tailCar) {
+            boolean farEnd, AbstractMinecart tailCar, double speed) {
         Train.Departure kept = train.departure();
         Double tailArc = seatArcOn(ribbon, tailCar);
 
@@ -788,7 +792,7 @@ public final class TrainPlacer {
             copy.trim(copy.nearArc(), tailArc + 1.0);
         }
 
-        train.setDeparture(new Train.Departure(copy, farEnd, leader));
+        train.setDeparture(new Train.Departure(copy, farEnd, leader, speed));
     }
 
     // Where each car from firstIndex out runs this tick towards the end at endArc, and the one
@@ -883,8 +887,8 @@ public final class TrainPlacer {
         return departure;
     }
 
-    // Which cars behind the leading car are still seated on the track their train left by, the
-    // departure dropped once none are.
+    // Which cars behind the leading car are still seated on the track their train left by. The
+    // departure outlives them while a flown car rests on its lip, read as flying only while kept.
     private static boolean[] departing(Train train, List<AbstractMinecart> cars, int leadIndex,
             int fromHead, boolean[] flying) {
         boolean[] departing = new boolean[cars.size()];
@@ -901,7 +905,7 @@ public final class TrainPlacer {
 
             departing[i] = !flying[i] && car.isOnRails()
                     && seatArcOn(departure.ribbon(), car) != null;
-            any |= departing[i];
+            any |= departing[i] || flying[i] && atLip(departure, car);
         }
 
         if (!any) {
