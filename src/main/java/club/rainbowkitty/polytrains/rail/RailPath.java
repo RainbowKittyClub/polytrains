@@ -615,7 +615,34 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
             return candidate;
         }
 
-        return railAt(level, candidate.below()) ? candidate.below() : candidate;
+        BlockPos below = candidate.below();
+
+        return descendsOnto(level, candidate, below, exit) ? below : candidate;
+    }
+
+    // Whether track leaving through exit runs on down onto the rail at below: a slope climbing back
+    // to it, under nothing solid at track height. A rail beneath a buffer is not a way on.
+    private static boolean descendsOnto(
+            Level level, BlockPos candidate, BlockPos below, Vec3i exit) {
+        RailShape belowShape = shape(level.getBlockState(below), Vec3.ZERO, Switches.LAID);
+
+        return belowShape != null && climbsToward(belowShape, -exit.getX(), -exit.getZ())
+                && level.getBlockState(candidate).getCollisionShape(level, candidate).isEmpty();
+    }
+
+    // Whether a rail laid to railShape slopes up to its edge in the direction (towardX, towardZ).
+    private static boolean climbsToward(RailShape railShape, int towardX, int towardZ) {
+        var exits = AbstractMinecart.exits(railShape);
+        Vec3i firstExit = exits.getFirst();
+        Vec3i secondExit = exits.getSecond();
+
+        if (firstExit.getY() == secondExit.getY()) {
+            return false;
+        }
+
+        Vec3i highExit = firstExit.getY() == 0 ? firstExit : secondExit;
+
+        return highExit.getX() == towardX && highExit.getZ() == towardZ;
     }
 
     // Whether the block at pos is a rail.
