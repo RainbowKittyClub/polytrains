@@ -622,8 +622,10 @@ public final class Train {
      * @param ribbon a copy of the ribbon as it stood, on the same arc numbering, never grown
      * @param farEnd whether the cars leave by its far end rather than its near one
      * @param leader the leading car that flew off it
+     * @param speed what its cars ran off it at before that car landed
      */
-    public record Departure(TrackRibbon ribbon, boolean farEnd, AbstractMinecart leader) {}
+    public record Departure(TrackRibbon ribbon, boolean farEnd, AbstractMinecart leader,
+            double speed) {}
 
     /** The track cars still on a ramp are leaving by, or null when none are. */
     public @Nullable Departure departure() {
