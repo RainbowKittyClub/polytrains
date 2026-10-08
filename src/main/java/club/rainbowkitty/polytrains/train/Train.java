@@ -513,10 +513,10 @@ public final class Train {
      * nothing. Narrowing draws a pair together, which needs no room made for it and so is not
      * gated on that car having moved at all.
      *
-     * @param stood how far apart each pair of cars stands, from {@link #stood}
+     * @param standing how far apart each pair of cars stands, from {@link #standingGaps}
      * @param advance how far the leading car moved this tick, which is all the room there is
      */
-    public double[] nextGaps(double target, double[] stood, double advance) {
+    public double[] nextGaps(double target, double[] standing, double advance) {
         int count = cars.size() - 1;
         double[] next = new double[count];
         double pitchFloor = floor(target);
@@ -525,8 +525,8 @@ public final class Train {
         for (int i = 0; i < count; i++) {
             double interval = previousGaps != null ? previousGaps[i] : target;
 
-            if (previousGaps == null && stood[i] > 0.0) {
-                interval = stood[i];
+            if (previousGaps == null && standing[i] > 0.0) {
+                interval = standing[i];
             }
 
             // Never wider than the pair actually stands. A seated pair stands exactly at its
@@ -535,8 +535,8 @@ public final class Train {
             // follows them in rather than asking for room they no longer have. Never narrower than
             // a car either: closer than that is two cars inside each other, which vanilla's own
             // shove is left to separate.
-            if (stood[i] > 0.0) {
-                interval = Math.max(Math.min(interval, stood[i]), pitchFloor);
+            if (standing[i] > 0.0) {
+                interval = Math.max(Math.min(interval, standing[i]), pitchFloor);
             }
 
             next[i] = interval > target
@@ -554,18 +554,19 @@ public final class Train {
      * @param maxLinkDistance the most two coupled cars can stand apart; a wider reading is a car
      *     that has drifted off this ribbon rather than a gap, and is not started from
      */
-    public double[] stood(double maxLinkDistance) {
+    public double[] standingGaps(double maxLinkDistance) {
         double[] carArcs = arcs();
-        double[] stood = new double[cars.size() - 1];
+        double[] standing = new double[cars.size() - 1];
 
-        for (int i = 0; i < stood.length; i++) {
+        for (int i = 0; i < standing.length; i++) {
             // Along the rails, not in arc. An interval is a distance on the track and arc is its
             // ground plan, so on a hill a correctly seated pair reads as standing closer than its
             // interval — and clamping to that walks the interval down a little further every tick.
-            stood[i] = Math.min(ribbon.trackBetween(carArcs[i], carArcs[i + 1]), maxLinkDistance);
+            standing[i] = Math.min(ribbon.trackBetween(carArcs[i], carArcs[i + 1]),
+                    maxLinkDistance);
         }
 
-        return stood;
+        return standing;
     }
 
     /**
