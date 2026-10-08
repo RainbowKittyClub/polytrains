@@ -49,6 +49,13 @@ public final class ModGameRules {
             registerBoolean("furnace_minecarts_load_chunks", false);
 
     /**
+     * Whether a furnace cart wears its smokestack and whistle, and smokes from the stack while it
+     * burns. Its brake lever is drawn either way.
+     */
+    public static final GameRule<Boolean> ENABLE_CHOOCHOO =
+            registerBoolean("enable_choochoo", true);
+
+    /**
      * Scales the speed-based damage a moving cart deals on impact — half its speed in blocks per
      * second, times {@code minecart_damage / 20}. So 20 leaves the mod's own figure untouched
      * (vanilla carts deal no collision damage at all, so there is nothing else to scale), and 0

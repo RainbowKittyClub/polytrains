@@ -34,6 +34,8 @@
   "gamerule.polytrains.furnaces_can_use_all_fuels.description": "Furnace minecarts burn any furnace fuel, not just coal",
   "gamerule.polytrains.furnace_minecarts_load_chunks": "Furnace Minecarts Load Chunks",
   "gamerule.polytrains.furnace_minecarts_load_chunks.description": "Moving furnace minecarts keep their own chunks loaded",
+  "gamerule.polytrains.enable_choochoo": "Enable Choo-Choo",
+  "gamerule.polytrains.enable_choochoo.description": "Furnace minecarts wear a smokestack and whistle, and smoke while they burn",
   "gamerule.polytrains.carts_resume_from_brakes": "Carts Resume From Brakes",
   "gamerule.polytrains.carts_resume_from_brakes.description": "A cart stopped by an unpowered powered rail sets off again the way it came in when that rail is powered",
   "gamerule.polytrains.minecart_damage": "Minecart Damage",

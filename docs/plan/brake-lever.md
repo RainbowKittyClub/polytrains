@@ -109,7 +109,12 @@ belongs there.
 the `choo_choo_parts` group of `art/furnace_minecart.bbmodel` (smokestack, whistle, brake lever),
 baked by `scripts/bbmodel-group-to-item-model.py` into `choo_choo_parts_brake_on` (as drawn) and
 `choo_choo_parts_brake_off` (`--turn brake_lever z 45`). The model was built on a copy of vanilla's
-cart and furnace, door on -x, so its axes are the cart's frame and one transform places it.
+cart and furnace, door on -x, so its axes are the cart's frame and one transform places it. The
+smokestack and whistle are gated on `enable_choochoo` (default on); off, the display draws
+`brake_lever_on`/`brake_lever_off`, the `brake_lever` group baked alone, whose lever is the same.
+While they are drawn and the furnace burns, the stack's mouth sends `CAMPFIRE_COSY_SMOKE` as a
+campfire does (one tick in nine, two or three puffs rising at 0.07), placed from a `RenderTrail`
+read at the holder's render lag so it leaves the stack the client draws, not the one ahead of it.
 
 The lever is clicked through an interaction box riding the cart: 1.0 wide, from the passenger point
 (0.1875) to 1.0625, so a client draws it on the cart every frame, and a click on the cart above its

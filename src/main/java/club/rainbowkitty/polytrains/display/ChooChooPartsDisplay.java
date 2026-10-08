@@ -6,13 +6,17 @@ import eu.pb4.polymer.virtualentity.api.attachment.EntityAttachment;
 import eu.pb4.polymer.virtualentity.api.elements.ItemDisplayElement;
 import eu.pb4.polymer.virtualentity.api.elements.VirtualElement;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
@@ -22,10 +26,12 @@ import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.kalic0re.common.display.ItemDisplayPose;
 import club.rainbowkitty.kalic0re.common.display.ItemDisplays;
+import club.rainbowkitty.kalic0re.common.display.RenderTrail;
 import club.rainbowkitty.kalic0re.common.vehicle.CargoDisplayHolder;
 import club.rainbowkitty.polytrains.Polytrains;
 import club.rainbowkitty.polytrains.init.EntityAttachments;
 import club.rainbowkitty.polytrains.item.WrenchItems;
+import club.rainbowkitty.polytrains.rule.ModGameRules;
 import club.rainbowkitty.polytrains.train.BrakeLevers;
 import club.rainbowkitty.polytrains.util.FurnaceFuel;
 
@@ -42,6 +48,10 @@ import club.rainbowkitty.polytrains.util.FurnaceFuel;
  * as it faces its front. Two models, one per lever position: thrown is the group as drawn,
  * released turns its {@code brake_lever} group 45° about z, which tips the lever toward the door.
  *
+ * <p>The smokestack and whistle are drawn only while {@code enable_choochoo} is on; off, the same
+ * lever is drawn alone, from two more models of its group by itself. While they are drawn and the
+ * furnace burns, the stack smokes as a campfire does.
+ *
  * <p>The lever is clicked through a {@link ClickBox} reaching to the furnace's top, so a client's
  * click on it never crackles as one on the furnace cart itself does under the Sounds mod. A click
  * on its lever half throws or releases the lever ({@link #throwsLever}); anything else is the
@@ -51,8 +61,23 @@ import club.rainbowkitty.polytrains.util.FurnaceFuel;
  */
 public class ChooChooPartsDisplay extends CargoDisplayHolder {
 
-    private static final Identifier BRAKE_ON = Polytrains.id("choo_choo_parts_brake_on");
-    private static final Identifier BRAKE_OFF = Polytrains.id("choo_choo_parts_brake_off");
+    // The whole group with the lever thrown and released, and the lever alone, for a world with
+    // enable_choochoo off. The lever is baked the same in both.
+    private static final Identifier PARTS_BRAKE_ON = Polytrains.id("choo_choo_parts_brake_on");
+    private static final Identifier PARTS_BRAKE_OFF = Polytrains.id("choo_choo_parts_brake_off");
+    private static final Identifier LEVER_ON = Polytrains.id("brake_lever_on");
+    private static final Identifier LEVER_OFF = Polytrains.id("brake_lever_off");
+
+    // The middle of the smokestack's top, in the cart's frame: the model's stack_top, 4 pixels
+    // square and centred at (2, 0), tops out 21.5 pixels above the cart's position.
+    private static final Vector3f STACK_TOP = new Vector3f(2.0f / 16.0f, 21.5f / 16.0f, 0.0f);
+
+    // Smoke as a campfire makes it (CampfireBlockEntity#particleTick, CampfireBlock#makeParticles):
+    // on about one tick in nine, two or three puffs rising at 0.07 a tick. Spread over the stack's
+    // mouth, inside its 4 pixels, rather than a campfire's third of a block.
+    private static final float SMOKE_CHANCE = 0.11f;
+    private static final double SMOKE_RISE = 0.07;
+    private static final double SMOKE_SPREAD = 1.5 / 16.0;
 
     // Every item display is drawn half a turn about its own y before its transform applies, which
     // would stand the smokestack over the door; the model is turned back first.
@@ -73,19 +98,26 @@ public class ChooChooPartsDisplay extends CargoDisplayHolder {
     private final ItemDisplayElement parts;
     private final ClickBox leverBox;
 
-    // Whether the lever was last drawn thrown.
+    // Where the cart has been, so the smoke leaves the stack the client is drawing, which is the
+    // cart as it was renderLag() ticks ago; the holder's own trail is its own.
+    private final RenderTrail smokeTrail;
+
+    // Whether the lever was last drawn thrown, and the smokestack and whistle drawn at all.
     private boolean shownThrown;
+    private boolean shownChooChoo;
 
     /** @param engine the furnace cart the parts are on */
     public ChooChooPartsDisplay(AbstractMinecart engine) {
         super(engine);
         this.shownThrown = EntityAttachments.leverSet(engine);
+        this.shownChooChoo = chooChoo(engine);
+        this.smokeTrail = new RenderTrail(engine, MAX_RENDER_LAG);
         this.parts = addCargoElement(ItemDisplays.element());
         this.leverBox = new ClickBox(this, BOX_TOP,
                 player -> !feedsPast(engine, player, player.isShiftKeyDown()),
                 new LeverBoxHandler());
 
-        parts.setItem(partsStack(shownThrown));
+        parts.setItem(partsStack(shownThrown, shownChooChoo));
         parts.setRightRotation(UNDO_RENDERER_TURN);
 
         // Snapping, never easing, as a tender's coal does: the cart turns in whole-tick steps.
@@ -144,14 +176,51 @@ public class ChooChooPartsDisplay extends CargoDisplayHolder {
     @Override
     protected void onTick() {
         boolean thrown = EntityAttachments.leverSet(cart());
+        boolean chooChoo = chooChoo(cart());
 
-        if (thrown != shownThrown) {
+        // Set only on a change: a fresh stack is new tracked data whether or not it is the same.
+        if (thrown != shownThrown || chooChoo != shownChooChoo) {
             shownThrown = thrown;
-            parts.setItem(partsStack(thrown));
+            shownChooChoo = chooChoo;
+            parts.setItem(partsStack(thrown, chooChoo));
+        }
+
+        smokeTrail.push(cart());
+
+        if (chooChoo && cart().polytrains$fuel() > 0
+                && cart().getRandom().nextFloat() < SMOKE_CHANCE
+                && cart().level() instanceof ServerLevel level) {
+            smoke(level);
         }
 
         leverBox.tick(getWatchingPlayers());
         super.onTick();
+    }
+
+    // Two or three puffs from the stack's mouth, where the client is drawing it.
+    private void smoke(ServerLevel level) {
+        double lag = renderLag();
+        Vector3f mouth = cartFrame(smokeTrail.yaw(lag), smokeTrail.pitch(lag))
+                .transform(new Vector3f(STACK_TOP));
+        Vec3 at = smokeTrail.position(lag).add(mouth.x(), mouth.y(), mouth.z());
+        RandomSource random = cart().getRandom();
+        int puffs = 2 + random.nextInt(2);
+
+        // A count of zero sends one particle whose spread is its velocity, scaled by the speed:
+        // straight up at the rise, as a campfire's.
+        for (int i = 0; i < puffs; i++) {
+            level.sendParticles(ParticleTypes.CAMPFIRE_COSY_SMOKE, false, true,
+                    at.x + (random.nextDouble() * 2.0 - 1.0) * SMOKE_SPREAD,
+                    at.y,
+                    at.z + (random.nextDouble() * 2.0 - 1.0) * SMOKE_SPREAD,
+                    0, 0.0, 1.0, 0.0, SMOKE_RISE);
+        }
+    }
+
+    // Whether engine's world draws the smokestack and whistle; read each tick, never kept.
+    private static boolean chooChoo(AbstractMinecart engine) {
+        return engine.level() instanceof ServerLevel level
+                && level.getGameRules().get(ModGameRules.ENABLE_CHOOCHOO);
     }
 
     @Override
@@ -177,10 +246,14 @@ public class ChooChooPartsDisplay extends CargoDisplayHolder {
         parts.setTranslation(cargoOrigin(cartFrame, 0.0f));
     }
 
-    // The parts with the lever thrown or released, carried on a lever, which is what a client
-    // without this mod's resource pack is shown instead.
-    private static ItemStack partsStack(boolean thrown) {
-        return ItemDisplays.modelStack(Items.LEVER, thrown ? BRAKE_ON : BRAKE_OFF);
+    // The parts, or the lever alone, with the lever thrown or released, carried on a lever, which
+    // is what a client without this mod's resource pack is shown instead.
+    private static ItemStack partsStack(boolean thrown, boolean chooChoo) {
+        Identifier model = chooChoo
+                ? (thrown ? PARTS_BRAKE_ON : PARTS_BRAKE_OFF)
+                : (thrown ? LEVER_ON : LEVER_OFF);
+
+        return ItemDisplays.modelStack(Items.LEVER, model);
     }
 
     // What the lever box does when clicked: the lever, if the click is for it, and otherwise
