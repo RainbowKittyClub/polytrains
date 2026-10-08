@@ -494,6 +494,7 @@ public final class TrainMeter {
                 .count("seated", carried(train, leader))
                 .text("refusal", bail == null ? "none" : bail.name())
                 .flag("packing", train.packing(tick))
+                .flag("still", train.still(tick))
                 .number("mass", train.mass(RailForces.forLevel(level), tick));
 
         spacing(line, cars);
