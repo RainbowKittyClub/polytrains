@@ -39,6 +39,10 @@ public final class TrainPlacer {
     // Below this, an arc step counts as no movement at all.
     private static final double EPSILON = 1.0E-5;
 
+    // One rail step can turn a cart a full right angle (two opposite corners), which float noise
+    // puts on either side of square.
+    private static final double NOSE_TURN_SLACK = 0.1;
+
     // How far past flush against a blocked end still counts as touching it.
     private static final double CONTACT_SLACK = 0.2;
 
@@ -1442,6 +1446,12 @@ public final class TrainPlacer {
         Vec3 previousPosition = car.position();
         Vec3 forward = seat.tangent().scale(faceSign);
 
+        // Read before sweep records the new arc over it.
+        TrackRibbon ribbon = train.ribbon();
+        Double lastArc = shouldAim && seated(car)
+                ? car.polytrains$seatArc(ribbon.arcEpoch()) : null;
+        Vec3 lastTangent = lastArc == null ? null : ribbon.tangentAt(lastArc);
+
         // Fires activator rails and the like before the car's position changes underneath them.
         sweep(train, car, arc, runLimit);
 
@@ -1467,7 +1477,7 @@ public final class TrainPlacer {
         Vec3 displacement = car.position().subtract(previousPosition);
 
         if (shouldAim) {
-            aim(car, seat.tangent(), faceSign, displacement);
+            aim(car, seat.tangent(), lastTangent, faceSign, displacement);
         }
 
         // Otherwise the client is left replaying this tick's move on the next one.
@@ -1513,8 +1523,8 @@ public final class TrainPlacer {
 
     // Points a car along the rail the way it already faces, and pitches it to the grade it just
     // climbed rather than to a fixed angle read off the rail shape.
-    private static void aim(
-            AbstractMinecart car, Vec3 tangent, double faceSign, Vec3 displacement) {
+    private static void aim(AbstractMinecart car, Vec3 tangent, @Nullable Vec3 lastTangent,
+            double faceSign, Vec3 displacement) {
         Vec3 alongDirection = tangent.horizontal();
 
         if (alongDirection.lengthSqr() < EPSILON * EPSILON) {
@@ -1523,7 +1533,7 @@ public final class TrainPlacer {
 
         alongDirection = alongDirection.normalize();
 
-        int noseSign = noseOf(car, alongDirection);
+        int noseSign = noseOf(car, alongDirection, lastTangent);
 
         boolean flipped = noseSign * faceSign < 0.0;
 
@@ -1546,6 +1556,8 @@ public final class TrainPlacer {
      *
      * <p>A cart may turn honestly through a corner, but may not flip end for end — which vanilla
      * otherwise allows on any step not taken along the rails, a collision being one such step.
+     * Runs before every rail step vanilla takes and again at tick end, so it never compares across
+     * more than one step's turn.
      */
     public static void holdNose(AbstractMinecart car) {
         if (!(car instanceof AbstractMinecartExt ext)) {
@@ -1560,7 +1572,7 @@ public final class TrainPlacer {
 
         Vec3 headingDirection = MinecartHelper.headingOf(car.getYRot());
 
-        if (headingDirection.dot(noseVector) >= 0.0) {
+        if (headingDirection.dot(noseVector) >= -NOSE_TURN_SLACK) {
             ext.polytrains$setNoseVector(headingDirection);
             return;
         }
@@ -1570,8 +1582,10 @@ public final class TrainPlacer {
     }
 
     // Which way along the track a car faces, read from its recorded nose rather than its current
-    // yaw — vanilla re-aims a driven car's yaw off a step that is not always along the rails.
-    private static int noseOf(AbstractMinecart car, Vec3 alongDirection) {
+    // yaw — vanilla re-aims a driven car's yaw off a step that is not always along the rails. Read
+    // against the tangent at the car's last seat when there is one, since a tick can turn it 180°.
+    private static int noseOf(
+            AbstractMinecart car, Vec3 alongDirection, @Nullable Vec3 lastTangent) {
         if (!(car instanceof AbstractMinecartExt ext)) {
             return 1;
         }
@@ -1579,7 +1593,15 @@ public final class TrainPlacer {
         Vec3 heldNoseVector = ext.polytrains$noseVector();
         Vec3 referenceNoseVector = heldNoseVector == null
                 ? MinecartHelper.headingOf(car.getYRot()) : heldNoseVector;
-        int noseSign = referenceNoseVector.dot(alongDirection) < 0.0 ? -1 : 1;
+
+        // Every ribbon tangent points up the arc, so the side of the last seat's tangent the nose
+        // was on is its side here, however far the track turned in between.
+        Vec3 lastAlong = lastTangent == null ? Vec3.ZERO : lastTangent.horizontal();
+        double carried = lastAlong.lengthSqr() < EPSILON * EPSILON
+                ? 0.0 : referenceNoseVector.dot(lastAlong.normalize());
+        double side = Math.abs(carried) > EPSILON
+                ? carried : referenceNoseVector.dot(alongDirection);
+        int noseSign = side < 0.0 ? -1 : 1;
 
         ext.polytrains$setNoseVector(alongDirection.scale(noseSign));
 

@@ -381,6 +381,16 @@ public abstract class AbstractMinecartMixin extends Entity implements AbstractMi
         }
     }
 
+    // Vanilla turns a cart one rail at a time, so its nose is carried one step at a time; the tick
+    // end hold still covers the final step and anything off the rails.
+    @Inject(method = "makeStepAlongTrack", at = @At("HEAD"))
+    private void polytrains$carryNose(
+            BlockPos pos, RailShape shape, double budget, CallbackInfoReturnable<Double> cir) {
+        if (level() instanceof ServerLevel) {
+            TrainPlacer.holdNose(polytrains$self());
+        }
+    }
+
     @Override
     public double polytrains$ownMaxSpeed(ServerLevel level) {
         return getMaxSpeed(level);
