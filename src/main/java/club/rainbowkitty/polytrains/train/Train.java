@@ -179,6 +179,10 @@ public final class Train {
     // the fault, so a car gets one roof's wait per fault.
     private int @Nullable [] perches;
 
+    // The track cars still on a ramp run off after their leading car has landed, or null. Not
+    // carried into a rebuilt train: lost, those cars are seated on the landing track instead.
+    private @Nullable Departure departure;
+
     // Starts checked on the tick it was built, so its first use does not re-sweep its own cars.
     // Starts held on it too, for the same reason read the other way round: a train built this tick
     // has not missed being laid out, it has not been due one yet.
@@ -609,6 +613,26 @@ public final class Train {
     /** How fast this train was running on the last tick it had room to run in. */
     public double carried() {
         return carried;
+    }
+
+    /**
+     * The track a train's cars left its ribbon by, kept for those still on it once the ribbon has
+     * restarted under a leading car come down from a jump.
+     *
+     * @param ribbon a copy of the ribbon as it stood, on the same arc numbering, never grown
+     * @param farEnd whether the cars leave by its far end rather than its near one
+     * @param leader the leading car that flew off it
+     */
+    public record Departure(TrackRibbon ribbon, boolean farEnd, AbstractMinecart leader) {}
+
+    /** The track cars still on a ramp are leaving by, or null when none are. */
+    public @Nullable Departure departure() {
+        return departure;
+    }
+
+    /** Records the track cars still on a ramp are leaving by, or null once none are. */
+    public void setDeparture(@Nullable Departure departure) {
+        this.departure = departure;
     }
 
     /** Records that this train closed up on this tick. */
