@@ -13,6 +13,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 
+import club.rainbowkitty.polytrains.train.Train;
 
 /** Holding a train's position updates back so its cars are replayed on one beat. */
 @Mixin(ServerEntity.class)
@@ -72,6 +73,12 @@ public abstract class ServerEntityMixin {
     private void polytrains$resyncOnTrack(CallbackInfo info) {
         if (entity instanceof AbstractMinecart cart && cart.hasLink()) {
             cart.polytrains$setResyncPending(true);
+
+            // Partners built their train without this car, and it may never tick to fix that.
+            for (AbstractMinecart neighbour : cart.getNeighbours()) {
+                Train.invalidate(neighbour);
+                neighbour.polytrains$setResyncPending(true);
+            }
         }
     }
 }
