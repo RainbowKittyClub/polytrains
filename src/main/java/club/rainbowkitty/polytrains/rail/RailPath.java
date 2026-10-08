@@ -647,10 +647,17 @@ public record RailPath(double distance, Vec3 fromForward, Vec3 toForward) {
     // to it, under nothing solid at track height. A rail beneath a buffer is not a way on.
     private static boolean descendsOnto(
             Level level, BlockPos candidate, BlockPos below, Vec3i exit) {
-        RailShape belowShape = shape(level.getBlockState(below), Vec3.ZERO, Switches.LAID);
+        BlockState belowState = loadedState(level, below);
+        BlockState candidateState = loadedState(level, candidate);
+
+        if (belowState == null || candidateState == null) {
+            return false;
+        }
+
+        RailShape belowShape = shape(belowState, Vec3.ZERO, Switches.LAID);
 
         return belowShape != null && climbsToward(belowShape, -exit.getX(), -exit.getZ())
-                && level.getBlockState(candidate).getCollisionShape(level, candidate).isEmpty();
+                && candidateState.getCollisionShape(level, candidate).isEmpty();
     }
 
     // Whether a rail laid to railShape slopes up to its edge in the direction (towardX, towardZ).

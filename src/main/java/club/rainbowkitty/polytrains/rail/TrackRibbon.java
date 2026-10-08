@@ -1039,7 +1039,9 @@ public final class TrackRibbon {
     // Whether the rail recorded at pos is gone. An unloaded block counts as still there: reading it
     // would load its chunk, and a train would then pin it every tick.
     private static boolean takenUp(Level level, BlockPos pos) {
-        return level.isLoaded(pos) && !BaseRailBlock.isRail(level.getBlockState(pos));
+        BlockState state = RailPath.loadedState(level, pos);
+
+        return state != null && !BaseRailBlock.isRail(state);
     }
 
     // Whether a car can no longer run from the rail at inner on to the one at outer: that rail is
@@ -1054,9 +1056,9 @@ public final class TrackRibbon {
         }
 
         BlockPos gate = (inner.getY() < outer.getY() ? inner : outer).above();
+        BlockState gateState = RailPath.loadedState(level, gate);
 
-        return level.isLoaded(gate)
-                && !level.getBlockState(gate).getCollisionShape(level, gate).isEmpty();
+        return gateState != null && !gateState.getCollisionShape(level, gate).isEmpty();
     }
 
     // Whether a walk heading outwardDirection can go on into the block in state.
