@@ -559,9 +559,15 @@ public final class Train {
                 interval = Math.max(Math.min(interval, stood), gapFloor);
             }
 
+            // A gap a landing left inside a car opens at the flat rate even standing, or a train
+            // stopped or pressing there would hold its cars inside each other.
+            double opening = interval < pitchFloor
+                    ? Math.max(advance / count, Math.min(pitchFloor - interval, PITCH_STEP))
+                    : advance / count;
+
             next[i] = interval > target
                     ? interval - Math.min(interval - target, PITCH_STEP)
-                    : interval + Math.min(target - interval, advance / count);
+                    : interval + Math.min(target - interval, opening);
         }
 
         return next;
