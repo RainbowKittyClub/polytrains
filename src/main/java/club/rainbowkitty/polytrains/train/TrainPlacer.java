@@ -58,6 +58,16 @@ public final class TrainPlacer {
     // How far past a car a joint it can no longer cross is looked for: past any draw-back.
     private static final double BARRED_REACH = 2.0;
 
+    // How long a pushed leading car stands short of any end its track records before the train
+    // packs against wherever it stopped: under the stall check's four, so it packs before turning.
+    private static final int STOOD_TICKS = 2;
+
+    // A leading car stands as the stall check reads it: holding next to no movement, or covering
+    // under STOOD_CREEP and under STOOD_SHARE of the movement it holds.
+    private static final double STOOD_IMPULSE = 1.0E-7;
+    private static final double STOOD_CREEP = 0.005;
+    private static final double STOOD_SHARE = 0.5;
+
     // Finding where a car clears another's box, by step along the track then halving the last.
     // Stepped by box, since two boxes on a diagonal touch with their middles 1.39 apart.
     private static final double CLEAR_STEP = 0.1;
@@ -330,6 +340,20 @@ public final class TrainPlacer {
                 ? Double.POSITIVE_INFINITY : (leadArc - aheadEndArc) * tailSign;
         boolean jammed = roomAhead <= jamReach;
 
+        // The track can be wrong about where it ends; a leading car that stands while its engines
+        // drive the train on is not, so the train packs against wherever that car stopped. Read
+        // afresh each tick and never kept as a place: the train runs on the tick its leader does.
+        // Engines only, as the stall check: a player leaning on a braked train packs nothing.
+        long tick = leader.level().getGameTime();
+        boolean stood = !jammed && stoodStill(leader, leadArc, train.laidLeadArc(leader, tick))
+                && pressedGaps(train, ribbon, headArc, offsets, order, leadIndex, -tailSign,
+                        false) > 0;
+
+        if (train.countStood(leader, stood, tick) >= STOOD_TICKS) {
+            jammed = true;
+            roomAhead = Math.min(roomAhead, noseLength);
+        }
+
         // Held at both ends, a train goes nowhere whichever way it reads as moving, so what pokes
         // past its tail comes out of its couplings rather than out of the end ahead of it.
         boolean squeezed = blocked && jammed;
@@ -342,14 +366,15 @@ public final class TrainPlacer {
 
         // Only a train something is actually pushing packs, and only as far back as that reaches.
         int packReach = jammed
-                ? pressedGaps(train, ribbon, headArc, offsets, order, leadIndex, -tailSign)
+                ? pressedGaps(train, ribbon, headArc, offsets, order, leadIndex, -tailSign, true)
                 : 0;
         boolean packing = packReach > 0;
 
         // Recorded while there is still somewhere to go, so a train with nowhere left to go closes
         // its couplings at the speed it arrived with rather than the zero it reads once stopped.
         // On rails only: vanilla halves a leader resting on a lip, and the cars after it take it.
-        if (!packing && leader.isOnRails()) {
+        // Nor while the leading car stands: the train packs at the speed it had before that.
+        if (!packing && !stood && leader.isOnRails()) {
             train.setCarried(speed);
         }
 
@@ -1612,8 +1637,9 @@ public final class TrainPlacer {
     }
 
     // How far back from the blocked end something is actually pushing, in cars — 0 if nothing is.
+    // An engine counts always; a player leaning on a car only where shoves counts.
     private static int pressedGaps(Train train, TrackRibbon ribbon, double headArc,
-            double[] offsets, int order, int leadIndex, double pushSign) {
+            double[] offsets, int order, int leadIndex, double pushSign, boolean shoves) {
         List<AbstractMinecart> cars = train.cars();
         int packReach = 0;
         // Every player near the train, read once and only for a car its engine is not driving.
@@ -1632,6 +1658,10 @@ public final class TrainPlacer {
 
             if (drives(car, pushDirection)) {
                 packReach = Math.max(packReach, Math.abs(i - leadIndex));
+                continue;
+            }
+
+            if (!shoves) {
                 continue;
             }
 
@@ -1763,6 +1793,21 @@ public final class TrainPlacer {
 
         return lieSign != null ? lieSign
                 : travelSign != 0.0 ? (int) travelSign * fromHead : null;
+    }
+
+    // Whether the leading car, vanilla's to move this tick, stood on its rails since it was laid
+    // at laidArc: the stall check's reading, which tells a car at a wall from one pulling away.
+    private static boolean stoodStill(
+            AbstractMinecart leader, double leadArc, @Nullable Double laidArc) {
+        if (laidArc == null || seated(leader) || !leader.isOnRails()) {
+            return false;
+        }
+
+        double covered = Math.abs(leadArc - laidArc);
+        double asked = leader.getDeltaMovement().horizontalDistance();
+
+        return asked * asked <= STOOD_IMPULSE
+                || (covered < STOOD_CREEP && covered < asked * STOOD_SHARE);
     }
 
     // Which way the leader is moving along the rail, or zero if too slow to say.

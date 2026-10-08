@@ -128,6 +128,12 @@ public final class Train {
     // The tick this train last had give taken out of its gaps by something it has run into.
     private long packedTick = Long.MIN_VALUE;
 
+    // Ticks running its leading car has stood, pushed on, short of any end its track records; the
+    // tick that was last counted on, and that car's own tick count then.
+    private int stoodTicks;
+    private long stoodTick = Long.MIN_VALUE;
+    private int stoodLeaderTicks = -1;
+
     // The tick this train last turned round on a stall, and the tick until which it holds its
     // own turn for a train that turned away from it.
     private long turnedTick = Long.MIN_VALUE;
@@ -709,6 +715,30 @@ public final class Train {
      */
     public boolean packing(long tick) {
         return packedTick + 1 >= tick;
+    }
+
+    /**
+     * Counts {@code tick} towards how long {@code leader} has stood, pushed on, when it did, and
+     * starts over when it moved, a tick went uncounted, or the car itself did not tick. Kept as a
+     * count and never a place, so a train let through runs on the tick its leading car does.
+     *
+     * @return how many ticks running the leading car has now stood
+     */
+    public int countStood(AbstractMinecart leader, boolean stood, long tick) {
+        if (tick == stoodTick) {
+            return stoodTicks;
+        }
+
+        if (!stood || leader.tickCount == stoodLeaderTicks) {
+            stoodTicks = 0;
+        } else {
+            stoodTicks = stoodTick == tick - 1 ? stoodTicks + 1 : 1;
+        }
+
+        stoodTick = tick;
+        stoodLeaderTicks = leader.tickCount;
+
+        return stoodTicks;
     }
 
     /** Records that this train turned round on a stall on {@code tick}. */
