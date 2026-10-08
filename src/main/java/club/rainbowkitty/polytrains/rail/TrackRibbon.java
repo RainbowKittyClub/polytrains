@@ -16,6 +16,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.entity.vehicle.minecart.NewMinecartBehavior;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -259,6 +260,12 @@ public final class TrackRibbon {
             best = null;
         }
 
+        // The clamped projection pins a leader leaving an end at that end, so one in the air past
+        // it is off this ribbon, not a car's width later.
+        if (best != null && leavesEnd(leader, best)) {
+            best = null;
+        }
+
         leaderLost = best == null;
 
         if (best != null) {
@@ -280,6 +287,52 @@ public final class TrackRibbon {
         double travel = movement.dot(tangent);
 
         return Math.abs(travel) > EPSILON && Math.signum(travel) != Math.signum(arc - leaderArc);
+    }
+
+    // Whether a leading car read at arc has flown off the end it sits at: in the air under the
+    // new movement, past that end and going on out. A car resting on the lip still reads there.
+    private boolean leavesEnd(AbstractMinecart leader, double arc) {
+        if (!(leader.getBehavior() instanceof NewMinecartBehavior)
+                || leader.isOnRails() || leader.onGround()) {
+            return false;
+        }
+
+        boolean farEnd = Math.abs(arc - farArc()) <= EPSILON;
+
+        if (!farEnd && Math.abs(arc - nearArc()) > EPSILON) {
+            return false;
+        }
+
+        Node end = farEnd ? nodes.getLast() : nodes.getFirst();
+        Vec3 heading = heading(end);
+
+        return heading != null
+                && leader.getDeltaMovement().horizontal().dot(heading) * (farEnd ? 1.0 : -1.0)
+                        > EPSILON
+                && pastEnd(leader.position(), farEnd) > EPSILON;
+    }
+
+    /**
+     * How far {@code position} lies out past the far or near end of this ribbon, in the ground
+     * plane along that end's chord: negative short of it, NaN for an empty ribbon or an end whose
+     * chord has no length. Reads no world.
+     */
+    public double pastEnd(Vec3 position, boolean farEnd) {
+        if (nodes.isEmpty()) {
+            return Double.NaN;
+        }
+
+        Node end = farEnd ? nodes.getLast() : nodes.getFirst();
+        Vec3 heading = heading(end);
+
+        if (heading == null) {
+            return Double.NaN;
+        }
+
+        Vec3 endPoint = farEnd ? end.exit() : end.entry();
+        Vec3 outward = farEnd ? heading : heading.reverse();
+
+        return position.horizontal().subtract(endPoint.horizontal()).dot(outward);
     }
 
     /**
