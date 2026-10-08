@@ -84,6 +84,9 @@ public abstract class EntityMixin {
             return;
         }
 
+        // A train held still would skip a shove its leading car is backed too hard to take up.
+        Train.wakeTrainOf(cart);
+
         double massShare = 1.0 / TrainCoupling.mass(cart);
 
         // Onto the car vanilla drives rather than the one leaned on: a placed car's movement is

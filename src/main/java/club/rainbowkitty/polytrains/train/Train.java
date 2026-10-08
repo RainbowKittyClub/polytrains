@@ -172,6 +172,9 @@ public final class Train {
     private @Nullable Vec3 @Nullable [] stillPositions;
     private @Nullable BlockPos @Nullable [] stillRails;
     private @Nullable Vec3 stillLeaderPos;
+    // Every other train's cart in reach then, and where each stood.
+    private List<AbstractMinecart> stillNeighbours = List.of();
+    private Vec3[] stillNeighbourPositions = new Vec3[0];
 
     // How the last seating attempt went, so only a change of answer is worth reporting, and
     // whether one has been made at all — a train built this tick has been neither placed nor
@@ -1057,16 +1060,36 @@ public final class Train {
 
     /**
      * Records that this train was laid out on {@code tick} with nothing moved and nothing left to
-     * move: where each placed car stood and on which rail, null for a car not placed, and where
-     * its leading car stood.
+     * move: where each placed car stood and on which rail, null for a car not placed, where its
+     * leading car stood, and every other train's cart then in reach of it.
      */
     public void markStill(long tick, @Nullable Vec3[] positions, @Nullable BlockPos[] rails,
-            Vec3 leaderPos) {
+            Vec3 leaderPos, List<AbstractMinecart> neighbours) {
         stillTick = tick;
         stillEpoch = ribbon.arcEpoch();
         stillPositions = positions;
         stillRails = rails;
         stillLeaderPos = leaderPos;
+        stillNeighbours = neighbours;
+        stillNeighbourPositions = new Vec3[neighbours.size()];
+
+        for (int i = 0; i < neighbours.size(); i++) {
+            stillNeighbourPositions[i] = neighbours.get(i).position();
+        }
+    }
+
+    /** Whether every cart in reach when this train was last laid out still is where it stood. */
+    public boolean neighboursInPlace() {
+        for (int i = 0; i < stillNeighbours.size(); i++) {
+            AbstractMinecart neighbour = stillNeighbours.get(i);
+
+            if (neighbour.isRemoved()
+                    || !neighbour.position().equals(stillNeighbourPositions[i])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** Has the still layout recorded before {@code tick} stand for {@code tick} as well. */
@@ -1077,6 +1100,15 @@ public final class Train {
     /** Forgets this train's still layout, so the next laying out is a full one. */
     public void wake() {
         stillTick = Long.MIN_VALUE;
+    }
+
+    /** Forgets the still layout of whatever train {@code car} was last handed, if any. */
+    public static void wakeTrainOf(AbstractMinecart car) {
+        Train held = car.polytrains$train();
+
+        if (held != null) {
+            held.wake();
+        }
     }
 
     /**

@@ -14,6 +14,7 @@ import net.minecraft.world.phys.shapes.Shapes;
 
 import club.rainbowkitty.polytrains.rail.SlopeStep;
 import club.rainbowkitty.polytrains.rule.ModGameRules;
+import club.rainbowkitty.polytrains.train.Train;
 import club.rainbowkitty.polytrains.train.TrainCoupling;
 import club.rainbowkitty.polytrains.train.TrainMeter;
 
@@ -235,6 +236,7 @@ public final class CartImpact {
                 pushedMovement.z() + gainedMovement.z()));
 
         pushed.setDeltaMovement(afterMovement);
+        Train.wakeTrainOf(struck);
 
         // Billed for what reached the struck car along the heading past the rails and the ceiling,
         // and not for the ceiling braking a train that was already over it before the hit.
