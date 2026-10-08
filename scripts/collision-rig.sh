@@ -8,7 +8,7 @@ Usage: collision-rig.sh [options]
 Builds a disposable minecart collision course in empty sky on this mod's dev server, runs one
 cart down it, prints a sampled table of what happened, and tears the whole thing down again.
 Everything goes over rcon against run/server.properties, so the dev server must already be up
-(scripts/devserver.sh rkc/mods/serverside-trains start).
+(scripts/devserver.sh rkc/mods/polytrains start).
 
 Course:
   straight  one east-west rail on a stone platform            (default)
@@ -95,7 +95,7 @@ esac
 
 [[ -f $PROPERTIES ]] || {
     echo "no $PROPERTIES - start the dev server once first:" >&2
-    echo "  $WORKSPACE_ROOT/scripts/devserver.sh rkc/mods/serverside-trains start" >&2
+    echo "  $WORKSPACE_ROOT/scripts/devserver.sh rkc/mods/polytrains start" >&2
     exit 2
 }
 
