@@ -279,12 +279,15 @@ public final class TrainPlacer {
         // +1 when the tail lies towards the ribbon's far end, so past the tail is up the arcs.
         double tailSign = farEnd ? 1.0 : -1.0;
 
+        // Every other train's cart the checks below can reach, read once and only when asked.
+        Nearby nearby = new Nearby(train, trainBox(cars).inflate(furthestRun(leader) + RUN_SHELL));
+
         // Where the track behind the tail ends against something it cannot pass: a recorded end
         // run into a block, or a cart of another train standing on this track. A cart is the end
         // of usable track and not a refusal, so the train packs short of it with every car seated.
         Double tailEndArc = nearerEnd(
                 recordedEnd(ribbon, leader.level(), tailArc, tailHalfWidth, tailSign),
-                foreignEnd(train, ribbon, tailCar, tailArc, tailSign, tailHalfWidth), tailSign);
+                foreignEnd(nearby, ribbon, tailCar, tailArc, tailSign, tailHalfWidth), tailSign);
         double roomToEnd = tailEndArc == null
                 ? Double.POSITIVE_INFINITY : (tailEndArc - tailArc) * tailSign;
         // Whether the tail end of the train is backed against track it cannot pass.
@@ -297,7 +300,7 @@ public final class TrainPlacer {
         double jamReach = noseLength * (1.0 + CONTACT_SLACK);
         Double aheadEndArc = nearerEnd(recordedEnd(ribbon, leader.level(), leadArc,
                         blocked ? Double.POSITIVE_INFINITY : jamReach + EPSILON, -tailSign),
-                foreignEnd(train, ribbon, leader, leadArc, -tailSign, noseLength), -tailSign);
+                foreignEnd(nearby, ribbon, leader, leadArc, -tailSign, noseLength), -tailSign);
         double roomAhead = aheadEndArc == null
                 ? Double.POSITIVE_INFINITY : (leadArc - aheadEndArc) * tailSign;
         boolean jammed = roomAhead <= jamReach;
@@ -380,7 +383,7 @@ public final class TrainPlacer {
 
             // Nor into a cart standing beside the track there: every other car is laid from it.
             drawnBack = Math.abs(pushback) > EPSILON
-                    && !seatTaken(train, ribbon, leader, leadArc + pushback);
+                    && !seatTaken(nearby, ribbon, leader, leadArc + pushback);
 
             if (drawnBack) {
                 leadArc += pushback;
@@ -406,7 +409,7 @@ public final class TrainPlacer {
         // Off a blocked end the draw-back above has the train, which a hold against a run away from
         // that end would undo; one that ran into it is held as any other.
         Contact contact = runSign == 0.0 || blocked && drawnBack && runSign != tailSign
-                ? null : contactOf(train, cars, seating, leadIndex, runSign, leadRun);
+                ? null : contactOf(train, nearby, cars, seating, leadIndex, runSign, leadRun);
         boolean held = false;
         double back = 0.0;
 
@@ -419,7 +422,7 @@ public final class TrainPlacer {
                 headArc = arcs.headArc();
                 seating = seatCars(ribbon, cars, headArc, offsets, order, leadIndex, drawnBack,
                         leadArc, travelSign, flying);
-                contact = contactOf(train, cars, seating, leadIndex, runSign, leadRun);
+                contact = contactOf(train, nearby, cars, seating, leadIndex, runSign, leadRun);
             }
 
             // Nor into a cart that has come up behind the leading car since, as the draw-back
@@ -427,7 +430,7 @@ public final class TrainPlacer {
             double drawBack = Math.min(contact.depth(), contact.backRoom());
 
             held = drawBack > EPSILON
-                    && !seatTaken(train, ribbon, leader, leadArc - runSign * drawBack);
+                    && !seatTaken(nearby, ribbon, leader, leadArc - runSign * drawBack);
             back = held ? drawBack : 0.0;
         }
 
@@ -447,7 +450,7 @@ public final class TrainPlacer {
         // Waits rather than counts against the train. A cart on this track past either end has
         // shortened it already; what is left stands off this track or between the train's own cars.
         Seat[] offered = seats.clone();
-        Foul foul = fouled(train, cars, seats, seatArcs, leadIndex);
+        Foul foul = fouled(train, nearby, cars, seats, seatArcs, leadIndex);
 
         // A car let go that way is still coupled: the train is drawn back until that car's seat is
         // where it stands, no further than its leading car ran less what the hold drew, and waits
@@ -455,7 +458,7 @@ public final class TrainPlacer {
         double tether = foul == null || contact == null ? 0.0 : tetherBack(ribbon, cars, offered,
                 seats, seatArcs, leadIndex, runSign, leadRun - back);
 
-        if (tether > EPSILON && !seatTaken(train, ribbon, leader, leadArc - runSign * tether)) {
+        if (tether > EPSILON && !seatTaken(nearby, ribbon, leader, leadArc - runSign * tether)) {
             leadArc -= runSign * tether;
             headArc -= runSign * tether;
             drawnBack = true;
@@ -466,7 +469,7 @@ public final class TrainPlacer {
             seats = seating.seats();
             seatArcs = seating.seatArcs();
             refusal = seating.refusal();
-            foul = fouled(train, cars, seats, seatArcs, leadIndex);
+            foul = fouled(train, nearby, cars, seats, seatArcs, leadIndex);
         }
 
         if (foul != null && refusal == null) {
@@ -620,7 +623,7 @@ public final class TrainPlacer {
             }
         }
 
-        if (fouled(train, cars, seats, seatArcs, leadIndex) != null) {
+        if (fouled(train, new Nearby(train, null), cars, seats, seatArcs, leadIndex) != null) {
             return false;
         }
 
@@ -785,8 +788,8 @@ public final class TrainPlacer {
 
     // The contact the train makes running runSign to these seats, its leading car having run
     // leadRun of the way; a run against runSign is give taken up, not ground to stop short on.
-    private static Contact contactOf(Train train, List<AbstractMinecart> cars, Seating seating,
-            int leadIndex, double runSign, double leadRun) {
+    private static Contact contactOf(Train train, Nearby nearby, List<AbstractMinecart> cars,
+            Seating seating, int leadIndex, double runSign, double leadRun) {
         TrackRibbon ribbon = train.ribbon();
         double runLimit = furthestRun(cars.get(leadIndex));
         double depth = 0.0;
@@ -814,7 +817,7 @@ public final class TrainPlacer {
             AABB reachBox = car.getBoundingBox().minmax(boxAt(car, seat.position()));
             Vec3 runDirection = seat.position().subtract(car.position()).horizontal();
 
-            for (AbstractMinecart other : foreignCarts(train, reachBox.inflate(RUN_SHELL))) {
+            for (AbstractMinecart other : nearby.in(reachBox.inflate(RUN_SHELL))) {
                 double past = forwardRun - clearRun(ribbon, car, run, other);
 
                 if (past > EPSILON) {
@@ -906,8 +909,8 @@ public final class TrainPlacer {
 
     // Clears the seats another train's cart stands in or lies across the track to, naming the
     // first. The leading car's seat, taken only to draw a train back, is cleared uncounted.
-    private static @Nullable Foul fouled(Train train, List<AbstractMinecart> cars, Seat[] seats,
-            double[] seatArcs, int leadIndex) {
+    private static @Nullable Foul fouled(Train train, Nearby nearby, List<AbstractMinecart> cars,
+            Seat[] seats, double[] seatArcs, int leadIndex) {
         AABB span = null;
 
         for (int i = 0; i < seats.length; i++) {
@@ -922,7 +925,7 @@ public final class TrainPlacer {
             return null;
         }
 
-        List<AbstractMinecart> others = foreignCarts(train, span.inflate(RUN_SHELL));
+        List<AbstractMinecart> others = nearby.in(span.inflate(RUN_SHELL));
 
         if (others.isEmpty()) {
             return null;
@@ -1048,9 +1051,66 @@ public final class TrainPlacer {
                 car -> !train.contains(car) && !coupledToAny(cars, car));
     }
 
+    // The box every one of cars stands in.
+    private static AABB trainBox(List<AbstractMinecart> cars) {
+        AABB box = cars.getFirst().getBoundingBox();
+
+        for (AbstractMinecart car : cars) {
+            box = box.minmax(car.getBoundingBox());
+        }
+
+        return box;
+    }
+
+    // Whether inner lies wholly inside outer, faces included.
+    private static boolean encloses(AABB outer, AABB inner) {
+        return outer.minX <= inner.minX && outer.minY <= inner.minY && outer.minZ <= inner.minZ
+                && outer.maxX >= inner.maxX && outer.maxY >= inner.maxY
+                && outer.maxZ >= inner.maxZ;
+    }
+
+    // One train's foreignCarts over a box grown to cover every area asked of it, each answer cut
+    // to its own area. Exact while no foreign cart moves, which none does before the place loop.
+    private static final class Nearby {
+        private final Train train;
+        private final @Nullable AABB seed;
+        private @Nullable AABB queried;
+        private List<AbstractMinecart> carts = List.of();
+
+        private Nearby(Train train, @Nullable AABB seed) {
+            this.train = train;
+            this.seed = seed;
+        }
+
+        // The carts foreignCarts would give for area.
+        private List<AbstractMinecart> in(AABB area) {
+            if (queried == null || !encloses(queried, area)) {
+                AABB grown = queried != null ? queried.minmax(area)
+                        : seed != null ? seed.minmax(area) : area;
+
+                carts = foreignCarts(train, grown);
+                queried = grown;
+            }
+
+            if (carts.isEmpty()) {
+                return List.of();
+            }
+
+            List<AbstractMinecart> inArea = new ArrayList<>();
+
+            for (AbstractMinecart cart : carts) {
+                if (cart.getBoundingBox().intersects(area)) {
+                    inArea.add(cart);
+                }
+            }
+
+            return inArea;
+        }
+    }
+
     // The end another train's cart makes of this track past endCar, outwardSign away from the
     // train: how far endCar's middle may come, pushed out by halfLength as a recorded end is.
-    private static @Nullable Double foreignEnd(Train train, TrackRibbon ribbon,
+    private static @Nullable Double foreignEnd(Nearby nearby, TrackRibbon ribbon,
             AbstractMinecart endCar, double reachArc, double outwardSign, double halfLength) {
         Vec3 reachPosition = ribbon.positionAt(reachArc);
         AABB aroundBox = endCar.getBoundingBox();
@@ -1059,7 +1119,7 @@ public final class TrainPlacer {
             aroundBox = aroundBox.minmax(boxAt(endCar, reachPosition));
         }
 
-        List<AbstractMinecart> others = foreignCarts(train, aroundBox.inflate(END_SHELL));
+        List<AbstractMinecart> others = nearby.in(aroundBox.inflate(END_SHELL));
 
         if (others.isEmpty()) {
             return null;
@@ -1145,10 +1205,10 @@ public final class TrainPlacer {
 
     // Whether a cart of another train stands where car would be seated at arc.
     private static boolean seatTaken(
-            Train train, TrackRibbon ribbon, AbstractMinecart car, double arc) {
+            Nearby nearby, TrackRibbon ribbon, AbstractMinecart car, double arc) {
         Vec3 position = ribbon.positionAt(arc);
 
-        return position != null && !foreignCarts(train, boxAt(car, position)).isEmpty();
+        return position != null && !nearby.in(boxAt(car, position)).isEmpty();
     }
 
     // Of two ends on the side outwardSign points to, whichever the train meets first.
@@ -1190,6 +1250,8 @@ public final class TrainPlacer {
             double[] offsets, int order, int leadIndex, double pushSign) {
         List<AbstractMinecart> cars = train.cars();
         int packReach = 0;
+        // Every player near the train, read once and only for a car its engine is not driving.
+        List<Player> players = null;
 
         for (int i = 0; i < cars.size(); i++) {
             AbstractMinecart car = cars.get(i);
@@ -1202,7 +1264,17 @@ public final class TrainPlacer {
 
             Vec3 pushDirection = alongDirection.normalize().scale(pushSign);
 
-            if (drives(car, pushDirection) || shoved(car, pushDirection)) {
+            if (drives(car, pushDirection)) {
+                packReach = Math.max(packReach, Math.abs(i - leadIndex));
+                continue;
+            }
+
+            if (players == null) {
+                players = car.level().getEntitiesOfClass(
+                        Player.class, trainBox(cars).inflate(SHOVE_SHELL));
+            }
+
+            if (shoved(car, pushDirection, players)) {
                 packReach = Math.max(packReach, Math.abs(i - leadIndex));
             }
         }
@@ -1217,9 +1289,14 @@ public final class TrainPlacer {
     }
 
     // Whether a player is leaning on this car from the side away from the blocked end.
-    private static boolean shoved(AbstractMinecart car, Vec3 pushDirection) {
-        for (Player player : car.level().getEntitiesOfClass(
-                Player.class, car.getBoundingBox().inflate(SHOVE_SHELL))) {
+    private static boolean shoved(AbstractMinecart car, Vec3 pushDirection, List<Player> players) {
+        AABB leanBox = car.getBoundingBox().inflate(SHOVE_SHELL);
+
+        for (Player player : players) {
+            if (!player.getBoundingBox().intersects(leanBox)) {
+                continue;
+            }
+
             Vec3 behindDirection = car.position().subtract(player.position()).horizontal();
 
             if (!player.isSpectator()
