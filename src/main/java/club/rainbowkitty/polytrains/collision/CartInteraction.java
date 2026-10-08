@@ -79,6 +79,16 @@ public enum CartInteraction {
         }
 
         if (other instanceof AbstractMinecart car) {
+            // Two cars of one train never wreck or strike each other. What varies is whether they
+            // are solid to each other: placed cars (fixed offsets) aren't solid to each other or
+            // the leader; unplaced ones are ordinary carts that must stop each other, or an
+            // unplaced train piles into its own head. Placed is IGNORE on any track: no walk.
+            boolean placedPair = placed(cart, car);
+
+            if (placedPair && sameVehicle(cart, car)) {
+                return IGNORE;
+            }
+
             // Carts that merely pass close by on separate track are no concern of each other's. A
             // car off its rails shares no track, yet it still lands on or runs into another train.
             if (!RailContext.sharesTrack(cart, car) && !RailContext.meets(cart, car)
@@ -86,12 +96,8 @@ public enum CartInteraction {
                 return IGNORE;
             }
 
-            // Two cars of one train never wreck or strike each other. What varies is whether they
-            // are solid to each other: placed cars (fixed offsets) aren't solid to each other or
-            // the leader; unplaced ones are ordinary carts that must stop each other, or an
-            // unplaced train piles into its own head.
-            if (sameVehicle(cart, car)) {
-                return placed(cart, car) ? IGNORE : BUFFER;
+            if (!placedPair && sameVehicle(cart, car)) {
+                return BUFFER;
             }
 
             return wrecks(cart, car) ? WRECK : COLLIDE;
