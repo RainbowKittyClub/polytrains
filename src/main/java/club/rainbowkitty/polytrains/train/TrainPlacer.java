@@ -302,8 +302,9 @@ public final class TrainPlacer {
         // +1 when the tail lies towards the ribbon's far end, so past the tail is up the arcs.
         double tailSign = farEnd ? 1.0 : -1.0;
 
-        // Every other train's cart the checks below can reach, read once and only when asked.
-        Nearby nearby = new Nearby(train, trainBox(cars).inflate(furthestRun(leader) + RUN_SHELL));
+        // Every other train's cart the checks below can reach, read once and only when asked. Over
+        // this tick's run, not the furthest one: that takes in a yard's next line, cart by cart.
+        Nearby nearby = new Nearby(train, trainBox(cars).inflate(RUN_SHELL + speed + EPSILON));
 
         // Where the track behind the tail ends against something it cannot pass: a recorded end
         // run into a block, or a cart of another train standing on this track. A cart is the end
