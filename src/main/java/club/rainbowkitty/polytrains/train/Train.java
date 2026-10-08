@@ -1065,6 +1065,15 @@ public final class Train {
         stillTick = Long.MIN_VALUE;
     }
 
+    /** Forgets the still layout of whatever train {@code car} was last handed, if any. */
+    public static void wakeTrainOf(AbstractMinecart car) {
+        Train held = car.polytrains$train();
+
+        if (held != null) {
+            held.wake();
+        }
+    }
+
     /**
      * Whether this train was laid out still on the tick before {@code tick}, against the arc frame
      * its ribbon still has.

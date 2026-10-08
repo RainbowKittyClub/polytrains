@@ -512,7 +512,8 @@ public final class TrainPlacer {
         boolean anyElsewhere = false;
         // A placed car's push is the one shove that parts it from another train's cart, so only a
         // train with none in reach, as holdStill takes, goes without it at rest.
-        boolean shoveAtRest = !nearby.in(trainBox(cars).inflate(RUN_SHELL)).isEmpty();
+        List<AbstractMinecart> inReach = nearby.in(trainBox(cars).inflate(RUN_SHELL));
+        boolean shoveAtRest = !inReach.isEmpty();
 
         for (int i = 0; i < cars.size(); i++) {
             anyElsewhere |= placedElsewhere[i];
@@ -584,6 +585,13 @@ public final class TrainPlacer {
             markStill(train, cars, seats, leadIndex, leader);
         } else {
             train.wake();
+        }
+
+        // A train held still in reach would miss this one coming till its next full pass.
+        if (moved > EPSILON || speed > EPSILON || anyElsewhere) {
+            for (AbstractMinecart other : inReach) {
+                Train.wakeTrainOf(other);
+            }
         }
 
         if (refusal != null) {
