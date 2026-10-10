@@ -648,6 +648,11 @@ public final class Train {
      * shortens by the ground it would have covered this tick, so one that runs into something
      * shuts as fast as it hit it.
      *
+     * <p>Less whatever of that ground its leading car already ran this tick before it was stopped:
+     * every car behind is laid from that car, so it has moved them that far already, and closing a
+     * whole tick's ground on top of it runs them on at up to twice their train's speed — a lurch of
+     * more than a block at the tick a train in a short pocket meets each end.
+     *
      * <p>Never slower than the flat rate, though. A train leaning on a block has no speed to take
      * this from, and an engine's own output is an acceleration rather than a closing speed — six
      * hundredths of a block a tick over the whole train's mass, which takes a coupling most of
@@ -657,10 +662,12 @@ public final class Train {
      * @param target the interval the train is seated towards, which sets how tight a gap may go
      * @param fromLast whether the car that met the block is the one the last gap sits at
      * @param reach how many gaps back from it an engine's push actually reaches
+     * @param advance how far the leading car ran this tick towards what stopped it
      * @return whether there was any give left to take, false once those gaps are shut tight
      */
-    public boolean pack(double[] intervals, double target, boolean fromLast, int reach) {
-        double step = Math.max(carried, PITCH_STEP);
+    public boolean pack(
+            double[] intervals, double target, boolean fromLast, int reach, double advance) {
+        double step = Math.max(carried - advance, PITCH_STEP);
 
         return compress(intervals, target, step, fromLast, reach) < step;
     }
