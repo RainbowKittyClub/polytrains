@@ -230,14 +230,14 @@ public final class TrackRibbon {
             Vec3 tangent = tangentAt(leaderArc);
             boolean ahead = tangent == null || movement.dot(tangent) >= 0.0;
 
-            if (ahead && adjacent(nodes.getLast().block(), pos)) {
+            if (ahead && carriesOn(nodes.getLast(), false, pos)) {
                 append(level, pos, movement);
                 leaderArc = nodes.getLast().arc();
                 leaderLost = false;
                 return;
             }
 
-            if (!ahead && adjacent(nodes.getFirst().block(), pos)) {
+            if (!ahead && carriesOn(nodes.getFirst(), true, pos)) {
                 prepend(level, pos, movement);
                 leaderArc = nodes.getFirst().arc();
                 leaderLost = false;
@@ -1336,6 +1336,29 @@ public final class TrackRibbon {
         while (nodes.size() > limit) {
             nodes.removeLast();
         }
+    }
+
+    // Whether a car stepping onto pos carries this ribbon on past end, its near or far node: a
+    // block beside it, and one this ribbon does not hold already unless it lies out through that
+    // end's outer edge, as a circuit's first block lies past its last a lap on. A held block on the
+    // inner side is track the ribbon already runs over, reached by a car at the far end of its
+    // train from where the leading car was last read: the end that leads changed. Laid on again
+    // there, the ribbon doubles back on itself and seats the cars on top of one another, which a
+    // train with a dead end just past it, and so no track grown beyond, does at every turn.
+    private boolean carriesOn(Node end, boolean nearEnd, BlockPos pos) {
+        if (!adjacent(end.block(), pos)) {
+            return false;
+        }
+
+        if (!holds(pos)) {
+            return true;
+        }
+
+        Vec3 outwardDirection = outward(end, nearEnd);
+
+        return outwardDirection != null
+                && pos.getX() - end.block().getX() == outwardDirection.x
+                && pos.getZ() - end.block().getZ() == outwardDirection.z;
     }
 
     // Whether two rail blocks can be consecutive: orthogonal neighbours, allowing the one-block
