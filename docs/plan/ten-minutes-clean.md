@@ -1610,6 +1610,16 @@ leading cars of an eight-car and a four-car train meeting head on at 1.00 and 0.
 corner at `(-1,-27)`, neither train packing: P16's class, and neither change moves a leading car.
 The second at 40 (`…-002138.json`) passed every clause, widest coupling 2.37.
 
+**Seen after, on the live server: a link one cart records alone left half a train loose.** A
+ten-car train summoned against a barrier, its furnace braked, had six cars shuffling a tenth of a
+block back and forth for good. Its seventh car stood with no tag and no links while the sixth and
+eighth both named it, a cart left under that UUID by an earlier summon, so the one meant for it was
+refused. `Train.build` walked from the first car to that one, which leads nowhere, and read the
+train back from there as that car alone: the six it passed stood in no train the placer holds, and
+vanilla's shunts between them, packed in 0.16 of slack, never died away. A replica cycled every 30
+ticks from one nudge. The walk now follows only a link both carts record, and warns of each one it
+does not: the six stand as a train, still through nudges of 0.1 and 0.3 either way.
+
 # Part R — The bar
 
 ## R1 — Ten minutes clean, twice — **done**
