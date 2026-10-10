@@ -1613,8 +1613,8 @@ The second at 40 (`…-002138.json`) passed every clause, widest coupling 2.37.
 **Seen after, on the live server: a link one cart records alone left half a train loose.** A
 ten-car train summoned against a barrier, its furnace braked, had six cars shuffling a tenth of a
 block back and forth for good. Its seventh car stood with no tag and no links while the sixth and
-eighth both named it, a cart left under that UUID by an earlier summon, so the one meant for it was
-refused. `Train.build` walked from the first car to that one, which leads nowhere, and read the
+eighth both named it: by its fixed UUID and missing tag, most likely a cart an earlier summon left
+standing, so the one meant for it was refused. `Train.build` walked from the first car to that one, which leads nowhere, and read the
 train back from there as that car alone: the six it passed stood in no train the placer holds, and
 vanilla's shunts between them, packed in 0.16 of slack, never died away. A replica cycled every 30
 ticks from one nudge. The walk now follows only a link both carts record, and warns of each one it
