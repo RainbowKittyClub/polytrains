@@ -28,7 +28,8 @@ P20, P21 and P23 are independent of each other, P22 builds on P21, and R1 runs a
 P24 comes from the user's report of cars snapping onto the track after a jump, P25 from a review of
 P24. P26, planned for the torture failure seen most since R1 was last met, was skipped. P27 comes
 from a trace of `3bjump` at 100 and is independent of the rest; P28 from a trace of it at 8,
-building on P19 and P25; P29 from the traces after P28, building on it.
+building on P19 and P25; P29 from the traces after P28, building on it. P30 comes from the user's
+report of trains rigged into short pockets and is independent of the rest.
 
 ---
 
@@ -1570,6 +1571,54 @@ runs on: opened there, the gap pushes an end car into what holds the train.
 train move backward against its travel, the start and the eastern buffer aside, and no SNAP at 40;
 P28's bar holds at 8 and P25's at 40 and 100; two ten-minute torture runs at 100 and two at 40 pass
 every clause.
+
+## P30 — A train boxed in a short pocket packs where it stands — **done**
+
+Reported as the cars of trains rigged into short dead-end pockets jumping about, with a cell for
+every car. Two faults, both on a train running between two dead ends, which a powered train boxed
+in does for good, turning at each end as P22 leaves a filled section.
+
+**The ribbon folded at a turn.** `TrackRibbon.record` asks first whether a block lies near where
+its leading car was last read. A stall turn hands the lead to the train's far end, a train's length
+from there, so the new leading car's first block never is. Where that car stands one block in from
+the ribbon's end node, which only a dead end just past it leaves, `record` took the block for new
+track because it lay beside that end, and laid a second copy of track the ribbon already ran over:
+the ribbon doubled back, seats along it fell on top of one another, and each turn added two nodes.
+A seven-rail pocket's ribbon reached 29. On open track the ribbon is grown past both ends of the
+train, so the car stands on held track away from either end, which `record` already reads as a
+revisit. An end now takes a block it already holds only through its outer edge, as a circuit's
+first block lies past its last a lap on; any other held block is a revisit.
+
+**Packing ran the cars on at twice their speed.** On the tick a train meets an end, vanilla has run
+its leading car part of the tick's ground before stopping it, and every car behind is laid from
+that car; `Train.pack` then closed a whole tick's ground, `carried`, on top, so the cars behind
+moved both, 1.33 blocks in a tick at a speed of 0.74. It now closes `carried` less that run, never
+under `PITCH_STEP`.
+
+**Measured** on a server of its own, against thirteen pockets traced tick by tick for 240 ticks:
+straight both ways and one round a corner, four to eight cars, engines leading, trailing and
+mid-train, one or two rails to spare, and three unpowered trains shoved back the other way at tick
+40. On `380d66e` four of them folded: cars stood 0.02 apart along the track, changed order 36 to
+67 times and moved up to six blocks in a tick. Twice over with both fixes in, no car stood closer
+than a car's width to the next, no order changed, every ribbon held its pocket's rails exactly, and
+no car moved further in a tick than its train was running, the worst 1.00 at 1.00.
+
+Three ten-minute torture runs against `9f6f62a`, which is `380d66e` with both in. At 100
+(`run-torturetrack-20261010-000053.json`) every clause passed, widest coupling 2.30 over 15,550
+strikes. At 40 the first (`…-001102.json`) failed Bounce on one clip, 0.035 deep, between the
+leading cars of an eight-car and a four-car train meeting head on at 1.00 and 0.93 round the
+corner at `(-1,-27)`, neither train packing: P16's class, and neither change moves a leading car.
+The second at 40 (`…-002138.json`) passed every clause, widest coupling 2.37.
+
+**Seen after, on the live server: a link one cart records alone left half a train loose.** A
+ten-car train summoned against a barrier, its furnace braked, had six cars shuffling a tenth of a
+block back and forth for good. Its seventh car stood with no tag and no links while the sixth and
+eighth both named it: by its fixed UUID and missing tag, most likely a cart an earlier summon left
+standing, so the one meant for it was refused. `Train.build` walked from the first car to that one, which leads nowhere, and read the
+train back from there as that car alone: the six it passed stood in no train the placer holds, and
+vanilla's shunts between them, packed in 0.16 of slack, never died away. A replica cycled every 30
+ticks from one nudge. The walk now follows only a link both carts record, and warns of each one it
+does not: the six stand as a train, still through nudges of 0.1 and 0.3 either way.
 
 # Part R — The bar
 

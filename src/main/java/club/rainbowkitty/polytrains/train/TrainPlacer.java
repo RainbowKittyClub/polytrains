@@ -399,7 +399,12 @@ public final class TrainPlacer {
         boolean closed = false;
 
         if (packing) {
-            closed = train.pack(gaps, target, fromHead < 0, packReach);
+            // How far vanilla ran the leading car into the end ahead this tick before it stopped.
+            Double laidLead = train.laidLeadArc(leader, tick);
+            double advance = laidLead == null
+                    ? 0.0 : Math.max(0.0, (laidLead - leadArc) * tailSign);
+
+            closed = train.pack(gaps, target, fromHead < 0, packReach, advance);
 
             // Zeroed unless the train reads as leaving the block: a seated car carries the
             // train's own movement, so a nonzero speed here would drive it back into what stopped

@@ -17,6 +17,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 import club.rainbowkitty.polytrains.ext.AbstractMinecartExt;
+import club.rainbowkitty.polytrains.ext.Linkable;
 import club.rainbowkitty.polytrains.rail.RailBrake;
 import club.rainbowkitty.polytrains.rail.RailForces;
 import club.rainbowkitty.polytrains.rail.TrackRibbon;
@@ -648,6 +649,11 @@ public final class Train {
      * shortens by the ground it would have covered this tick, so one that runs into something
      * shuts as fast as it hit it.
      *
+     * <p>Less whatever of that ground its leading car already ran this tick before it was stopped:
+     * every car behind is laid from that car, so it has moved them that far already, and closing a
+     * whole tick's ground on top of it runs them on at up to twice their train's speed — a lurch of
+     * more than a block at the tick a train in a short pocket meets each end.
+     *
      * <p>Never slower than the flat rate, though. A train leaning on a block has no speed to take
      * this from, and an engine's own output is an acceleration rather than a closing speed — six
      * hundredths of a block a tick over the whole train's mass, which takes a coupling most of
@@ -657,10 +663,12 @@ public final class Train {
      * @param target the interval the train is seated towards, which sets how tight a gap may go
      * @param fromLast whether the car that met the block is the one the last gap sits at
      * @param reach how many gaps back from it an engine's push actually reaches
+     * @param advance how far the leading car ran this tick towards what stopped it
      * @return whether there was any give left to take, false once those gaps are shut tight
      */
-    public boolean pack(double[] intervals, double target, boolean fromLast, int reach) {
-        double step = Math.max(carried, PITCH_STEP);
+    public boolean pack(
+            double[] intervals, double target, boolean fromLast, int reach, double advance) {
+        double step = Math.max(carried - advance, PITCH_STEP);
 
         return compress(intervals, target, step, fromLast, reach) < step;
     }
@@ -1434,12 +1442,28 @@ public final class Train {
         }
 
         walk(end, walked);
+        warnOneSided(walked);
 
         if (walked.size() > 1 && sortsFirst(walked.getLast(), walked.getFirst())) {
             Collections.reverse(walked);
         }
 
         return new Train(walked, tick, inherited);
+    }
+
+    // Names each link one of cars records alone, which the walk does not follow. Nothing in the
+    // mod writes one, so it comes from outside: a summon or data edit that wrote one side of a
+    // coupling, or a cart its partner still names left standing under that UUID by a summon that
+    // was refused for it.
+    private static void warnOneSided(List<AbstractMinecart> cars) {
+        for (AbstractMinecart car : cars) {
+            for (AbstractMinecart neighbour : car.getNeighbours()) {
+                if (!Linkable.coupled(neighbour, car)) {
+                    LOGGER.warn("cart {} is linked to {}, which is not linked back; left uncoupled",
+                            car.getUUID(), neighbour.getUUID());
+                }
+            }
+        }
     }
 
     // Follows the links away from start, collecting into sink when one is given. Returns the car
@@ -1471,11 +1495,15 @@ public final class Train {
         return null;
     }
 
-    // The neighbour of car that is not the one it was reached from.
+    // The neighbour of car that is not the one it was reached from and that links car back. A link
+    // one cart records alone is no coupling: followed, the walk ends at a car that leads nowhere
+    // and reads the train back from there as that car alone, so every car it passed on the way
+    // stands in no train the placer holds, loose carts shunting one another back and forth for
+    // good wherever they have room to.
     private static @Nullable AbstractMinecart onward(
             AbstractMinecart car, @Nullable AbstractMinecart previous) {
         for (AbstractMinecart neighbour : car.getNeighbours()) {
-            if (neighbour != previous) {
+            if (neighbour != previous && Linkable.coupled(neighbour, car)) {
                 return neighbour;
             }
         }
