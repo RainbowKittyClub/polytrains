@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "minecraft:minecart",
+    "minecraft:coal_block"
+  ],
+  "result": {
+    "count": 1,
+    "id": "polytrains:coal_tender"
+  }
+}

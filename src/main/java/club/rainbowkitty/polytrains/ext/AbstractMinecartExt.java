@@ -1,0 +1,177 @@
+package club.rainbowkitty.polytrains.ext;
+
+import org.jspecify.annotations.Nullable;
+
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.phys.Vec3;
+
+import club.rainbowkitty.polytrains.rail.RailContext;
+import club.rainbowkitty.polytrains.rail.RailPath;
+import club.rainbowkitty.polytrains.train.Train;
+
+/**
+ * Access interface injected onto {@link AbstractMinecart} for this mod's own per-cart state:
+ * driving and power, cached rail geometry, train membership and seating, nose heading, and
+ * position-sync timing. Link-graph access lives on {@link Linkable}, which this interface extends.
+ *
+ * <p>See {@code docs/abstract-minecart-ext.md} for the rationale behind each accessor.
+ */
+public interface AbstractMinecartExt extends Linkable {
+
+    /**
+     * Whether this cart is driving itself at all, whatever it is currently putting out. Only a
+     * burning, unparked furnace cart is.
+     */
+    public default boolean polytrains$driving() {
+        return false;
+    }
+
+    /**
+     * How hard this cart drives itself along the track in blocks per tick squared, or zero if it is
+     * not under its own power. Only a burning, unparked furnace cart returns anything.
+     */
+    public default double polytrains$driveAcceleration() {
+        return 0.0;
+    }
+
+    /** The direction a cart under its own power is pushing in, or zero if it is not under any. */
+    public default Vec3 polytrains$driveHeading() {
+        return Vec3.ZERO;
+    }
+
+    /**
+     * Turns this cart's own power to {@code heading}, laid along the rail it is standing on, for a
+     * train that has given up trying to move the way it was pointed. Unconditional, unlike
+     * {@link #polytrains$aimEngine(Vec3)}.
+     */
+    public default void polytrains$turnEngine(Vec3 heading) {}
+
+    /**
+     * Lays this cart's own power along {@code heading}, for a cart the placer is seating.
+     */
+    public default void polytrains$aimEngine(Vec3 heading) {}
+
+    /** Ticks of burn time this cart has left, or zero for a cart that burns nothing. */
+    public default int polytrains$fuel() {
+        return 0;
+    }
+
+    /**
+     * Whether this cart is under its own power and has begun counting ticks its train covered no
+     * ground on, towards turning it round. Only a burning, unparked furnace cart ever is.
+     */
+    public default boolean polytrains$stalling() {
+        return false;
+    }
+
+    /**
+     * This cart's own speed ceiling, as its own kind of cart works it out. Exists so that the car
+     * driving a train can ask the cars behind it without reaching for a {@code protected} method on
+     * somebody else's instance. Asked of any other car it answers with that car's own figure; asked
+     * of the car driving a train, with the train's, which is the one that car is clamped to.
+     */
+    public default double polytrains$ownMaxSpeed(ServerLevel level) {
+        throw Unmixed.error();
+    }
+
+    /**
+     * The stretch of track this cart stands on, read once a tick and held. Collision asks this of
+     * every candidate pair, so it must not walk the rails again on each call.
+     */
+    public default RailContext polytrains$railContext() {
+        throw Unmixed.error();
+    }
+
+    /**
+     * The track this cart can be over before its next move ends: see {@link RailContext#covering}.
+     * Held until the cart moves, its movement changes or the tick does, since collision asks it of
+     * every candidate pair.
+     */
+    public default RailPath.Reach polytrains$coveredTrack() {
+        throw Unmixed.error();
+    }
+
+    /** The train this cart was last placed in, whether or not it is still good to use. */
+    public default @Nullable Train polytrains$train() {
+        throw Unmixed.error();
+    }
+
+    /** This cart's index in the cars of {@link #polytrains$train}. */
+    public default int polytrains$trainIndex() {
+        throw Unmixed.error();
+    }
+
+    /**
+     * Hands this cart the train it belongs to and its index among that train's cars, sparing its
+     * siblings walking their own.
+     */
+    public default void polytrains$setTrain(Train train, int index) {
+        throw Unmixed.error();
+    }
+
+    /** The game time the placer last seated this cart on its train's track, or zero for never. */
+    public default long polytrains$seatedAt() {
+        throw Unmixed.error();
+    }
+
+    /** Records that the placer seated this cart at {@code gameTime}. */
+    public default void polytrains$setSeatedAt(long gameTime) {
+        throw Unmixed.error();
+    }
+
+    /** The game time the placer last flew this cart on through the air, or zero for never. */
+    public default long polytrains$flownAt() {
+        throw Unmixed.error();
+    }
+
+    /** Records that the placer flew this cart at {@code gameTime}. */
+    public default void polytrains$setFlownAt(long gameTime) {
+        throw Unmixed.error();
+    }
+
+    /**
+     * The arc along its train's ribbon this cart was last seated at, or null if that arc was
+     * recorded against a different numbering than {@code arcEpoch} — a reset since renumbered it,
+     * and an arc from the old frame describes nothing in the new one.
+     */
+    public default @Nullable Double polytrains$seatArc(int arcEpoch) {
+        throw Unmixed.error();
+    }
+
+    /**
+     * Records the arc this cart has just been seated at, against the arc numbering it was measured
+     * in, so that what put the cart there and what later asks where it sits cannot disagree.
+     */
+    public default void polytrains$setSeatArc(double arc, int arcEpoch) {
+        throw Unmixed.error();
+    }
+
+    /**
+     * Which way this cart's nose points, as a heading in the world, or null if it has never been
+     * recorded.
+     */
+    public default @Nullable Vec3 polytrains$noseVector() {
+        throw Unmixed.error();
+    }
+
+    /** Records which way this cart's nose points. */
+    public default void polytrains$setNoseVector(Vec3 heading) {
+        throw Unmixed.error();
+    }
+
+    /** The game time this cart's tracker withholds position updates until, or zero for none. */
+    public default long polytrains$resyncAt() {
+        throw Unmixed.error();
+    }
+
+    /** Withholds this cart's position updates until {@code gameTime}, or zero to stop. */
+    public default void polytrains$setResyncAt(long gameTime) {
+        throw Unmixed.error();
+    }
+
+    /** Marks this cart's train to be put back in step on the cart's next tick. */
+    public default void polytrains$setResyncPending(boolean pending) {
+        throw Unmixed.error();
+    }
+}

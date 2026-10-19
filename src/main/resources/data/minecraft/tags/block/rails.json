@@ -1,0 +1,7 @@
+{
+	"replace": false,
+	"values": [
+		"polytrains:junction_rail",
+		"polytrains:switch_rail"
+	]
+}
