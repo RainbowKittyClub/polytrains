@@ -1,0 +1,54 @@
+name: GitHub release
+
+# A v<mod_version> tag builds every Minecraft version and attaches the jars to a GitHub release of
+# that tag. This only makes the GitHub release: nothing goes to Modrinth or CurseForge.
+on:
+  push:
+    tags:
+      - "v*"
+  # Re-run for an existing tag: choose the tag, not a branch, under "Use workflow from".
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Check the tag against gradle.properties
+        run: gradle/ci/release.sh env
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - name: Build
+        run: gradle/ci/release.sh gradle build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create the GitHub release
+        run: |
+          mapfile -t jars < <(gradle/ci/release.sh jars)
+          if [ "${#jars[@]}" -eq 0 ]; then
+            echo "The build produced no jar to attach" >&2
+            exit 1
+          fi
+          flags=(--verify-tag --generate-notes)
+          if [ "$PRERELEASE" = true ]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" "${jars[@]}"
+        env:
+          GH_TOKEN: ${{ github.token }}

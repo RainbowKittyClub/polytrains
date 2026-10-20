@@ -1,0 +1,39 @@
+name: Publish Maven package
+
+# A v<mod_version> tag publishes every Minecraft version's jar to this repository's GitHub Packages.
+# The steps live in the gradle submodule (gradle/ci/release.sh), versioned with the build.
+on:
+  push:
+    tags:
+      - "v*"
+  # Re-run for an existing tag: choose the tag, not a branch, under "Use workflow from".
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Check the tag against gradle.properties
+        run: gradle/ci/release.sh env
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - name: Build and publish
+        run: gradle/ci/release.sh gradle build publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
