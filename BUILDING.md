@@ -10,7 +10,8 @@ This file covers only where this mod departs from it.
 - **Multi-version build** (Stonecutter): 26.2 and 26.3, with 26.2 committed. Each version's keys
   are in `versions/<v>/gradle.properties`.
   - 26.3 builds against Polymer 0.18.4 from Maven.
-  - Dev servers run under `versions/<v>/run`, on ports 25603/25579 (26.2) and 25804/25806 (26.3).
+  - Dev servers run under `versions/<v>/run`, each on the first two free ports in
+    `dev_server_ports`, written to its `run/server.properties`.
   - `scripts/mtxrcon.py` (and through it `torture.py`, `perf.py` and `rig-snapshot.py`),
     `scripts/rig-sync.sh` and `scripts/collision-rig.sh` take `DEV_MC=26.3` for the 26.3 server.
   - The two rail loot tables hold both 26.2's `conditions` list and 26.3's single `condition`,
