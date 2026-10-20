@@ -1,4 +1,4 @@
 [submodule "gradle"]
 	path = gradle
-	url = ssh://git@github.com/RainbowKittyClub/mod-template_fabric
+	url = https://github.com/RainbowKittyClub/mod-template_fabric
 	branch = gradle
